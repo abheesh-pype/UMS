@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { hashPassword, generateUserId } from '../utils/authUtils.js';
+import { hashPassword, generateUserId, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '../utils/courseTypeHelper.js';
 
 // Universities
@@ -600,7 +600,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
   // 1. Generate credentials
   const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`;
   const hashedPassword = await hashPassword(rawPassword);
-  const userId = await generateUserId();
+  const userId = await generateStudyCenterUserId(req.user.organizationId);
 
   // 2. Create in transaction
   const centerWithCreds = await prisma.$transaction(async (tx) => {
@@ -1040,7 +1040,7 @@ export const bulkImportStudyCenters = asyncHandler(async (req: AuthRequest, res:
     try {
       const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`;
       const hashedPassword = await hashPassword(rawPassword);
-      const userId = await generateUserId();
+      const userId = await generateStudyCenterUserId(organizationId);
 
       await prisma.$transaction(async (tx) => {
         const center = await tx.studyCenter.create({

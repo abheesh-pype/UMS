@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { hashPassword, generateUserId } from '../utils/authUtils.js';
+import { hashPassword, generateStudyCenterUserId } from '../utils/authUtils.js';
 
 // Invoices
 export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -586,7 +586,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
   
   const rawPassword = 'admin123';
   const hashedPassword = await hashPassword(rawPassword);
-  const userId = await generateUserId();
+  const userId = await generateStudyCenterUserId(req.user.organizationId);
 
   const center = await prisma.studyCenter.create({
     data: {

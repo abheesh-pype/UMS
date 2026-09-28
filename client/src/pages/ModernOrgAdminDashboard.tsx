@@ -19,9 +19,120 @@ import { SubDepartmentsPanel } from '@/components/panels/SubDepartmentsPanel';
 import { CentersAdmissionsPanel } from '@/components/panels/CentersAdmissionsPanel';
 import { OrgAdminSessionsPanel } from '@/components/panels/OrgAdminSessionsPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 
+function StudyCentreCustomisationPage() {
+  const { user } = useAuth();
+  const [currentPattern, setCurrentPattern] = useState('IITSRPS');
+  const [customPattern, setCustomPattern] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const orgId = typeof (user as any)?.organizationId === 'object'
+      ? (user as any)?.organizationId?.id
+      : (user as any)?.organizationId;
+
+    if (!orgId) return;
+
+    api.get('/organizations')
+      .then((response) => {
+        const org = (response.data.data || []).find((item: any) => item.id === orgId);
+        const existingPattern = org?.metadata?.studyCenterIdPattern || 'IITSRPS';
+        setCurrentPattern(existingPattern);
+        setCustomPattern(existingPattern);
+      })
+      .catch(() => {
+        setCurrentPattern('IITSRPS');
+        setCustomPattern('IITSRPS');
+      });
+  }, [user]);
+
+  const handleSave = async () => {
+    const orgId = typeof (user as any)?.organizationId === 'object'
+      ? (user as any)?.organizationId?.id
+      : (user as any)?.organizationId;
+
+    const cleaned = customPattern.trim().replace(/[^a-zA-Z0-9]/g, '');
+    if (!orgId) {
+      toast.error('Organization not found');
+      return;
+    }
+    if (!cleaned) {
+      toast.error('Please enter a valid ID pattern');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await api.get('/organizations');
+      const org = (response.data.data || []).find((item: any) => item.id === orgId);
+      const payload = {
+        ...org,
+        metadata: {
+          ...(org?.metadata || {}),
+          studyCenterIdPattern: cleaned,
+        },
+      };
+
+      await api.put(`/organizations/${orgId}`, payload);
+      setCurrentPattern(cleaned);
+      setCustomPattern(cleaned);
+      toast.success('Study centre ID pattern saved');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save pattern');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Study Centre ID</h1>
+      </div>
+
+      <Card className="max-w-3xl">
+        <CardContent className="space-y-6 pt-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-muted-foreground">Current pattern</label>
+            <Input
+              value={currentPattern}
+              disabled
+              readOnly
+              className="bg-muted/80 text-muted-foreground cursor-not-allowed"
+            />
+            <p className="text-xs text-muted-foreground">This is the prefix currently used for study centre admin IDs.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Customise pattern</label>
+            <Input
+              value={customPattern}
+              onChange={(e) => setCustomPattern(e.target.value)}
+              placeholder="iitsrps"
+              className="bg-background"
+            />
+            <p className="text-xs text-muted-foreground">Example: iitsrps or aaaaaaa. New IDs will continue with a 4-digit number, like aaaaaaa0009.</p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full"
+          >
+            {saving ? 'Saving...' : 'Save changes'}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
   const [metrics, setMetrics] = useState<any>({});
@@ -37,6 +148,10 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
       .catch(() => {});
   }, []);
 
+  if (activeTab === 'study-centre-customisation') {
+    return <StudyCentreCustomisationPage />;
+  }
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div>
@@ -45,30 +160,6 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="relative">
-          <TabsList className="w-full justify-start overflow-x-auto overflow-y-hidden no-scrollbar h-auto py-1 gap-1 bg-transparent border-b rounded-none flex-nowrap">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Overview</TabsTrigger>
-            <TabsTrigger value="hierarchy" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Hierarchy</TabsTrigger>
-            <TabsTrigger value="branches" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Branches</TabsTrigger>
-            <TabsTrigger value="users" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Users</TabsTrigger>
-            <TabsTrigger value="departments" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Departments</TabsTrigger>
-            <TabsTrigger value="subdepartments" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Sub-Departments</TabsTrigger>
-            <TabsTrigger value="tasks" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Tasks</TabsTrigger>
-            <TabsTrigger value="students" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Students</TabsTrigger>
-            <TabsTrigger value="universities" className="hidden data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Universities</TabsTrigger>
-            <TabsTrigger value="programs" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Programs</TabsTrigger>
-            <TabsTrigger value="sessions" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Sessions</TabsTrigger>
-            <TabsTrigger value="centers" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Study Centers</TabsTrigger>
-            <TabsTrigger value="invoices" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Invoices</TabsTrigger>
-            <TabsTrigger value="payments" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Payments</TabsTrigger>
-            <TabsTrigger value="expenses" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Expenses</TabsTrigger>
-            <TabsTrigger value="employees" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Employees</TabsTrigger>
-            <TabsTrigger value="leaves" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Leave Requests</TabsTrigger>
-            <TabsTrigger value="leads" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Leads</TabsTrigger>
-            <TabsTrigger value="center_admissions" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-lg">Centers Admissions</TabsTrigger>
-          </TabsList>
-        </div>
-
         <TabsContent value="overview">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">

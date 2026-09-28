@@ -366,6 +366,13 @@ function App() {
 
     // For role-specific dashboards (ops, hr, finance, sales), the nav item IDs
     // are already the correct tab IDs — pass them directly
+    if (table === 'study-centre-customisation') {
+      setViewMode('dashboard');
+      setActiveTable(table);
+      setActiveTab(table);
+      return;
+    }
+
     const roleDashboardRoles = ['ops_admin', 'ops_sub_admin', 'finance_admin', 'hr_admin', 'sales_admin', 'academic_admin'];
     const isEmployeeSubDeptManager = user?.role === 'employee' && Boolean((user as any)?.subDepartmentId) && Boolean(deptType);
     const isEmployeeRole = user?.role === 'employee';

@@ -396,6 +396,13 @@ export function PrismaLayout({
                         <Calendar className="w-4 h-4 text-muted-foreground" />
                         Leave Allocation
                       </button>
+                      <button
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-muted transition-colors text-left"
+                        onClick={() => { onTableChange('study-centre-customisation'); setIsSettingsOpen(false); }}
+                      >
+                        <Settings className="w-4 h-4 text-muted-foreground" />
+                        Customisation
+                      </button>
                     </div>
                     <div className="p-1 border-t border-border">
                       <button
