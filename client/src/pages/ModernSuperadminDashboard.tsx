@@ -79,26 +79,26 @@ export function ModernSuperadminDashboard({ initialTab, onNavigate: _onNavigate 
       {/* Superadmin Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-primary mb-1">
-            <Shield className="w-4 h-4" />
+          <div className="flex items-center gap-2 text-primary mb-2">
+            <div className="rounded-md bg-primary/10 p-1.5"><Shield className="w-3.5 h-3.5" /></div>
             <span className="text-xs font-bold uppercase tracking-widest">Mission Control</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Global Administration</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Managing {metrics.totalOrganizations || 8} universities across the institutional network.</p>
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">Global Administration</h1>
+          <p className="text-muted-foreground mt-2 text-sm">Managing {metrics.totalOrganizations || 8} universities across the institutional network.</p>
         </div>
       </div>
 
       {/* Tabs for different views */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="university-management">University Management</TabsTrigger>
-          <TabsTrigger value="organizations">Universities</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="departments">Departments</TabsTrigger>
-          <TabsTrigger value="subdepartments">Sub-Departments</TabsTrigger>
-          <TabsTrigger value="licenses">Licenses</TabsTrigger>
-          <TabsTrigger value="center_admissions">Admissions</TabsTrigger>
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-white/70 p-1.5 shadow-sm dark:bg-card/70">
+          <TabsTrigger value="overview" className="rounded-xl px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Overview</TabsTrigger>
+          <TabsTrigger value="university-management" className="rounded-xl px-4 py-2 text-xs font-semibold">University Management</TabsTrigger>
+          <TabsTrigger value="organizations" className="rounded-xl px-4 py-2 text-xs font-semibold">Universities</TabsTrigger>
+          <TabsTrigger value="users" className="rounded-xl px-4 py-2 text-xs font-semibold">Users</TabsTrigger>
+          <TabsTrigger value="departments" className="rounded-xl px-4 py-2 text-xs font-semibold">Departments</TabsTrigger>
+          <TabsTrigger value="subdepartments" className="rounded-xl px-4 py-2 text-xs font-semibold">Sub-Departments</TabsTrigger>
+          <TabsTrigger value="licenses" className="rounded-xl px-4 py-2 text-xs font-semibold">Licenses</TabsTrigger>
+          <TabsTrigger value="center_admissions" className="rounded-xl px-4 py-2 text-xs font-semibold">Admissions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -143,7 +143,7 @@ function OverviewContent({ metrics }: { metrics: any }) {
   return (
     <div className="space-y-6">
       {/* Global Core Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
         <GlobalMetric 
             title="Universities"
           value={metrics.totalOrganizations || 8} 
@@ -174,17 +174,17 @@ function OverviewContent({ metrics }: { metrics: any }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Global Traffic Chart */}
-        <Card className="lg:col-span-2 border-none shadow-2xl bg-card/40 backdrop-blur-3xl overflow-hidden">
+        <Card className="lg:col-span-2 border-border/70 shadow-sm bg-card overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between pb-8">
             <div>
               <CardTitle>System Load & Traffic</CardTitle>
               <CardDescription>Real-time request processing and latency</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-               <Badge className="bg-emerald-500/10 text-emerald-500 border-none">Healthy</Badge>
-               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+               <Badge className="bg-success/10 text-success border-none">Healthy</Badge>
+               <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
             </div>
           </CardHeader>
           <CardContent className="h-[300px]">
@@ -192,8 +192,8 @@ function OverviewContent({ metrics }: { metrics: any }) {
               <AreaChart data={globalActivity}>
                 <defs>
                   <linearGradient id="colorReq" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#E9684A" stopOpacity={0.28}/>
+                    <stop offset="95%" stopColor="#F4B183" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
@@ -203,7 +203,7 @@ function OverviewContent({ metrics }: { metrics: any }) {
                 <Area 
                   type="monotone" 
                   dataKey="requests" 
-                  stroke="hsl(var(--primary))" 
+                  stroke="#E9684A" 
                   strokeWidth={3} 
                   fillOpacity={1} 
                   fill="url(#colorReq)" 
@@ -214,7 +214,7 @@ function OverviewContent({ metrics }: { metrics: any }) {
         </Card>
 
         {/* Global Universities */}
-        <Card className="border-none shadow-xl bg-card/50 backdrop-blur-xl">
+        <Card className="border-border/70 shadow-sm bg-card">
           <CardHeader>
             <CardTitle>University Pulse</CardTitle>
             <CardDescription>Activity per institution</CardDescription>
@@ -232,7 +232,7 @@ function OverviewContent({ metrics }: { metrics: any }) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Security / Audit Log */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -296,17 +296,17 @@ function GlobalMetric({ title, value, trend, icon, color }: any) {
   };
 
   return (
-    <Card className="hover:border-primary/50 transition-all duration-300">
+    <Card className="border-border/70 shadow-sm hover:-translate-y-0.5 hover:border-primary/40 transition-all duration-300">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className={cn("p-2 rounded-lg bg-muted", colorMap[color])}>
+          <div className={cn("p-2.5 rounded-xl bg-muted", colorMap[color])}>
             {icon}
           </div>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase">{trend}</span>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[9px] font-bold text-muted-foreground uppercase">{trend}</span>
         </div>
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{title}</p>
-          <p className="text-3xl font-bold tracking-tight mt-1">{value}</p>
+          <p className="text-3xl font-bold tracking-tight mt-1 text-foreground">{value}</p>
         </div>
       </CardContent>
     </Card>

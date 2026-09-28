@@ -52,9 +52,9 @@ function formatDuration(months: number) {
   return `${Math.floor(months / 12)}y ${months % 12}m`;
 }
 
-export function ProgramsPanel() {
+export function ProgramsPanel({ readOnly = false }: { readOnly?: boolean }) {
   const { user } = useAuth();
-  const canManagePrograms = ['org_admin', 'superadmin'].includes(user?.role || '') || (user as any)?.canAddPrograms === true;
+  const canManagePrograms = !readOnly && (['org_admin', 'superadmin'].includes(user?.role || '') || (user as any)?.canAddPrograms === true);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [universities, setUniversities] = useState<any[]>([]);
   const [subDepartments, setSubDepartments] = useState<SubDepartment[]>([]);

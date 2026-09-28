@@ -610,7 +610,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
       : (Array.isArray(req.body.universityIds) ? req.body.universityIds : []);
     const dbData: any = {
       organizationId: req.user.organizationId,
-      status: isSales ? 'pending' : (req.body.status || 'pending'),
+      status: isSales ? 'pending_verification' : (req.body.status || 'pending'),
       referredBy: isSales ? req.user.id : (referredById === 'null' || !referredById ? null : referredById),
       credentials: { userId, password: rawPassword },
       email,
@@ -869,7 +869,12 @@ export const deleteAnnouncement = asyncHandler(async (req: AuthRequest, res: Res
 
 // Onboarding
 export const getPendingVerificationCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const centers = await prisma.studyCenter.findMany({ where: { organizationId: req.user.organizationId, status: 'pending_verification' as any } });
+  const centers = await prisma.studyCenter.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      status: { in: ['pending', 'pending_verification'] } as any,
+    },
+  });
   res.json({ success: true, data: centers });
 });
 export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {

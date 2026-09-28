@@ -175,7 +175,7 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
   }
 
   if (user?.role === 'academic_admin') {
-    return <AcademicAdminPanel initialTab={initialTab} />;
+    return <AcademicAdminPanel initialTab={initialTab} onNavigate={onNavigateToTable} />;
   }
 
   if ((user as any)?.role === 'student') {

@@ -72,8 +72,8 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
       );
       case 'my_subdept': return <SubOpsPortalPanel />;
       case 'students': return <StudentsPanel />;
-      case 'programs': return <ProgramsPanel />;
-      case 'centers': return <StudyCentersPanel />;
+      case 'programs': return <ProgramsPanel readOnly />;
+      case 'centers': return <StudyCentersPanel operationsMode />;
       case 'pending_verification': return <OpsCenterVerificationPanel />;
       case 'program_allocations': return <OpsProgramAllocationPanel />;
       case 'enrollment_review': return <DeptEnrollmentReviewPanel />;

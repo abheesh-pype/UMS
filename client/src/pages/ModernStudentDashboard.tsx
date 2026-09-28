@@ -22,6 +22,18 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const readStudentExamPortals = () => {
+  try {
+    const createdPortals = JSON.parse(localStorage.getItem('academic-created-exam-portals') || '{}');
+    const portals = Object.values(createdPortals).filter((portal: any) => portal.isOpen !== false);
+    if (portals.length > 0) return portals;
+    const activePortal = JSON.parse(localStorage.getItem('active-student-exam-portal') || 'null');
+    return activePortal && activePortal.isOpen !== false ? [activePortal] : [];
+  } catch {
+    return [];
+  }
+};
+
 export function ModernStudentDashboard() {
   const { logout } = useAuth();
   const [student, setStudent] = useState<any>(null);
@@ -30,12 +42,13 @@ export function ModernStudentDashboard() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session'>('portal');
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal'>('portal');
   const [selectedExamination, setSelectedExamination] = useState<any>(null);
   const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [registrationExamination, setRegistrationExamination] = useState<any>(null);
   const [registeredExaminationIds, setRegisteredExaminationIds] = useState<string[]>([]);
+  const [studentExamPortals, setStudentExamPortals] = useState<any[]>(readStudentExamPortals);
   const [registrationForm, setRegistrationForm] = useState({
     fullName: '',
     enrollmentNo: '',
@@ -46,6 +59,14 @@ export function ModernStudentDashboard() {
 
   useEffect(() => {
     fetchStudentData();
+  }, []);
+
+  useEffect(() => {
+    const refreshExamPortal = () => {
+      setStudentExamPortals(readStudentExamPortals());
+    };
+    window.addEventListener('storage', refreshExamPortal);
+    return () => window.removeEventListener('storage', refreshExamPortal);
   }, []);
 
   const fetchStudentData = async () => {
@@ -315,6 +336,14 @@ export function ModernStudentDashboard() {
             <School className="w-4 h-4" />
             Active Session
           </Button>
+          <Button
+            variant={activeSection === 'examination-portal' ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-2"
+            onClick={() => setActiveSection('examination-portal')}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Examination Portal
+          </Button>
         </aside>
 
         <div className="flex-1 min-w-0">
@@ -371,6 +400,35 @@ export function ModernStudentDashboard() {
                   </div>
                 ))
               )}
+            </CardContent>
+          </Card>
+        </main>
+      ) : activeSection === 'examination-portal' ? (
+        <main className="container mx-auto px-4 py-8 max-w-4xl">
+          <Card>
+            <CardHeader>
+              <CardTitle>Examination Portal</CardTitle>
+              <CardDescription>Access your examination portal.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {studentExamPortals.length > 0 ? (
+                <div className="space-y-4">
+                  {studentExamPortals.map((portal: any) => (
+                    <div key={portal.examinationId || portal.code} className="rounded-lg border p-4 space-y-4">
+                      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        <div><span className="text-muted-foreground">Examination</span><p className="font-medium">{portal.examinationName}</p></div>
+                        <div><span className="text-muted-foreground">Type</span><p className="font-medium">{portal.examinationType}</p></div>
+                        <div><span className="text-muted-foreground">Program</span><p className="font-medium">{portal.programName}</p></div>
+                        <div><span className="text-muted-foreground">Date</span><p className="font-medium">{portal.examDate}</p></div>
+                        <div><span className="text-muted-foreground">Session</span><p className="font-medium">{portal.examSession}</p></div>
+                        <div><span className="text-muted-foreground">Time</span><p className="font-medium">{portal.examTime}</p></div>
+                        <div><span className="text-muted-foreground">Exam Code</span><p className="font-medium font-mono">{portal.code}</p></div>
+                      </div>
+                      <Button onClick={() => toast.info('Open Portal is not available yet.')}>Open Portal</Button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="py-8 text-center text-sm text-muted-foreground">No examination portal has been opened yet.</p>}
             </CardContent>
           </Card>
         </main>
@@ -607,7 +665,6 @@ export function ModernStudentDashboard() {
                           <div><span className="text-xs text-muted-foreground">Module</span><p className="font-medium">{module?.moduleName || item.moduleId || 'Not assigned'}</p></div>
                           <div><span className="text-xs text-muted-foreground">Date</span><p className="font-medium">{item.date ? new Date(item.date).toLocaleDateString() : 'Not set'}</p></div>
                           <div><span className="text-xs text-muted-foreground">Time</span><p className="font-medium">{item.startTime || 'Not set'} - {item.endTime || 'Not set'}</p></div>
-                          <div><span className="text-xs text-muted-foreground">Exam Room</span><p className="font-medium">{item.examRoom || 'Not set'}</p></div>
                           <div><span className="text-xs text-muted-foreground">Maximum Marks</span><p className="font-medium">{item.maxMarks ?? 'Not set'}</p></div>
                           <div><span className="text-xs text-muted-foreground">Passing Marks</span><p className="font-medium">{item.passingMarks ?? 'Not set'}</p></div>
                           <div><span className="text-xs text-muted-foreground">Duration</span><p className="font-medium">{item.examDuration ? `${item.examDuration} minutes` : 'Not set'}</p></div>
@@ -669,7 +726,6 @@ export function ModernStudentDashboard() {
                             <span>Module: <strong>{module?.moduleName || item.moduleId || 'Not assigned'}</strong></span>
                             <span>Date: <strong>{item.date ? new Date(item.date).toLocaleDateString() : 'Not set'}</strong></span>
                             <span>Time: <strong>{item.startTime || 'Not set'} - {item.endTime || 'Not set'}</strong></span>
-                            <span>Room: <strong>{item.examRoom || 'Not set'}</strong></span>
                             <span>Maximum Marks: <strong>{item.maxMarks ?? 'Not set'}</strong></span>
                             <span>Passing Marks: <strong>{item.passingMarks ?? 'Not set'}</strong></span>
                             <span>Duration: <strong>{item.examDuration ? `${item.examDuration} minutes` : 'Not set'}</strong></span>

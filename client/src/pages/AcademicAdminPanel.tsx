@@ -10,9 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
-interface AcademicAdminPanelProps { initialTab?: string; }
+interface AcademicAdminPanelProps { initialTab?: string; onNavigate?: (table: string) => void; }
 
-export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
+export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPanelProps) {
   const examPortalStorageKey = 'academic-created-exam-portals';
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +60,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
   const [registeredStudents, setRegisteredStudents] = useState<any[]>([]);
   const [registeredStudentsLoading, setRegisteredStudentsLoading] = useState(false);
   const [removingRegistrationId, setRemovingRegistrationId] = useState<string | null>(null);
-  const [examPortalForm, setExamPortalForm] = useState({ examId: '', academicSessionId: '', programId: '', examDate: '', examSession: '', examTime: '', examHall: '' });
+  const [examPortalForm, setExamPortalForm] = useState({ examId: '', academicSessionId: '', programId: '', examDate: '', examSession: '', examTime: '' });
   const [examPortalCodes, setExamPortalCodes] = useState<Record<string, string>>({});
   const [createdExamPortals, setCreatedExamPortals] = useState<Record<string, any>>(() => {
     try {
@@ -207,7 +207,6 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       date: row.date || '',
       startTime: row.startTime || '09:30',
       endTime: row.endTime || '12:30',
-      examRoom: row.examRoom || '',
       maxMarks: row.maxMarks ?? '',
       passingMarks: row.passingMarks ?? '',
       examDuration: row.examDuration ?? '120',
@@ -256,7 +255,6 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       date: examPortalForm.examDate,
       session: examPortalForm.examSession,
       time: examPortalForm.examTime,
-      hall: examPortalForm.examHall,
     });
     const link = `${window.location.origin}/student/examinations/${examination.id}?${params.toString()}`;
     const createdPortal = {
@@ -268,7 +266,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       examDate: examPortalForm.examDate,
       examSession: examPortalForm.examSession,
       examTime: examPortalForm.examTime,
-      examHall: examPortalForm.examHall,
+      isOpen: true,
       code,
       link,
     };
@@ -279,9 +277,9 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     } catch {
       toast.error('Exam portal could not be saved in this browser');
     }
-    window.open(link, '_blank', 'noopener,noreferrer');
     navigator.clipboard?.writeText(link);
-    toast.success(`Exam portal opened. Code: ${code}`);
+    toast.success(`Exam portal created. Code: ${code}`);
+    onNavigate?.('academic-examination-portal');
   };
 
   const selectExamForPortal = (examId: string) => {
@@ -295,8 +293,40 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     }));
   };
 
+  const setExamPortalStatus = (portal: any, isOpen: boolean) => {
+    const updatedPortal = { ...portal, isOpen };
+    setCreatedExamPortals(current => ({ ...current, [portal.examinationId]: updatedPortal }));
+    try {
+      const storedPortals = JSON.parse(localStorage.getItem(examPortalStorageKey) || '{}');
+      localStorage.setItem(examPortalStorageKey, JSON.stringify({ ...storedPortals, [portal.examinationId]: updatedPortal }));
+    } catch {
+      toast.error('Exam portal status could not be saved in this browser');
+    }
+    if (isOpen) {
+      localStorage.setItem('active-student-exam-portal', JSON.stringify(updatedPortal));
+    } else {
+      try {
+        const activePortal = JSON.parse(localStorage.getItem('active-student-exam-portal') || 'null');
+        if (activePortal?.examinationId === portal.examinationId) {
+          localStorage.removeItem('active-student-exam-portal');
+        }
+      } catch {
+        localStorage.removeItem('active-student-exam-portal');
+      }
+    }
+    toast.success(`Exam portal ${isOpen ? 'opened' : 'closed'}`);
+  };
+
+  const closeExamPortal = (portal: any) => {
+    setExamPortalStatus(portal, false);
+  };
+
+  const openExamPortal = (portal: any) => {
+    setExamPortalStatus(portal, true);
+  };
+
   const selectSessionForPortal = (academicSessionId: string) => {
-    setExamPortalForm({ academicSessionId, examId: '', programId: '', examDate: '', examSession: '', examTime: '', examHall: '' });
+    setExamPortalForm({ academicSessionId, examId: '', programId: '', examDate: '', examSession: '', examTime: '' });
   };
 
   const buildScheduleRow = (moduleId = '', date = '', overrides: Partial<Record<string, string>> = {}) => ({
@@ -304,7 +334,6 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
     date,
     startTime: '09:30',
     endTime: '12:30',
-    examRoom: '',
     maxMarks: '',
     passingMarks: '',
     examDuration: '120',
@@ -640,7 +669,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
       {initialTab === 'academic-examination-portal' && <Card>
         <CardHeader><CardTitle>Examination Portal</CardTitle><p className="text-sm text-muted-foreground">Examinations available for portal access.</p></CardHeader>
         <CardContent className="space-y-3">
-          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{portal.examinationName}</p><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><Button variant="outline" onClick={() => toast.info('Exam portal opening is not active yet.')}>Open Portal</Button></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span><strong>Exam Hall:</strong> {portal.examHall}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
+          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); const isOpen = portal.isOpen !== false; return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold">{portal.examinationName}</p><Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'Opened' : 'Closed'}</Badge></div><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => openExamPortal(portal)}>Open Portal</Button><Button variant="outline" onClick={() => closeExamPortal(portal)}>Close Portal</Button></div></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
         </CardContent>
       </Card>}
 
@@ -654,9 +683,8 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
             <div className="space-y-2"><Label>Exam Date</Label><Input type="date" value={examPortalForm.examDate} disabled /></div>
             <div className="space-y-2"><Label>Exam Session</Label><Select value={examPortalForm.examSession} onValueChange={examSession => setExamPortalForm(current => ({ ...current, examSession }))}><SelectTrigger><SelectValue placeholder="Select exam session" /></SelectTrigger><SelectContent><SelectItem value="Morning">Morning</SelectItem><SelectItem value="Afternoon">Afternoon</SelectItem><SelectItem value="Evening">Evening</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>Exam Time</Label><Input type="time" value={examPortalForm.examTime} onChange={event => setExamPortalForm(current => ({ ...current, examTime: event.target.value }))} /></div>
-            <div className="space-y-2"><Label>Exam Hall</Label><Input placeholder="e.g. Main Hall - 101" value={examPortalForm.examHall} onChange={event => setExamPortalForm(current => ({ ...current, examHall: event.target.value }))} /></div>
           </div>
-          <div className="flex justify-end border-t pt-4"><Button disabled={!examPortalForm.examId || !examPortalForm.academicSessionId || !examPortalForm.programId || !examPortalForm.examDate || !examPortalForm.examSession || !examPortalForm.examTime || !examPortalForm.examHall} onClick={() => generateExamLink(examinations.find(examination => examination.id === examPortalForm.examId))}>Open Exam Portal</Button></div>
+          <div className="flex justify-end border-t pt-4"><Button disabled={!examPortalForm.examId || !examPortalForm.academicSessionId || !examPortalForm.programId || !examPortalForm.examDate || !examPortalForm.examSession || !examPortalForm.examTime} onClick={() => generateExamLink(examinations.find(examination => examination.id === examPortalForm.examId))}>Open Exam Portal</Button></div>
         </CardContent>
       </Card>}
 
@@ -729,11 +757,11 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
         </CardContent>
       </Card>}
 
-      {activeSection === 'programs' && !initialTab && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
+      {activeSection === 'programs' && (!initialTab || initialTab === 'academic-programs') && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div><CardTitle>Programs ({programs.length})</CardTitle><p className="text-sm text-muted-foreground mt-1">Programs for the selected academic session</p></div>
-            <Select value={programSessionFilter} onValueChange={setProgramSessionFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select>
+            <div className="flex items-center gap-3"><Select value={programSessionFilter} onValueChange={setProgramSessionFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Button type="button" onClick={() => { setEditingId(null); setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' }); setProgramDialogOpen(true); }}><Plus className="w-4 h-4 mr-2" />Create Program</Button></div>
           </CardHeader>
           <CardContent>
             {programLoading ? <p className="py-8 text-center text-muted-foreground">Loading programs...</p> : displayedPrograms.length === 0 ? <p className="py-8 text-center text-muted-foreground">No programs found.</p> : (
@@ -895,7 +923,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
             <p className="text-sm text-muted-foreground">Selected: {selectedModuleIds.length}/{examinationModules.length}</p>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(1)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={goToSchedule}>Next -&gt;</Button></div>
           </div> : <div className="space-y-4">
-            <div className="overflow-x-auto rounded-lg border"><div className="min-w-[1150px]"><div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold"><span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Exam room</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span></div>{examinationSchedule.map((row, index) => <div key={`${row.moduleId}-${index}`} className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0"><Input type="date" value={row.date} min={examinationForm.startDate} max={examinationForm.endDate} onChange={event => updateScheduleRow(index, 'date', event.target.value)} /><Select value={row.moduleId} onValueChange={moduleId => updateScheduleRow(index, 'moduleId', moduleId)}><SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger><SelectContent>{examinationModules.map(module => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}</SelectContent></Select><Input type="time" value={row.startTime} onChange={event => updateScheduleRow(index, 'startTime', event.target.value)} /><Input type="time" value={row.endTime} onChange={event => updateScheduleRow(index, 'endTime', event.target.value)} /><Input value={row.examRoom || ''} placeholder="Room A" onChange={event => updateScheduleRow(index, 'examRoom', event.target.value)} /><Input type="number" min="0" value={row.maxMarks || ''} placeholder="100" onChange={event => updateScheduleRow(index, 'maxMarks', event.target.value)} /><Input type="number" min="0" value={row.passingMarks || ''} placeholder="40" onChange={event => updateScheduleRow(index, 'passingMarks', event.target.value)} /><Input type="number" min="1" value={row.examDuration || ''} placeholder="120" onChange={event => updateScheduleRow(index, 'examDuration', event.target.value)} /></div>)}</div></div>
+            <div className="overflow-x-auto rounded-lg border"><div className="min-w-[950px]"><div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold"><span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span></div>{examinationSchedule.map((row, index) => <div key={`${row.moduleId}-${index}`} className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_0.9fr_0.9fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0"><Input type="date" value={row.date} min={examinationForm.startDate} max={examinationForm.endDate} onChange={event => updateScheduleRow(index, 'date', event.target.value)} /><Select value={row.moduleId} onValueChange={moduleId => updateScheduleRow(index, 'moduleId', moduleId)}><SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger><SelectContent>{examinationModules.map(module => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}</SelectContent></Select><Input type="time" value={row.startTime} onChange={event => updateScheduleRow(index, 'startTime', event.target.value)} /><Input type="time" value={row.endTime} onChange={event => updateScheduleRow(index, 'endTime', event.target.value)} /><Input type="number" min="0" value={row.maxMarks || ''} placeholder="100" onChange={event => updateScheduleRow(index, 'maxMarks', event.target.value)} /><Input type="number" min="0" value={row.passingMarks || ''} placeholder="40" onChange={event => updateScheduleRow(index, 'passingMarks', event.target.value)} /><Input type="number" min="1" value={row.examDuration || ''} placeholder="120" onChange={event => updateScheduleRow(index, 'examDuration', event.target.value)} /></div>)}</div></div>
             <Button type="button" variant="outline" onClick={addScheduleRow}>+ Add Schedule</Button>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(2)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={submitExamination}>Save Examination</Button></div>
           </div>}
@@ -938,7 +966,7 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
                 <div className="overflow-x-auto">
                   <div className="min-w-[1100px]">
                     <div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_1.1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold">
-                      <span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Exam room</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span>
+                      <span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span>
                     </div>
                     {Array.isArray(selectedExamination.schedule) && selectedExamination.schedule.length > 0 ? selectedExamination.schedule.map((row: any, index: number) => {
                       const rowModule = modules.find(module => module.id === row.moduleId) || examinationModules.find(module => module.id === row.moduleId);
@@ -948,7 +976,6 @@ export function AcademicAdminPanel({ initialTab }: AcademicAdminPanelProps) {
                           <span>{rowModule?.moduleName || row.moduleId || 'Not selected'}</span>
                           <span>{row.startTime || '-'}</span>
                           <span>{row.endTime || '-'}</span>
-                          <span>{row.examRoom || '-'}</span>
                           <span>{row.maxMarks ?? '-'}</span>
                           <span>{row.passingMarks ?? '-'}</span>
                           <span>{row.examDuration ? `${row.examDuration} mins` : '-'}</span>

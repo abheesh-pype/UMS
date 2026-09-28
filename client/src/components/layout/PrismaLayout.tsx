@@ -206,7 +206,7 @@ export function PrismaLayout({
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-16 flex items-center px-6 gap-3 border-b border-sidebar-border relative">
-          <div className="w-8 h-8 rounded-lg premium-gradient flex items-center justify-center shadow-lg">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-orange-300 flex items-center justify-center shadow-lg shadow-primary/20">
             <Database className="w-5 h-5 text-white" />
           </div>
           <div className="flex flex-col">
@@ -260,7 +260,7 @@ export function PrismaLayout({
                   className={cn(
                     'w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all duration-200 flex items-center gap-3 group',
                     isActive
-                      ? 'bg-sidebar-primary/20 text-sidebar-primary font-semibold shadow-sm'
+                      ? 'bg-sidebar-primary/15 text-sidebar-primary font-semibold shadow-sm ring-1 ring-sidebar-primary/10'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                   )}
                 >
@@ -340,7 +340,7 @@ export function PrismaLayout({
           </Button>
 
           <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary hidden sm:flex shrink-0">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary hidden sm:flex shrink-0">
               {activeTableItem?.icon}
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground/30 hidden sm:block shrink-0" />
@@ -420,7 +420,7 @@ export function PrismaLayout({
           </div>
         </header>
 
-        <section className="flex-1 overflow-auto p-4 lg:p-8 bg-background">
+        <section className="flex-1 overflow-auto p-4 lg:p-8 bg-[radial-gradient(circle_at_top_right,hsl(30_82%_73%_/_0.14),transparent_30%),hsl(var(--background))]">
           <div className="max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
             {children}
           </div>

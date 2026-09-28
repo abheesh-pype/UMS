@@ -12,7 +12,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 
-export function StudyCentersPanel({ salesMode = false }: { salesMode?: boolean }) {
+export function StudyCentersPanel({ salesMode = false, operationsMode = false }: { salesMode?: boolean; operationsMode?: boolean }) {
   const { user } = useAuth();
   const canWrite = ['org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'sales_admin', 'bde', 'employee'].includes(user?.role || '');
   const [centers, setCenters] = useState<any[]>([]);
@@ -464,7 +464,7 @@ export function StudyCentersPanel({ salesMode = false }: { salesMode?: boolean }
               <p className="text-muted-foreground">Complete study center details and university associations</p>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={selectedCenterStatus} onValueChange={setSelectedCenterStatus}>
+              <Select value={selectedCenterStatus} onValueChange={setSelectedCenterStatus} disabled={operationsMode}>
                 <SelectTrigger className="w-[190px]">
                   <SelectValue placeholder="Change status" />
                 </SelectTrigger>
@@ -477,7 +477,7 @@ export function StudyCentersPanel({ salesMode = false }: { salesMode?: boolean }
                   <SelectItem value="suspended">Suspended</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleSaveCenterStatus} disabled={savingCenterStatus || selectedCenterStatus === selectedCenter.status}>
+              <Button onClick={handleSaveCenterStatus} disabled={operationsMode || savingCenterStatus || selectedCenterStatus === selectedCenter.status}>
                 {savingCenterStatus ? 'Saving...' : 'Save Status'}
               </Button>
             </div>
@@ -700,7 +700,7 @@ export function StudyCentersPanel({ salesMode = false }: { salesMode?: boolean }
               <div>
                 <Label>Status</Label>
                   <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                    <SelectTrigger disabled={salesMode}><SelectValue /></SelectTrigger>
+                    <SelectTrigger disabled={salesMode || operationsMode}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
