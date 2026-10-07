@@ -18,13 +18,13 @@ export function OfferLetterDocument({ data }: { data: OfferLetterData }) {
     <div id={`offer-letter-${data.id}`} className="bg-white p-10 font-sans text-gray-800 w-[800px] h-[1130px] border relative">
       <div className="flex justify-between items-center border-b-2 border-primary pb-6 mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">PYPE ERP</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">UMS</h1>
           <p className="text-sm text-gray-500">123 Tech Park, Innovation Hub, City - 400001</p>
           <p className="text-sm text-gray-500">hr@pype-erp.com | +91-9876543210</p>
         </div>
         <div className="text-right">
           <p className="text-sm font-semibold">Date: {format(new Date(), 'MMM dd, yyyy')}</p>
-          <p className="text-sm text-gray-500">Ref: PYPE/HR/OL/{data.id.substring(0, 6).toUpperCase()}</p>
+          <p className="text-sm text-gray-500">Ref: UMS/HR/OL/{data.id.substring(0, 6).toUpperCase()}</p>
         </div>
       </div>
 
@@ -34,7 +34,7 @@ export function OfferLetterDocument({ data }: { data: OfferLetterData }) {
         <p className="mb-4">
           Following our recent discussions, we are delighted to offer you the position of 
           <span className="font-bold"> {data.designation}</span> in the <span className="font-bold">{data.department}</span> department 
-          at PYPE ERP.
+          at UMS.
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export function OfferLetterDocument({ data }: { data: OfferLetterData }) {
         <div>
           <p className="mb-12">Sincerely,</p>
           <p className="font-bold border-t border-gray-400 pt-2 w-48 text-center">Human Resources</p>
-          <p className="text-sm text-gray-500 text-center w-48">PYPE ERP</p>
+          <p className="text-sm text-gray-500 text-center w-48">UMS</p>
         </div>
         <div className="text-right flex flex-col items-end">
           <p className="mb-12">Accepted By,</p>

@@ -18,12 +18,18 @@ export function Login() {
     setError('');
     setIsLoading(true);
 
-    const success = await login(email, password);
-    if (!success) {
-      setError('Invalid email or password');
+    try {
+      const success = await login(email, password);
+      if (!success) setError('Invalid email/User ID or password');
+    } catch (error: any) {
+      const responseData = error.response?.data;
+      const serverMessage = typeof responseData === 'string'
+        ? responseData
+        : responseData?.message;
+      setError(serverMessage || 'Unable to sign in. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
 
@@ -32,8 +38,8 @@ export function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-10">
-          <img src="/logo.png" alt="PYPE ERP" className="w-12 h-12 object-contain rounded-xl shadow-lg" />
-          <span className="text-3xl font-bold text-[#0F172A] tracking-tight">PYPE ERP</span>
+          <img src="/logo.png" alt="UMS" className="w-12 h-12 object-contain rounded-xl shadow-lg" />
+          <span className="text-3xl font-bold text-[#0F172A] tracking-tight">UMS</span>
         </div>
 
           <div className="mb-8">

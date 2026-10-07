@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import path from 'path';
 import { createServer } from 'http';
@@ -100,6 +101,16 @@ const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '15') * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
   message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => {
+    const authorization = req.headers.authorization;
+    if (!authorization?.startsWith('Bearer ')) return false;
+    try {
+      jwt.verify(authorization.slice(7), process.env.JWT_SECRET || 'secret');
+      return true;
+    } catch {
+      return false;
+    }
+  },
 });
 
 app.use('/api', limiter);

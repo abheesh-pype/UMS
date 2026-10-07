@@ -58,6 +58,15 @@ export const createUser = asyncHandler(async (req: AuthRequest, res: Response) =
 
   const { vacancyId, ...userData } = req.body;
 
+  const existingUser = await prisma.user.findUnique({
+    where: { email: userData.email },
+    select: { id: true }
+  });
+  if (existingUser) {
+    res.status(409).json({ success: false, message: 'A user with this email already exists' });
+    return;
+  }
+
   if (vacancyId) {
     const vacancy = await prisma.vacancy.findUnique({ where: { id: vacancyId } });
     if (!vacancy) {
@@ -72,16 +81,27 @@ export const createUser = asyncHandler(async (req: AuthRequest, res: Response) =
 
   // Generate userId and hash password if not provided
   if (!userData.userId) {
-    userData.userId = await generateUserId();
+    userData.userId = await generateUserId(userData.organizationId);
   }
   
   if (userData.password) {
     userData.password = await hashPassword(userData.password);
   }
 
-  const user = await prisma.user.create({
-    data: userData
-  });
+  let user;
+  try {
+    user = await prisma.user.create({ data: userData });
+  } catch (error: any) {
+    const uniqueTarget = error?.meta?.target;
+    const isEmailConflict = Array.isArray(uniqueTarget)
+      ? uniqueTarget.includes('email')
+      : typeof uniqueTarget === 'string' && uniqueTarget.includes('email');
+    if (error?.code === 'P2002' && isEmailConflict) {
+      res.status(409).json({ success: false, message: 'A user with this email already exists' });
+      return;
+    }
+    throw error;
+  }
 
   if (vacancyId) {
     await prisma.vacancy.update({
@@ -263,7 +283,7 @@ export const bulkImportUsers = asyncHandler(async (req: AuthRequest, res: Respon
     }
 
     try {
-      const generatedId = await generateUserId();
+      const generatedId = await generateUserId(organizationId);
       const hashedPassword = await hashPassword(password);
 
       await prisma.user.create({

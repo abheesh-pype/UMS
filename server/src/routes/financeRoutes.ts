@@ -32,6 +32,7 @@ import {
   createAuthFee,
   updateAuthFee,
   getPendingPaymentCenters,
+  assignFinanceCenter,
   financeVerifyCenter,
   createStudyCenter,
   getIncomeExpenditureReport,
@@ -128,9 +129,10 @@ router.route('/auth-fees').get(authorize('finance_admin'), getAuthFees).post(aut
 router.put('/auth-fees/:id', authorize('finance_admin'), updateAuthFee);
 
 // Study Center Payment Verification & Creation
-router.get('/centers/pending-payment', authorize('finance_admin'), getPendingPaymentCenters);
+router.get('/centers/pending-payment', authorize('finance_admin', 'finance_sub_admin'), getPendingPaymentCenters);
+router.put('/centers/:id/assign', authorize('finance_admin'), assignFinanceCenter);
 router.post('/centers', authorize('finance_admin', 'org_admin', 'superadmin'), createStudyCenter);
-router.put('/centers/:id/finance-verify', authorize('finance_admin'), financeVerifyCenter);
+router.put('/centers/:id/finance-verify', authorize('finance_admin', 'finance_sub_admin'), financeVerifyCenter);
 
 // Program Fee Structures
 router.route('/program-fees').get(authorize('finance_admin'), getProgramFees).post(authorize('finance_admin'), createProgramFee);

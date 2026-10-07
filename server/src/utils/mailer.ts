@@ -27,7 +27,7 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
   try {
     const mailer = await getTransporter();
     const info = await mailer.sendMail({
-      from: '"PYPE ERP System" <noreply@pype-erp.com>',
+      from: '"UMS System" <noreply@pype-erp.com>',
       to,
       subject,
       html,

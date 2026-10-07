@@ -230,6 +230,8 @@ model User {
   referredStudents              Student[]              @relation("StudentReferredBy")
   financeApprovedCenters        StudyCenter[]          @relation("FinanceApprovedBy")
   referredStudyCenters          StudyCenter[]          @relation("ReferredBy")
+  assignedOperationsCenters      StudyCenter[]          @relation("OperationsCenterAssignee")
+  assignedFinanceCenters        StudyCenter[]          @relation("FinanceCenterAssignee")
   verifiedStudyCenters          StudyCenter[]          @relation("VerifiedBy")
   studyCenterInvites            StudyCenterInvite[]    @relation("InviteReferredBy")
   managedSubDepartments         SubDepartment[]        @relation("SubDeptManager")
@@ -511,6 +513,8 @@ model StudyCenter {
   programIds             String[]
   pendingDocuments       Json                   @default("[]")
   referredBy             String?
+  assignedOperationsUserId String?
+  assignedFinanceUserId  String?
   inviteToken            String?
   verifiedBy             String?
   verifiedAt             DateTime?
@@ -538,6 +542,8 @@ model StudyCenter {
   approver               User?                  @relation("FinanceApprovedBy", fields: [financeApprovedBy], references: [id])
   organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   referrer               User?                  @relation("ReferredBy", fields: [referredBy], references: [id])
+  assignedOperationsUser User?                  @relation("OperationsCenterAssignee", fields: [assignedOperationsUserId], references: [id], onDelete: SetNull)
+  assignedFinanceUser    User?                  @relation("FinanceCenterAssignee", fields: [assignedFinanceUserId], references: [id], onDelete: SetNull)
   verifier               User?                  @relation("VerifiedBy", fields: [verifiedBy], references: [id])
   wallet                 StudyCenterWallet?
   targets                Target[]

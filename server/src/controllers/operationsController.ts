@@ -523,8 +523,55 @@ export const updateExaminationModules = asyncHandler(async (req: AuthRequest, re
 
 // Study Centers
 export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isAssignedOperationsUser = req.user.role === 'ops_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'operations');
+  const isFinanceDepartmentUser = ['finance_admin', 'finance_sub_admin'].includes(req.user.role)
+    || (req.user.role === 'employee' && departmentType === 'finance');
+  const isAssignedFinanceUser = req.user.role === 'finance_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'finance');
+
   const where: any = { organizationId: req.user.organizationId };
-  if (req.query.status && req.query.status !== 'all') {
+  if (isFinanceDepartmentUser) {
+    if (req.query.status === 'rejected') {
+      where.status = 'rejected';
+      where.verifiedBy = { not: null };
+      where.paymentRemarks = { not: null };
+    } else if (req.query.status === 'active') {
+      where.status = 'active';
+      where.verifiedBy = { not: null };
+    } else {
+      where.OR = [
+        {
+          status: { in: ['pending_payment', 'active', 'inactive', 'suspended'] },
+          verifiedBy: { not: null },
+        },
+        {
+          status: 'rejected',
+          verifiedBy: { not: null },
+          paymentRemarks: { not: null },
+        },
+      ];
+    }
+    if (isAssignedFinanceUser) where.assignedFinanceUserId = req.user.id;
+  } else if (isAssignedOperationsUser) {
+    where.assignedOperationsUserId = req.user.id;
+    if (req.query.status === 'rejected') {
+      where.status = 'rejected';
+    } else if (req.query.status === 'progress') {
+      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
+    } else if (req.query.status && req.query.status !== 'all') {
+      where.status = req.query.status as string;
+    }
+  } else if (req.user.role === 'ops_admin') {
+    if (req.query.status === 'rejected') {
+      where.status = 'rejected';
+    } else if (req.query.status === 'progress') {
+      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
+    } else {
+      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
+    }
+  } else if (req.query.status && req.query.status !== 'all') {
     where.status = req.query.status as string;
   }
   if (req.query.universityId) {
@@ -651,10 +698,32 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
 });
 export const updateStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { referredById, ...rest } = req.body;
-  const data = {
-    ...rest,
-    referredBy: referredById === '__none__' || !referredById ? null : referredById
-  };
+  const data: any = { ...rest };
+  if (Object.prototype.hasOwnProperty.call(req.body, 'referredById')) {
+    data.referredBy = referredById === '__none__' || !referredById ? null : referredById;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'assignedOperationsUserId')) {
+    if (req.user.role !== 'ops_admin') {
+      res.status(403).json({ success: false, message: 'Only Operations Admin can assign study centers' });
+      return;
+    }
+    const assignedUserId = req.body.assignedOperationsUserId;
+    if (assignedUserId) {
+      const assignedUser = await prisma.user.findFirst({
+        where: {
+          id: assignedUserId,
+          organizationId: req.user.organizationId,
+          role: { in: ['ops_sub_admin', 'employee'] },
+        },
+        select: { id: true },
+      });
+      if (!assignedUser) {
+        res.status(400).json({ success: false, message: 'Assignee must be an Operations sub-admin or employee in this organization' });
+        return;
+      }
+    }
+    data.assignedOperationsUserId = assignedUserId || null;
+  }
   const center = await prisma.studyCenter.update({ where: { id: req.params.id }, data });
   res.json({ success: true, data: { ...center, _id: center.id } });
 });
@@ -869,10 +938,14 @@ export const deleteAnnouncement = asyncHandler(async (req: AuthRequest, res: Res
 
 // Onboarding
 export const getPendingVerificationCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isAssignedOperationsUser = req.user.role === 'ops_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'operations');
   const centers = await prisma.studyCenter.findMany({
     where: {
       organizationId: req.user.organizationId,
       status: { in: ['pending', 'pending_verification'] } as any,
+      ...(isAssignedOperationsUser ? { assignedOperationsUserId: req.user.id } : {}),
     },
   });
   res.json({ success: true, data: centers });
@@ -886,6 +959,24 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
   if (action === 'reject' && !remarks?.trim()) {
     res.status(400).json({ success: false, message: 'Remarks are required when rejecting a center' });
     return;
+  }
+
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isAssignedOperationsUser = req.user.role === 'ops_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'operations');
+  if (isAssignedOperationsUser) {
+    const assignedCenter = await prisma.studyCenter.findFirst({
+      where: {
+        id: req.params.id,
+        organizationId: req.user.organizationId,
+        assignedOperationsUserId: req.user.id,
+      },
+      select: { id: true },
+    });
+    if (!assignedCenter) {
+      res.status(404).json({ success: false, message: 'Assigned study center not found' });
+      return;
+    }
   }
 
   const center = await prisma.studyCenter.update({

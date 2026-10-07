@@ -26,7 +26,7 @@ export function PayslipDocument({ payroll }: { payroll: Payroll }) {
     <div id={`payslip-${payroll.id}`} className="bg-white p-8 font-sans text-gray-800 w-[800px] h-auto border">
       <div className="flex justify-between items-center border-b-2 border-primary pb-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">PYPE ERP</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">UMS</h1>
           <p className="text-sm text-gray-500">123 Tech Park, Innovation Hub, City - 400001</p>
         </div>
         <div className="text-right">

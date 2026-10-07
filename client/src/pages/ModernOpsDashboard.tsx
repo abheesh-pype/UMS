@@ -59,7 +59,7 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
   // Sync initialTab changes to activeTab
   useEffect(() => {
     setActiveTab(initialTab || (isSubDeptManager ? 'my_subdept' : 'overview'));
-  }, [initialTab]);
+  }, [initialTab, isSubDeptManager, user?.role]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchOpsMetrics(); }, []);
 

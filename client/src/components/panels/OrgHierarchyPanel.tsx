@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, RefreshCw, UserPlus, Trash2, Edit2, Users, ChevronDown, ChevronUp, Layers, Building2, MapPin } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Dept { id: string; name: string; type: string; }
@@ -410,7 +411,9 @@ export function OrgHierarchyPanel() {
       setAllDepts(deptsRes.data.data || []);
       setAllSubDepts(subDeptsRes.data.data || []);
       setAllBranches(branchRes.data.data || []);
-    } catch (e) {
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'Failed to load organization hierarchy');
     } finally {
       setLoading(false);
     }

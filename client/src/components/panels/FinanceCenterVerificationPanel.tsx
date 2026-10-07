@@ -7,13 +7,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 const SERVER_BASE = '';
 
 interface AuthFeeEntry { universityId: string; universityName: string; amount: number | null; }
+interface AssignableFinanceUser {
+  id: string;
+  name: string;
+  role: string;
+  departmentId?: string | null;
+  subDepartmentId?: string | null;
+  designationId?: string | null;
+  reportingTo?: string | null;
+}
 interface PaymentProof { url: string; uploadedAt: string; remarks?: string; }
 interface Center {
   id: string;
@@ -25,7 +36,9 @@ interface Center {
   verifiedBy?: { name: string };
   verifiedAt?: string;
   authFees: AuthFeeEntry[];
-  paymentProof?: PaymentProof;
+  paymentProof?: PaymentProof | string | null;
+  assignedFinanceUserId?: string | null;
+  assignedFinanceUser?: { id: string; name: string; role: string } | null;
   status?: string;
   opsRemarks?: string;
   createdAt: string;
@@ -39,8 +52,16 @@ const normalizeProofUrl = (url?: string) => {
   return `${window.location.origin}/${url.replace(/^\.?\//, '')}`;
 };
 
+const hasPaymentProof = (paymentProof?: PaymentProof | string | null) => {
+  const url = typeof paymentProof === 'string' ? paymentProof : paymentProof?.url;
+  return typeof url === 'string' && url.trim().length > 0;
+};
+
 export function FinanceCenterVerificationPanel() {
+  const { user } = useAuth();
   const [centers, setCenters] = useState<Center[]>([]);
+  const [assignableFinanceUsers, setAssignableFinanceUsers] = useState<AssignableFinanceUser[]>([]);
+  const [assigningCenterId, setAssigningCenterId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<{ center: Center; action: 'approve' | 'reject' } | null>(null);
   const [remarks, setRemarks] = useState('');
@@ -61,10 +82,119 @@ export function FinanceCenterVerificationPanel() {
     }
   };
 
-  useEffect(() => { loadCenters(); }, []);
+  const loadAssignableFinanceUsers = async () => {
+    if (user?.role !== 'finance_admin') return;
+    try {
+      const [usersRes, departmentsRes, subDepartmentsRes, designationsRes] = await Promise.all([
+        api.get('/users'),
+        api.get('/departments'),
+        api.get('/sub-departments'),
+        api.get('/org/designations'),
+      ]);
+      const users = (usersRes.data.data || []) as AssignableFinanceUser[];
+      const departments = (departmentsRes.data.data || []) as Array<{ id: string; type?: string | null }>;
+      const subDepartments = (subDepartmentsRes.data.data || []) as Array<{ id: string; parentDeptId: string | { id: string } }>;
+      const designations = (designationsRes.data.data || []) as Array<{
+        id: string;
+        departmentId?: string | { id: string } | null;
+        subDepartmentId?: string | { id: string } | null;
+        parentDesignationId?: string | { id: string } | null;
+        filledBy?: Array<{ id: string }>;
+      }>;
+      const getRelationId = (value?: string | { id: string } | null) =>
+        typeof value === 'string' ? value : value?.id || '';
+      const financeDepartmentIds = new Set(
+        departments
+          .filter(department => department.type?.trim().toLowerCase() === 'finance')
+          .map(department => department.id)
+      );
+      const subDepartmentParentIds = new Map<string, string>();
+      subDepartments.forEach(subDepartment => {
+        subDepartmentParentIds.set(subDepartment.id, getRelationId(subDepartment.parentDeptId));
+      });
+      const financeSubDepartmentIds = new Set(
+        [...subDepartmentParentIds.entries()]
+          .filter(([, parentDepartmentId]) => financeDepartmentIds.has(parentDepartmentId))
+          .map(([subDepartmentId]) => subDepartmentId)
+      );
+      const admin = users.find(candidate => candidate.id === user.id);
+      const getUserDepartmentId = (candidate?: AssignableFinanceUser) => {
+        if (!candidate) return '';
+        const designation = designations.find(node => node.id === candidate.designationId);
+        return candidate.departmentId
+          || subDepartmentParentIds.get(candidate.subDepartmentId || '')
+          || getRelationId(designation?.departmentId)
+          || subDepartmentParentIds.get(getRelationId(designation?.subDepartmentId))
+          || '';
+      };
+      const adminDepartmentId = getUserDepartmentId(admin);
+      const subordinateIds = new Set<string>();
+      let managerIds = [user.id];
+      while (managerIds.length > 0) {
+        const nextReports = users
+          .filter(candidate => candidate.reportingTo && managerIds.includes(candidate.reportingTo))
+          .map(candidate => candidate.id)
+          .filter(id => !subordinateIds.has(id));
+        nextReports.forEach(id => subordinateIds.add(id));
+        managerIds = nextReports;
+      }
+
+      const subordinateDesignationIds = new Set<string>();
+      let parentDesignationIds = admin?.designationId ? [admin.designationId] : [];
+      while (parentDesignationIds.length > 0) {
+        const childDesignations = designations
+          .filter(node => parentDesignationIds.includes(getRelationId(node.parentDesignationId)))
+          .map(node => node.id)
+          .filter(id => !subordinateDesignationIds.has(id));
+        childDesignations.forEach(id => subordinateDesignationIds.add(id));
+        parentDesignationIds = childDesignations;
+      }
+      designations
+        .filter(node => subordinateDesignationIds.has(node.id))
+        .flatMap(node => node.filledBy || [])
+        .forEach(assignedUser => subordinateIds.add(assignedUser.id));
+
+      setAssignableFinanceUsers(users.filter(candidate => {
+        const candidateDepartmentId = getUserDepartmentId(candidate);
+        const belongsToFinance = financeDepartmentIds.has(candidateDepartmentId)
+          && (!adminDepartmentId || candidateDepartmentId === adminDepartmentId)
+          && (!candidate.subDepartmentId || financeSubDepartmentIds.has(candidate.subDepartmentId));
+        const isAssignableRole = candidate.role === 'finance_sub_admin' || candidate.role === 'employee';
+        return subordinateIds.has(candidate.id) && belongsToFinance && isAssignableRole;
+      }));
+    } catch {
+      setAssignableFinanceUsers([]);
+    }
+  };
+
+  useEffect(() => {
+    loadCenters();
+    loadAssignableFinanceUsers();
+  }, [user?.id, user?.role]);
+
+  const handleAssignCenter = async (center: Center, assignedFinanceUserId: string) => {
+    setAssigningCenterId(center.id);
+    try {
+      const res = await api.put(`/finance/centers/${center.id}/assign`, {
+        assignedFinanceUserId: assignedFinanceUserId === '__none__' ? null : assignedFinanceUserId,
+      });
+      setCenters(previous => previous.map(item => item.id === center.id
+        ? { ...item, assignedFinanceUserId: res.data.data.assignedFinanceUserId, assignedFinanceUser: res.data.data.assignedFinanceUser }
+        : item));
+      toast.success(assignedFinanceUserId === '__none__' ? 'Study center unassigned' : 'Study center assigned');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to assign study center');
+    } finally {
+      setAssigningCenterId(null);
+    }
+  };
 
   const handleAction = async () => {
     if (!dialog) return;
+    if (dialog.action === 'approve' && !hasPaymentProof(dialog.center.paymentProof)) {
+      toast.error('A payment proof must be uploaded before approving this study center');
+      return;
+    }
     if (dialog.action === 'reject' && !remarks.trim()) {
       toast.error('Remarks are required when rejecting');
       return;
@@ -197,7 +327,7 @@ export function FinanceCenterVerificationPanel() {
           <Button variant="outline" className="text-destructive border-destructive/30" onClick={() => { setDialog({ center: selectedCenter, action: 'reject' }); setRemarks(''); }}>
             <XCircle className="w-4 h-4 mr-1" />Reject Payment
           </Button>
-          <Button onClick={() => { setDialog({ center: selectedCenter, action: 'approve' }); setRemarks(''); }}>
+          <Button disabled={!hasPaymentProof(selectedCenter.paymentProof)} onClick={() => { setDialog({ center: selectedCenter, action: 'approve' }); setRemarks(''); }}>
             <CheckCircle className="w-4 h-4 mr-1" />Approve Payment
           </Button>
         </div>
@@ -211,7 +341,7 @@ export function FinanceCenterVerificationPanel() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setDialog(null); setRemarks(''); }}>Cancel</Button>
-              <Button onClick={handleAction} disabled={submitting || (dialog?.action === 'reject' && !remarks.trim())} variant={dialog?.action === 'reject' ? 'destructive' : 'default'}>
+              <Button onClick={handleAction} disabled={submitting || (dialog?.action === 'reject' && !remarks.trim()) || (dialog?.action === 'approve' && !hasPaymentProof(dialog.center.paymentProof))} variant={dialog?.action === 'reject' ? 'destructive' : 'default'}>
                 {submitting ? 'Processing...' : dialog?.action === 'approve' ? 'Approve Payment' : 'Reject Payment'}
               </Button>
             </DialogFooter>
@@ -299,11 +429,28 @@ export function FinanceCenterVerificationPanel() {
                     <Button size="sm" variant="outline" onClick={() => openReview(c)}>
                       <Eye className="w-4 h-4 mr-1" />More
                     </Button>
+                    {user?.role === 'finance_admin' && (
+                      <Select
+                        value={assignableFinanceUsers.some(candidate => candidate.id === c.assignedFinanceUserId) ? c.assignedFinanceUserId || '__none__' : '__none__'}
+                        onValueChange={value => handleAssignCenter(c, value)}
+                        disabled={assigningCenterId === c.id}
+                      >
+                        <SelectTrigger className="w-[180px]" aria-label="Assigned To">
+                          <SelectValue placeholder="Assigned To" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Unassigned</SelectItem>
+                          {assignableFinanceUsers.map(candidate => (
+                            <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <Button size="sm" variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={() => { setDialog({ center: c, action: 'reject' }); setRemarks(''); }}>
                       <XCircle className="w-4 h-4 mr-1" />Reject
                     </Button>
-                    <Button size="sm" onClick={() => { setDialog({ center: c, action: 'approve' }); setRemarks(''); }}>
+                    <Button size="sm" disabled={!hasPaymentProof(c.paymentProof)} onClick={() => { setDialog({ center: c, action: 'approve' }); setRemarks(''); }}>
                       <CheckCircle className="w-4 h-4 mr-1" />Approve
                     </Button>
                   </div>
@@ -340,7 +487,7 @@ export function FinanceCenterVerificationPanel() {
             <Button variant="outline" onClick={() => { setDialog(null); setRemarks(''); }}>Cancel</Button>
             <Button
               onClick={handleAction}
-              disabled={submitting}
+              disabled={submitting || (dialog?.action === 'approve' && !hasPaymentProof(dialog.center.paymentProof))}
               variant={dialog?.action === 'reject' ? 'destructive' : 'default'}
             >
               {submitting ? 'Processing...' : dialog?.action === 'approve' ? 'Approve & Activate' : 'Reject'}

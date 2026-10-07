@@ -248,12 +248,12 @@ export function Sidebar({ isCollapsed, onToggle, activeModule, onModuleChange }:
       <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="PYPE ERP" className="w-8 h-8 object-contain rounded-lg" />
-            <span className="font-bold text-lg tracking-tight">PYPE ERP</span>
+            <img src="/logo.png" alt="UMS" className="w-8 h-8 object-contain rounded-lg" />
+            <span className="font-bold text-lg tracking-tight">UMS</span>
           </div>
         )}
         {isCollapsed && (
-          <img src="/logo.png" alt="PYPE ERP" className="w-8 h-8 object-contain rounded-lg mx-auto" />
+          <img src="/logo.png" alt="UMS" className="w-8 h-8 object-contain rounded-lg mx-auto" />
         )}
         <Button
           variant="ghost"

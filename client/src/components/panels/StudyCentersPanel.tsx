@@ -12,9 +12,28 @@ import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import * as XLSX from 'xlsx';
 
-export function StudyCentersPanel({ salesMode = false, operationsMode = false }: { salesMode?: boolean; operationsMode?: boolean }) {
+interface AssignableOpsUser {
+  id: string;
+  name: string;
+  role: string;
+  departmentId?: string | null;
+  subDepartmentId?: string | null;
+  designationId?: string | null;
+  reportingTo?: string | null;
+}
+
+export function StudyCentersPanel({ salesMode = false, operationsMode = false, financeMode = false, universityAdminMode = false }: { salesMode?: boolean; operationsMode?: boolean; financeMode?: boolean; universityAdminMode?: boolean }) {
   const { user } = useAuth();
   const canWrite = ['org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'sales_admin', 'bde', 'employee'].includes(user?.role || '');
+  const canCreateCenter = (operationsMode && user?.role === 'ops_admin')
+    || (salesMode && ['sales_admin', 'bde'].includes(user?.role || ''))
+    || (universityAdminMode && user?.role === 'org_admin');
+  const canViewOperationsCenters = operationsMode
+    && ['ops_admin', 'ops_sub_admin', 'employee'].includes(user?.role || '');
+  const isFinanceEmployee = user?.role === 'employee'
+    && (((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type) === 'finance');
+  const canViewFinanceCenters = financeMode
+    && ['finance_admin', 'finance_sub_admin'].includes(user?.role || '') || financeMode && isFinanceEmployee;
   const [centers, setCenters] = useState<any[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
   const [selectedCenterStatus, setSelectedCenterStatus] = useState('');
@@ -23,6 +42,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [team, setTeam] = useState<any[]>([]);
+  const [assignableOpsUsers, setAssignableOpsUsers] = useState<AssignableOpsUser[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -36,6 +56,8 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
   });
   const [universities, setUniversities] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [operationsCenterView, setOperationsCenterView] = useState<'progress' | 'rejected'>('progress');
+  const [financeCenterView, setFinanceCenterView] = useState<'active' | 'rejected'>('active');
   const [universityFilter, setUniversityFilter] = useState('');
   // Branch-level settings state
   const [branchConfigOpen, setBranchConfigOpen] = useState(false);
@@ -115,17 +137,25 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
+      if (canViewOperationsCenters) {
+        params.set('status', operationsCenterView);
+      } else if (canViewFinanceCenters) {
+        params.set('status', financeCenterView);
+      } else if (statusFilter && statusFilter !== 'all') {
+        params.set('status', statusFilter);
+      }
       if (universityFilter && universityFilter !== 'all') params.set('universityId', universityFilter);
       const query = params.toString();
       const q = query ? `?${query}` : '';
       const res = await api.get(`/operations/centers${q}`);
       setCenters(res.data.data || []);
-    } catch (_err) {
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'Failed to load study centers');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, universityFilter]);
+  }, [statusFilter, universityFilter, operationsCenterView, financeCenterView, canViewOperationsCenters, canViewFinanceCenters]);
 
   const fetchUniversities = useCallback(async () => {
     try {
@@ -141,7 +171,90 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
     api.get('/sales/team-members')
       .then(res => setTeam(res.data.data || []))
       .catch(() => setTeam([]));
-  }, [fetchCenters, fetchUniversities]);
+    if (operationsMode && user?.role === 'ops_admin') {
+      Promise.all([
+        api.get('/users'),
+        api.get('/departments'),
+        api.get('/sub-departments'),
+        api.get('/org/designations'),
+      ])
+        .then(([usersRes, departmentsRes, subDepartmentsRes, designationsRes]) => {
+          const users = (usersRes.data.data || []) as AssignableOpsUser[];
+          const departments = (departmentsRes.data.data || []) as Array<{ id: string; type?: string | null }>;
+          const subDepartments = (subDepartmentsRes.data.data || []) as Array<{ id: string; parentDeptId: string | { id: string } }>;
+          const designations = (designationsRes.data.data || []) as Array<{
+            id: string;
+            departmentId?: string | { id: string } | null;
+            subDepartmentId?: string | { id: string } | null;
+            parentDesignationId?: string | { id: string } | null;
+            filledBy?: Array<{ id: string }>;
+          }>;
+          const getRelationId = (value?: string | { id: string } | null) =>
+            typeof value === 'string' ? value : value?.id || '';
+          const operationsDepartmentIds = new Set(
+            departments
+              .filter(department => department.type?.trim().toLowerCase() === 'operations')
+              .map(department => department.id)
+          );
+          const subDepartmentParentIds = new Map<string, string>();
+          subDepartments.forEach(subDepartment => {
+            subDepartmentParentIds.set(subDepartment.id, getRelationId(subDepartment.parentDeptId));
+          });
+          const operationsSubDepartmentIds = new Set(
+            [...subDepartmentParentIds.entries()]
+              .filter(([, parentDepartmentId]) => operationsDepartmentIds.has(parentDepartmentId))
+              .map(([subDepartmentId]) => subDepartmentId)
+          );
+
+          const admin = users.find(candidate => candidate.id === user.id);
+          const getUserDepartmentId = (candidate?: AssignableOpsUser) => {
+            if (!candidate) return '';
+            return candidate.departmentId
+              || subDepartmentParentIds.get(candidate.subDepartmentId || '')
+              || getRelationId(designations.find(node => node.id === candidate.designationId)?.departmentId)
+              || subDepartmentParentIds.get(getRelationId(designations.find(node => node.id === candidate.designationId)?.subDepartmentId))
+              || '';
+          };
+          const adminDepartmentId = getUserDepartmentId(admin);
+          const subordinateIds = new Set<string>();
+          let managerIds = [user.id];
+          while (managerIds.length > 0) {
+            const nextReports = users
+              .filter(candidate => candidate.reportingTo && managerIds.includes(candidate.reportingTo))
+              .map(candidate => candidate.id)
+              .filter(id => !subordinateIds.has(id));
+            nextReports.forEach(id => subordinateIds.add(id));
+            managerIds = nextReports;
+          }
+
+          const adminDesignationId = admin?.designationId || '';
+          const subordinateDesignationIds = new Set<string>();
+          let parentDesignationIds = adminDesignationId ? [adminDesignationId] : [];
+          while (parentDesignationIds.length > 0) {
+            const childDesignations = designations
+              .filter(node => parentDesignationIds.includes(getRelationId(node.parentDesignationId)))
+              .map(node => node.id)
+              .filter(id => !subordinateDesignationIds.has(id));
+            childDesignations.forEach(id => subordinateDesignationIds.add(id));
+            parentDesignationIds = childDesignations;
+          }
+          designations
+            .filter(node => subordinateDesignationIds.has(node.id))
+            .flatMap(node => node.filledBy || [])
+            .forEach(assignedUser => subordinateIds.add(assignedUser.id));
+
+          setAssignableOpsUsers(users.filter(candidate => {
+            const candidateDepartmentId = getUserDepartmentId(candidate);
+            const belongsToOperations = operationsDepartmentIds.has(candidateDepartmentId)
+              && (!adminDepartmentId || candidateDepartmentId === adminDepartmentId)
+              && (!candidate.subDepartmentId || operationsSubDepartmentIds.has(candidate.subDepartmentId));
+            const isAssignableRole = candidate.role === 'ops_sub_admin' || candidate.role === 'employee';
+            return subordinateIds.has(candidate.id) && belongsToOperations && isAssignableRole;
+          }));
+        })
+        .catch(() => setAssignableOpsUsers([]));
+    }
+  }, [fetchCenters, fetchUniversities, operationsMode, user?.id, user?.role]);
 
   const downloadTemplate = () => {
     const templateData = [
@@ -336,6 +449,21 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
     }
   };
 
+  const handleAssignCenter = async (center: { id: string }, userId: string) => {
+    const assignedUser = assignableOpsUsers.find(candidate => candidate.id === userId);
+    try {
+      await api.put(`/operations/centers/${center.id}`, {
+        assignedOperationsUserId: userId === '__none__' ? null : userId,
+      });
+      setCenters(previous => previous.map(item => item.id === center.id
+        ? { ...item, assignedOperationsUserId: userId === '__none__' ? null : userId, assignedOperationsUser: assignedUser || null }
+        : item));
+      toast.success(userId === '__none__' ? 'Study center unassigned' : 'Study center assigned');
+    } catch {
+      toast.error('Failed to assign study center');
+    }
+  };
+
   const handleOpenBranchConfig = (branchName: string, centersInBranch: any[]) => {
     setBranchConfigName(branchName);
     const first = centersInBranch[0] || {};
@@ -464,7 +592,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
               <p className="text-muted-foreground">Complete study center details and university associations</p>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={selectedCenterStatus} onValueChange={setSelectedCenterStatus} disabled={operationsMode}>
+              <Select value={selectedCenterStatus} onValueChange={setSelectedCenterStatus} disabled={operationsMode || financeMode}>
                 <SelectTrigger className="w-[190px]">
                   <SelectValue placeholder="Change status" />
                 </SelectTrigger>
@@ -477,9 +605,11 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
                   <SelectItem value="suspended">Suspended</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleSaveCenterStatus} disabled={operationsMode || savingCenterStatus || selectedCenterStatus === selectedCenter.status}>
-                {savingCenterStatus ? 'Saving...' : 'Save Status'}
-              </Button>
+              {!financeMode && (
+                <Button onClick={handleSaveCenterStatus} disabled={operationsMode || savingCenterStatus || selectedCenterStatus === selectedCenter.status}>
+                  {savingCenterStatus ? 'Saving...' : 'Save Status'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -623,25 +753,61 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
           <h2 className="text-2xl font-bold">Study Center Management</h2>
           <p className="text-muted-foreground">Manage study centers and locations</p>
         </div>
-        {canWrite && (
+        {(canWrite || canViewFinanceCenters) && (
           <div className="flex items-center gap-2">
-            <Button
-              onClick={() => {
-                setImportCenters([]);
-                setImportErrors([]);
-                setImportSummary(null);
-                setImportReferredById('');
-                setIsImportDialogOpen(true);
-              }}
-              variant="outline"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Bulk Import
-            </Button>
-            <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Study Center
-            </Button>
+            {canWrite && !operationsMode && (
+              <Button
+                onClick={() => {
+                  setImportCenters([]);
+                  setImportErrors([]);
+                  setImportSummary(null);
+                  setImportReferredById('');
+                  setIsImportDialogOpen(true);
+                }}
+                variant="outline"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Bulk Import
+              </Button>
+            )}
+            {canViewOperationsCenters && (
+              <>
+                <Button
+                  variant={operationsCenterView === 'progress' ? 'default' : 'outline'}
+                  onClick={() => setOperationsCenterView('progress')}
+                >
+                  Progress
+                </Button>
+                <Button
+                  variant={operationsCenterView === 'rejected' ? 'default' : 'outline'}
+                  onClick={() => setOperationsCenterView('rejected')}
+                >
+                  Rejected
+                </Button>
+              </>
+            )}
+            {canViewFinanceCenters && (
+              <>
+                <Button
+                  variant={financeCenterView === 'active' ? 'default' : 'outline'}
+                  onClick={() => setFinanceCenterView('active')}
+                >
+                  Active
+                </Button>
+                <Button
+                  variant={financeCenterView === 'rejected' ? 'default' : 'outline'}
+                  onClick={() => setFinanceCenterView('rejected')}
+                >
+                  Rejected
+                </Button>
+              </>
+            )}
+            {canCreateCenter && (
+              <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Study Center
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -780,6 +946,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
               Study Centers ({centers.length} total · {Object.keys(branchGroups).filter(k => k !== '__unassigned__').length} branches)
             </CardTitle>
             <div className="flex flex-col sm:flex-row gap-3 items-center">
+              {!canViewOperationsCenters && !canViewFinanceCenters && (
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[170px]">
                   <SelectValue placeholder="All Statuses" />
@@ -794,6 +961,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
                   <SelectItem value="suspended">Suspended</SelectItem>
                 </SelectContent>
               </Select>
+              )}
               <Select value={universityFilter} onValueChange={setUniversityFilter}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="All Universities" />
@@ -900,6 +1068,23 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
                                 {c.allowInternalMarks && (
                                   <Badge variant="outline" className="text-xs border-violet-400 text-violet-600 bg-violet-50">Marks ✓</Badge>
                                 )}
+                                {operationsMode && user?.role === 'ops_admin' && (
+                                  <Select
+                                    value={assignableOpsUsers.some(candidate => candidate.id === c.assignedOperationsUserId) ? c.assignedOperationsUserId : '__none__'}
+                                    onValueChange={(value) => handleAssignCenter(c, value)}
+                                    disabled={operationsCenterView === 'rejected'}
+                                  >
+                                    <SelectTrigger className="w-[170px]" aria-label="Assigned To">
+                                      <SelectValue placeholder="Assigned To" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">Unassigned</SelectItem>
+                                      {assignableOpsUsers.map(candidate => (
+                                        <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
                                 <Button variant="outline" size="sm" onClick={() => handleOpenDetails(c)}>
                                   <Eye className="w-3.5 h-3.5 mr-1" />
                                   More
@@ -928,6 +1113,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
         </CardContent>
       </Card>
 
+      {!operationsMode && (
       <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
         <DialogContent className="max-h-[90vh] flex flex-col p-0 gap-0 sm:max-w-2xl">
           <DialogHeader className="p-6 pb-4 border-b">
@@ -1104,6 +1290,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false }:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Branch-Level Settings Dialog */}
       <Dialog open={branchConfigOpen} onOpenChange={setBranchConfigOpen}>

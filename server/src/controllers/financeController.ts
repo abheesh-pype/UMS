@@ -526,9 +526,19 @@ export const updateAuthFee = asyncHandler(async (req: AuthRequest, res: Response
 
 // Centers
 export const getPendingPaymentCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isFinanceAssignee = req.user.role === 'finance_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'finance');
   const centers = await prisma.studyCenter.findMany({
-    where: { organizationId: req.user.organizationId, status: 'pending_payment' as any },
-    include: { verifier: { select: { id: true, name: true, email: true } } },
+    where: {
+      organizationId: req.user.organizationId,
+      status: 'pending_payment' as any,
+      ...(isFinanceAssignee ? { assignedFinanceUserId: req.user.id } : {}),
+    },
+    include: {
+      verifier: { select: { id: true, name: true, email: true } },
+      assignedFinanceUser: { select: { id: true, name: true, role: true } },
+    },
     orderBy: { updatedAt: 'asc' }
   });
   const result = await Promise.all(centers.map(async center => {
@@ -556,6 +566,53 @@ export const getPendingPaymentCenters = asyncHandler(async (req: AuthRequest, re
   }));
   res.json({ success: true, data: result });
 });
+
+export const assignFinanceCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { assignedFinanceUserId } = req.body;
+  const center = await prisma.studyCenter.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      status: 'pending_payment' as any,
+    },
+    select: { id: true },
+  });
+  if (!center) {
+    res.status(404).json({ success: false, message: 'Pending payment center not found' });
+    return;
+  }
+
+  if (assignedFinanceUserId) {
+    const assignedUser = await prisma.user.findFirst({
+      where: {
+        id: assignedFinanceUserId,
+        organizationId: req.user.organizationId,
+        role: { in: ['finance_sub_admin', 'employee'] },
+      },
+      include: {
+        department: { select: { type: true } },
+        subDepartment: { include: { parentDept: { select: { type: true } } } },
+        designationRef: { include: { department: { select: { type: true } }, subDepartment: { include: { parentDept: { select: { type: true } } } } } },
+      },
+    });
+    const isFinanceDepartment = assignedUser?.department?.type === 'finance'
+      || assignedUser?.subDepartment?.parentDept?.type === 'finance'
+      || assignedUser?.designationRef?.department?.type === 'finance'
+      || assignedUser?.designationRef?.subDepartment?.parentDept?.type === 'finance';
+    if (!assignedUser || !isFinanceDepartment) {
+      res.status(400).json({ success: false, message: 'Assignee must be a Finance sub-admin or employee in this organization' });
+      return;
+    }
+  }
+
+  const updatedCenter = await prisma.studyCenter.update({
+    where: { id: center.id },
+    data: { assignedFinanceUserId: assignedFinanceUserId || null },
+    include: { assignedFinanceUser: { select: { id: true, name: true, role: true } } },
+  });
+  res.json({ success: true, data: updatedCenter });
+});
+
 export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
   if (!['approve', 'reject'].includes(action)) {
@@ -564,6 +621,26 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
   }
   if (action === 'reject' && !remarks?.trim()) {
     res.status(400).json({ success: false, message: 'Remarks are required when rejecting payment' });
+    return;
+  }
+  const existingCenter = await prisma.studyCenter.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId, status: 'pending_payment' as any }
+  });
+  if (!existingCenter) {
+    res.status(404).json({ success: false, message: 'Pending payment center not found' });
+    return;
+  }
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isFinanceAssignee = req.user.role === 'finance_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'finance');
+  if (isFinanceAssignee && existingCenter.assignedFinanceUserId !== req.user.id) {
+    res.status(403).json({ success: false, message: 'This study center is not assigned to you' });
+    return;
+  }
+  const paymentProof = existingCenter.paymentProof as { url?: unknown } | string | null;
+  const paymentProofUrl = typeof paymentProof === 'string' ? paymentProof : paymentProof?.url;
+  if (action === 'approve' && (typeof paymentProofUrl !== 'string' || !paymentProofUrl.trim())) {
+    res.status(400).json({ success: false, message: 'A payment proof must be uploaded before approving this study center' });
     return;
   }
   const center = await prisma.studyCenter.update({

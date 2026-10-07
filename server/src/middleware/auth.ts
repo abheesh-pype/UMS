@@ -27,30 +27,32 @@ export const protect = async (
       return;
     }
 
+    let decoded: any;
     try {
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-      
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.id },
-        include: {
-          organization: true,
-          department: true,
-          branch: true,
-          studyCenter: true,
-          subDepartment: { include: { parentDept: true } },
-        }
-      });
-
-      if (!user) {
-        res.status(401).json({ success: false, message: 'User not found' });
-        return;
-      }
-
-      req.user = user;
-      next();
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
     } catch (error) {
       res.status(401).json({ success: false, message: 'Invalid token' });
+      return;
     }
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      include: {
+        organization: true,
+        department: true,
+        branch: true,
+        studyCenter: true,
+        subDepartment: { include: { parentDept: true } },
+      }
+    });
+
+    if (!user) {
+      res.status(401).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    req.user = user;
+    next();
   } catch (error) {
     res.status(500).json({ success: false, message: 'Auth error' });
   }

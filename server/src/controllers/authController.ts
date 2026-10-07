@@ -31,7 +31,7 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
   }
 
   // Generate userId and hash password
-  const userId = await generateUserId();
+  const userId = await generateUserId(organizationId);
   const hashedPassword = await hashPassword(password);
 
   // Create user
@@ -73,8 +73,9 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
 // @access  Public
 export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { email, password } = req.body;
+  const loginIdentifier = typeof email === 'string' ? email.trim() : '';
 
-  if (!email || !password) {
+  if (!loginIdentifier || !password) {
     res.status(400).json({ 
       success: false, 
       message: 'Please provide email and password' 
@@ -86,8 +87,8 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findFirst({ 
     where: {
       OR: [
-        { email: email },
-        { userId: email }
+        { email: { equals: loginIdentifier, mode: 'insensitive' } },
+        { userId: { equals: loginIdentifier, mode: 'insensitive' } }
       ]
     },
     include: {

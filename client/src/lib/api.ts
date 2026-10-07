@@ -30,8 +30,12 @@ class ApiService {
       (response) => response,
       (error: AxiosError) => {
         const isLoginRequest = error.config?.url?.includes('/auth/login');
+        const authFailureMessages = ['Not authorized', 'Invalid token', 'User not found'];
+        const isAuthenticationFailure = authFailureMessages.includes(
+          (error.response?.data as { message?: string } | undefined)?.message || ''
+        );
 
-        if (error.response?.status === 401 && !isLoginRequest) {
+        if (error.response?.status === 401 && !isLoginRequest && isAuthenticationFailure) {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           window.location.href = '/login';

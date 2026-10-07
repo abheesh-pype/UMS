@@ -66,7 +66,7 @@ export const confirmPayroll = asyncHandler(async (req: AuthRequest, res: Respons
       <p>Your payroll for <strong>${monthStr}</strong> has been confirmed by Finance.</p>
       <p>You can now log in to the Employee Portal to view and download your PDF Payslip.</p>
       <br/>
-      <p>Regards,<br/>PYPE ERP HR Team</p>
+      <p>Regards,<br/>UMS HR Team</p>
     `;
     // non-blocking email send
     sendEmail(payroll.user.email, `Payslip Ready: ${monthStr}`, html).catch(console.error);

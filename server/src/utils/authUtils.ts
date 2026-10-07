@@ -35,11 +35,23 @@ export const getOrganizationStudyCenterPattern = async (organizationId?: string 
   return normalizeIdPattern(metadata.studyCenterIdPattern || 'IITSRPS');
 };
 
+export const getOrganizationUserIdPattern = async (organizationId?: string | null): Promise<string> => {
+  if (!organizationId) return 'IITSRPS';
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { metadata: true }
+  });
+
+  const metadata = (organization?.metadata as any) || {};
+  return normalizeIdPattern(metadata.userIdPattern || 'IITSRPS');
+};
+
 /**
  * Generate a unique userId in the format IITSRPS0001
  */
-export const generateUserId = async (): Promise<string> => {
-  const prefix = 'IITSRPS';
+export const generateUserId = async (organizationId?: string | null): Promise<string> => {
+  const prefix = await getOrganizationUserIdPattern(organizationId);
   const lastUser = await prisma.user.findFirst({
     where: {
       userId: {

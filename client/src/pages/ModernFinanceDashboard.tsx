@@ -115,7 +115,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'payroll': return <PayrollPanel />;
       case 'payroll-batches': return <PayrollBatchesPanel />;
       case 'students': return <StudentsPanel />;
-      case 'study_centers': return <StudyCentersPanel />;
+      case 'study_centers': return <StudyCentersPanel financeMode />;
       case 'broadcast_notifications': return <BroadcastNotificationsPanel />;
       case 'admission_sessions': return <AdmissionSessionsPanel />;
       case 'auth_fees': return <FinanceAuthFeePanel />;
@@ -169,10 +169,10 @@ export function getFinanceNavItems() {
     { id: 'payroll-batches', label: 'Payroll Batches' },
     { id: 'students', label: 'Students' },
     { id: 'study_centers', label: 'Study Centers' },
+    { id: 'pending_payment', label: 'Pending Payment' },
     { id: 'broadcast_notifications', label: 'Send Notifications' },
     { id: 'admission_sessions', label: 'Admissions' },
     { id: 'auth_fees', label: 'Auth Fees' },
-    { id: 'pending_payment', label: 'Pending Payment' },
     { id: 'program_fees', label: 'Program Fees' },
     { id: 'wallet_topups', label: 'Wallet Top-Ups' },
     { id: 'enrollments_finance', label: 'Enrollments' },
