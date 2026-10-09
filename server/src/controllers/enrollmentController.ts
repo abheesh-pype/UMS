@@ -509,7 +509,7 @@ export const getMyCenterStatus = asyncHandler(async (req: AuthRequest, res: Resp
     : (centerAdminUniversityId ? [centerAdminUniversityId] : []);
 
   const universities = await prisma.university.findMany({
-    where: { id: { in: universityIds }, organizationId: req.user.organizationId },
+    where: { id: { in: universityIds }, organizationId: req.user.organizationId, singletonKey: 'primary' },
     select: { id: true, name: true, code: true }
   });
   const authFees = await prisma.universityAuthFee.findMany({

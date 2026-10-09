@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Building2, Calendar, Shield } from 'lucide-react';
+import { Plus, Edit, Building2, Calendar, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,18 +14,19 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { isAxiosError } from 'axios';
 import api from '@/lib/api';
 
 interface Organization {
   id: string;
   name: string;
-  email: string;
-  phone: string;
+  email?: string | null;
+  phone?: string | null;
   contactEmail?: string;
   contactPhone?: string;
-  address: string;
+  address?: string | null;
   status: string;
-  licenseId?: any;
+  licenseId?: string | { name?: string } | null;
   licenseExpiry?: string;
   createdAt: string;
 }
@@ -34,9 +35,7 @@ export function OrganizationsPanel() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
-  const [deletingOrg, setDeletingOrg] = useState<Organization | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -53,8 +52,8 @@ export function OrganizationsPanel() {
       setLoading(true);
       const response = await api.get('/organizations');
       setOrganizations(response.data.data || []);
-    } catch (error: any) {
-      toast.error('Failed to fetch universities');
+    } catch {
+      toast.error('Failed to fetch organization');
     } finally {
       setLoading(false);
     }
@@ -70,16 +69,11 @@ export function OrganizationsPanel() {
     setEditingOrg(org);
     setFormData({
       name: org.name,
-      email: org.email,
-      phone: org.phone,
-      address: org.address,
+      email: org.email || '',
+      phone: org.phone || '',
+      address: org.address || '',
     });
     setIsDialogOpen(true);
-  };
-
-  const handleDelete = (org: Organization) => {
-    setDeletingOrg(org);
-    setIsDeleteDialogOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,31 +82,21 @@ export function OrganizationsPanel() {
     try {
       if (editingOrg) {
         // Update existing organization
-        const response = await api.put(`/organizations/${editingOrg.id}`, formData);
-        toast.success('University updated successfully');
+        await api.put(`/organizations/${editingOrg.id}`, formData);
+        toast.success('Organization updated successfully');
       } else {
         // Create new organization
-        const response = await api.post('/organizations', formData);
-        toast.success('University created successfully');
+        await api.post('/organizations', formData);
+        toast.success('Organization created successfully');
       }
       
       setIsDialogOpen(false);
       fetchOrganizations();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Operation failed');
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deletingOrg) return;
-    
-    try {
-      await api.delete(`/organizations/${deletingOrg.id}`);
-      toast.success('University deleted successfully');
-      setIsDeleteDialogOpen(false);
-      fetchOrganizations();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to delete university');
+    } catch (error) {
+      const message = isAxiosError<{ message?: string }>(error)
+        ? error.response?.data?.message
+        : undefined;
+      toast.error(message || 'Operation failed');
     }
   };
 
@@ -129,15 +113,17 @@ export function OrganizationsPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Universities</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Organization</h2>
           <p className="text-muted-foreground text-sm">
-            Manage all universities in the system
+            Manage the organization for this university system
           </p>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="w-4 h-4 mr-2" />
-          New University
-        </Button>
+        {organizations.length === 0 && (
+          <Button onClick={handleCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Organization
+          </Button>
+        )}
       </div>
 
       {/* Organizations Grid */}
@@ -176,7 +162,7 @@ export function OrganizationsPanel() {
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Shield className="w-3 h-3" />
                     <span className="text-xs">
-                      {org.licenseId.name || 'Licensed'}
+                      {(typeof org.licenseId === 'object' && org.licenseId.name) || 'Licensed'}
                     </span>
                   </div>
                 )}
@@ -200,15 +186,6 @@ export function OrganizationsPanel() {
                   <Edit className="w-3 h-3 mr-2" />
                   Edit
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(org)}
-                >
-                  <Trash2 className="w-3 h-3 mr-2" />
-                  Delete
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -219,14 +196,10 @@ export function OrganizationsPanel() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Building2 className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No universities found</h3>
+            <h3 className="text-lg font-semibold mb-2">No organization found</h3>
             <p className="text-muted-foreground text-sm mb-4">
-              Get started by creating your first university
+              Start with the protected single-tenant reset script to create the organization and superadmin.
             </p>
-            <Button onClick={handleCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              Create University
-            </Button>
           </CardContent>
         </Card>
       )}
@@ -236,30 +209,30 @@ export function OrganizationsPanel() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingOrg ? 'Edit University' : 'Create New University'}
+            {editingOrg ? 'Edit Organization' : 'Create Organization'}
             </DialogTitle>
             <DialogDescription>
               {editingOrg
-                ? 'Update the university details below'
-                : 'Fill in the details to create a new university'}
+                ? 'Update the organization details below'
+                : 'Set up the organization for this university system'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">University Name *</Label>
+                <Label htmlFor="name">Organization Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  placeholder="Enter university name"
+                  placeholder="Enter organization name"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
@@ -268,11 +241,10 @@ export function OrganizationsPanel() {
                     setFormData({ ...formData, email: e.target.value })
                   }
                   placeholder="contact@university.com"
-                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone *</Label>
+                <Label htmlFor="phone">Phone</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
@@ -280,11 +252,10 @@ export function OrganizationsPanel() {
                     setFormData({ ...formData, phone: e.target.value })
                   }
                   placeholder="+1234567890"
-                  required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="address">Address *</Label>
+                <Label htmlFor="address">Address</Label>
                 <Input
                   id="address"
                   value={formData.address}
@@ -292,7 +263,6 @@ export function OrganizationsPanel() {
                     setFormData({ ...formData, address: e.target.value })
                   }
                   placeholder="123 Street, City, Country"
-                  required
                 />
               </div>
             </div>
@@ -304,37 +274,14 @@ export function OrganizationsPanel() {
               >
                 Cancel
               </Button>
-              <Button type="submit">
-                {editingOrg ? 'Update' : 'Create'}
+              <Button type="submit" disabled={!editingOrg}>
+                Update
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete University</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{deletingOrg?.name}"? This action
-              cannot be undone and will remove all associated data.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

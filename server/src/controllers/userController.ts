@@ -6,11 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateUserId } from '../utils/authUtils.js';
 
 export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const where: any = {};
-  
-  if (req.user.role !== 'superadmin') {
-    where.organizationId = req.user.organizationId;
-  }
+  const where: any = { organizationId: req.user.organizationId };
 
   if (req.query.role) {
     where.role = req.query.role as string;
@@ -34,8 +30,8 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
 });
 
 export const getUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.params.id },
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
     include: {
       organization: true,
       department: true,
@@ -51,10 +47,8 @@ export const getUser = asyncHandler(async (req: AuthRequest, res: Response) => {
 });
 
 export const createUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const isGlobalSuperadmin = req.user.role === 'superadmin' && !req.user.universityId;
-  if (!isGlobalSuperadmin) {
-    req.body.organizationId = req.user.organizationId;
-  }
+  req.body.organizationId = req.user.organizationId;
+  req.body.universityId = req.user.universityId;
 
   const { vacancyId, ...userData } = req.body;
 
@@ -114,16 +108,16 @@ export const createUser = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const userExists = await prisma.user.findUnique({ where: { id: req.params.id } });
+  const userExists = await prisma.user.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+  });
   if (!userExists) {
     res.status(404).json({ success: false, message: 'User not found' });
     return;
   }
 
-  const isGlobalSuperadmin = req.user.role === 'superadmin' && !req.user.universityId;
-  if (!isGlobalSuperadmin) {
-    req.body.organizationId = req.user.organizationId;
-  }
+  req.body.organizationId = req.user.organizationId;
+  req.body.universityId = req.user.universityId;
 
   // If password is being updated, hash it
   if (req.body.password) {
@@ -139,7 +133,9 @@ export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+  });
   if (!user) {
     res.status(404).json({ success: false, message: 'User not found' });
     return;
@@ -159,7 +155,7 @@ export const bulkImportUsers = asyncHandler(async (req: AuthRequest, res: Respon
     return;
   }
 
-  const organizationId = req.user.role === 'superadmin' ? (req.body.organizationId || req.user.organizationId) : req.user.organizationId;
+  const organizationId = req.user.organizationId;
   
   if (!organizationId && req.user.role !== 'superadmin') {
     res.status(400).json({ success: false, message: 'Organization ID is required' });
@@ -294,6 +290,7 @@ export const bulkImportUsers = asyncHandler(async (req: AuthRequest, res: Respon
           role,
           userId: generatedId,
           organizationId,
+          universityId: req.user.universityId,
           departmentId,
           canAddPrograms,
           status: 'active'

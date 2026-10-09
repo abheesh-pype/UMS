@@ -10,8 +10,8 @@ import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '..
 export const getUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
   const universities = await prisma.university.findMany({
     where: {
-      ...(req.user.role !== 'superadmin' && { organizationId: req.user.organizationId }),
-      ...(req.user.role === 'org_admin' && { id: req.user.universityId || 'none' }),
+      singletonKey: 'primary',
+      organizationId: req.user.organizationId,
     },
     include: { allowedBranches: true }
   });
@@ -23,10 +23,18 @@ export const getUniversities = asyncHandler(async (req: AuthRequest, res: Respon
   res.json({ success: true, count: mapped.length, data: mapped });
 });
 export const getUniversity = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const university = await prisma.university.findUnique({
-    where: { id: req.params.id },
+  const university = await prisma.university.findFirst({
+    where: {
+      id: req.params.id,
+      singletonKey: 'primary',
+      organizationId: req.user.organizationId,
+    },
     include: { allowedBranches: true }
   });
+  if (!university) {
+    res.status(404).json({ success: false, message: 'University not found' });
+    return;
+  }
   if (university) {
     (university as any)._id = university.id;
     (university as any).allowedBranchIds = university.allowedBranches || [];
@@ -34,22 +42,53 @@ export const getUniversity = asyncHandler(async (req: AuthRequest, res: Response
   res.json({ success: true, data: university });
 });
 export const createUniversity = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existingUniversity = await prisma.university.findUnique({
+    where: { singletonKey: 'primary' },
+    select: { id: true },
+  });
+  if (existingUniversity) {
+    res.status(409).json({ success: false, message: 'Only one university is allowed.' });
+    return;
+  }
+
   const { allowedBranchIds, ...rest } = req.body;
   const data: any = { organizationId: req.user.organizationId };
   for (const field of ['name', 'code', 'address', 'contact', 'country', 'status', 'subDepartmentId', 'category', 'coordinatorName', 'optionalFields']) {
     if (rest[field] !== undefined) data[field] = rest[field];
   }
-  const university = await prisma.university.create({
-    data: {
-      ...data,
-      allowedBranches: allowedBranchIds && allowedBranchIds.length > 0
-        ? { connect: allowedBranchIds.map((id: string) => ({ id })) }
-        : undefined
+  let university;
+  try {
+    university = await prisma.university.create({
+      data: {
+        ...data,
+        allowedBranches: allowedBranchIds && allowedBranchIds.length > 0
+          ? { connect: allowedBranchIds.map((id: string) => ({ id })) }
+          : undefined
+      }
+    });
+  } catch (error) {
+    if (error?.code === 'P2002') {
+      res.status(409).json({ success: false, message: 'Only one university is allowed.' });
+      return;
     }
-  });
+    throw error;
+  }
   res.status(201).json({ success: true, data: { ...university, _id: university.id } });
 });
 export const updateUniversity = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const existingUniversity = await prisma.university.findFirst({
+    where: {
+      id: req.params.id,
+      singletonKey: 'primary',
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true },
+  });
+  if (!existingUniversity) {
+    res.status(404).json({ success: false, message: 'University not found' });
+    return;
+  }
+
   const { allowedBranchIds, ...rest } = req.body;
   const data: any = {};
   for (const field of ['name', 'code', 'address', 'contact', 'country', 'status', 'subDepartmentId', 'category', 'coordinatorName', 'optionalFields']) {
@@ -67,18 +106,48 @@ export const updateUniversity = asyncHandler(async (req: AuthRequest, res: Respo
   res.json({ success: true, data: { ...university, _id: university.id } });
 });
 export const deleteUniversity = asyncHandler(async (req: AuthRequest, res: Response) => {
-  await prisma.university.delete({ where: { id: req.params.id } });
-  res.json({ success: true, data: {} });
+  const university = await prisma.university.findFirst({
+    where: {
+      id: req.params.id,
+      singletonKey: 'primary',
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true },
+  });
+  if (!university) {
+    res.status(404).json({ success: false, message: 'University not found' });
+    return;
+  }
+  res.status(409).json({
+    success: false,
+    message: 'The single university cannot be deleted. Use the protected single-tenant reset script to start over.',
+  });
 });
 export const activateUniversity = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const university = await prisma.university.update({ where: { id: req.params.id }, data: { status: 'active' as any } });
+  const existingUniversity = await prisma.university.findFirst({
+    where: {
+      id: req.params.id,
+      singletonKey: 'primary',
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true },
+  });
+  if (!existingUniversity) {
+    res.status(404).json({ success: false, message: 'University not found' });
+    return;
+  }
+  const university = await prisma.university.update({ where: { id: existingUniversity.id }, data: { status: 'active' as any } });
   res.json({ success: true, data: { ...university, _id: university.id } });
 });
 
 // Programs
 export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
   const programs = await prisma.program.findMany({ 
-    where: { organizationId: req.user.organizationId, isDeleted: false }, 
+    where: {
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+      university: { singletonKey: 'primary' },
+    },
     include: { university: true } 
   });
   const mapped = programs.map(p => ({
@@ -89,56 +158,42 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
   res.json({ success: true, count: mapped.length, data: mapped });
 });
 export const getProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const program = await prisma.program.findUnique({ where: { id: req.params.id }, include: { university: true } });
-  if (program) {
-    (program as any)._id = program.id;
-    program.courseType = mapPrismaToFrontendCourseType(program.courseType);
+  const program = await prisma.program.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      university: { singletonKey: 'primary' },
+    },
+    include: { university: true },
+  });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
   }
+  (program as any)._id = program.id;
+  program.courseType = mapPrismaToFrontendCourseType(program.courseType);
   res.json({ success: true, data: program });
 });
 export const createProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (req.body.courseType) {
     req.body.courseType = mapFrontendToPrismaCourseType(req.body.courseType);
   }
-  let universityId: string | undefined;
-  const parentUniversity = req.user.universityId
-    ? await prisma.university.findFirst({
-        where: { id: req.user.universityId, organizationId: req.user.organizationId },
-        select: { id: true },
-      })
-    : null;
-  if (parentUniversity) {
-    universityId = parentUniversity.id;
-  } else {
-    let defaultUni = await prisma.university.findFirst({
-      where: { organizationId: req.user.organizationId },
-      select: { id: true },
-    });
-
-    if (!defaultUni) {
-      const organizationName = req.user.organization?.name || 'Organization';
-      const defaultCode = `ORG-${String(req.user.organizationId).slice(0, 8).toUpperCase()}`;
-      defaultUni = await prisma.university.create({
-        data: {
-          organization: { connect: { id: req.user.organizationId } },
-          name: `${organizationName} University`,
-          code: defaultCode,
-          status: 'active',
-        },
-        select: { id: true },
-      });
-    }
-
-    universityId = defaultUni?.id;
-  }
-  if (!universityId) {
+  const university = await prisma.university.findFirst({
+    where: {
+      id: req.user.universityId,
+      organizationId: req.user.organizationId,
+      singletonKey: 'primary',
+    },
+    select: { id: true },
+  });
+  if (!university) {
     res.status(400).json({ success: false, message: 'A university is required before adding a program' });
     return;
   }
 
   const data: any = {
     organization: { connect: { id: req.user.organizationId } },
-    university: { connect: { id: universityId } },
+    university: { connect: { id: university.id } },
   };
   if (req.body.academicSessionId) {
     data.academicSession = { connect: { id: req.body.academicSessionId } };
@@ -161,16 +216,33 @@ export const updateProgram = asyncHandler(async (req: AuthRequest, res: Response
     req.body.courseType = mapFrontendToPrismaCourseType(req.body.courseType);
   }
   const data: any = {};
-  for (const field of ['academicSessionId', 'universityId', 'subDepartmentId', 'name', 'courseName', 'description', 'code', 'courseType', 'duration', 'hasSemesters', 'semesters', 'status', 'specialisations']) {
+  for (const field of ['academicSessionId', 'subDepartmentId', 'name', 'courseName', 'description', 'code', 'courseType', 'duration', 'hasSemesters', 'semesters', 'status', 'specialisations']) {
     if (req.body[field] !== undefined) data[field] = req.body[field];
   }
-  const program = await prisma.program.update({ where: { id: req.params.id }, data });
+  const existingProgram = await prisma.program.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      university: { singletonKey: 'primary' },
+    },
+    select: { id: true },
+  });
+  if (!existingProgram) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+  data.universityId = req.user.universityId;
+  const program = await prisma.program.update({ where: { id: existingProgram.id }, data });
   program.courseType = mapPrismaToFrontendCourseType(program.courseType);
   res.json({ success: true, data: { ...program, _id: program.id } });
 });
 export const deleteProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const program = await prisma.program.findUnique({
-    where: { id: req.params.id },
+  const program = await prisma.program.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      university: { singletonKey: 'primary' },
+    },
     include: { _count: { select: { enrollments: true } } }
   });
 
@@ -191,7 +263,19 @@ export const deleteProgram = asyncHandler(async (req: AuthRequest, res: Response
   res.json({ success: true, data: {} });
 });
 export const activateProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const program = await prisma.program.update({ where: { id: req.params.id }, data: { status: 'active' as any } });
+  const existingProgram = await prisma.program.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      university: { singletonKey: 'primary' },
+    },
+    select: { id: true },
+  });
+  if (!existingProgram) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+  const program = await prisma.program.update({ where: { id: existingProgram.id }, data: { status: 'active' as any } });
   program.courseType = mapPrismaToFrontendCourseType(program.courseType);
   res.json({ success: true, data: { ...program, _id: program.id } });
 });
@@ -207,7 +291,15 @@ const normalizeSemesterDate = (value: unknown, fieldName: string) => {
 };
 
 export const getProgramSemesters = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const program = await prisma.program.findFirst({ where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false }, select: { id: true } });
+  const program = await prisma.program.findFirst({
+    where: {
+      id: req.params.programId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+      university: { singletonKey: 'primary' },
+    },
+    select: { id: true },
+  });
   if (!program) {
     res.status(404).json({ success: false, message: 'Program not found' });
     return;
@@ -222,7 +314,15 @@ export const createProgramSemester = asyncHandler(async (req: AuthRequest, res: 
     res.status(400).json({ success: false, message: 'Semester name, number, and academic session are required' });
     return;
   }
-  const program = await prisma.program.findFirst({ where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false }, select: { id: true } });
+  const program = await prisma.program.findFirst({
+    where: {
+      id: req.params.programId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+      university: { singletonKey: 'primary' },
+    },
+    select: { id: true },
+  });
   if (!program) {
     res.status(404).json({ success: false, message: 'Program not found' });
     return;
@@ -260,7 +360,12 @@ export const deleteProgramSemester = asyncHandler(async (req: AuthRequest, res: 
 
 export const getProgramModules = asyncHandler(async (req: AuthRequest, res: Response) => {
   const program = await prisma.program.findFirst({
-    where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false },
+    where: {
+      id: req.params.programId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+      university: { singletonKey: 'primary' },
+    },
     select: { id: true }
   });
   if (!program) {
@@ -283,7 +388,12 @@ export const createProgramModule = asyncHandler(async (req: AuthRequest, res: Re
   }
 
   const program = await prisma.program.findFirst({
-    where: { id: req.params.programId, organizationId: req.user.organizationId, isDeleted: false },
+    where: {
+      id: req.params.programId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+      university: { singletonKey: 'primary' },
+    },
     select: { id: true, academicSessionId: true }
   });
   if (!program) {

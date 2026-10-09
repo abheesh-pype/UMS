@@ -1,10 +1,10 @@
 # ERP System Backend
 
-Multi-tenant ERP system backend built with Node.js, Express, TypeScript, and MongoDB.
+Single-tenant university ERP backend built with Node.js, Express, TypeScript, and PostgreSQL.
 
 ## Features
 
-- 🏢 Multi-tenant architecture with organization isolation
+- 🏛️ Single organization and single university
 - 🔐 JWT-based authentication and role-based authorization
 - 📊 Real-time dashboard metrics
 - 🚨 Automated escalation system for overdue tasks
@@ -18,7 +18,7 @@ Multi-tenant ERP system backend built with Node.js, Express, TypeScript, and Mon
 
 - **Runtime**: Node.js with TypeScript
 - **Framework**: Express.js
-- **Database**: MongoDB with Mongoose ODM
+- **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: JWT (JSON Web Tokens)
 - **Security**: Helmet, CORS, bcryptjs
 - **File Upload**: Multer
@@ -28,7 +28,7 @@ Multi-tenant ERP system backend built with Node.js, Express, TypeScript, and Mon
 ## Prerequisites
 
 - Node.js >= 18.x
-- MongoDB >= 6.x
+- PostgreSQL
 - npm or yarn
 
 ## Installation
@@ -52,29 +52,71 @@ cp .env.example .env
 ```env
 NODE_ENV=development
 PORT=5000
-MONGODB_URI=mongodb://localhost:27017/erp_system
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public
 JWT_SECRET=your-secret-key
 CORS_ORIGIN=http://localhost:5173
 ```
 
 ## Database Setup
 
-1. Start MongoDB:
+1. Create the PostgreSQL database and configure its `DATABASE_URL` in `.env`.
+
+2. Apply the database migrations:
 ```bash
-mongod
+npx prisma migrate deploy
 ```
 
-2. Seed the database:
+3. To load demo data:
 ```bash
 npm run seed
 ```
 
+`npm run seed` clears existing application data before loading demo data. For
+your own organization, university, and superadmin credentials, use the
+protected `reset-single-tenant` process below instead.
+
 This will create:
 - Sample licenses (Basic, Premium, Enterprise)
 - Superadmin account
-- Sample organization (EduTech Global)
+- One organization (EduTech Global by default)
+- One university (EduTech University by default)
 - Departments (Operations, Finance, HR, Sales)
 - Sample users for each role
+
+The application supports one organization and one university. Override the seeded
+names and university code with `SEED_ORGANIZATION_NAME`, `SEED_UNIVERSITY_NAME`,
+and `SEED_UNIVERSITY_CODE`.
+
+### Starting over with a new organization and university
+
+The reset command truncates application tables, preserves Prisma migration
+history, and creates one organization, one university, and one superadmin. It
+does not run automatically. Set the following variables in the server
+environment before running it:
+
+```env
+RESET_DATABASE_HOST=your_database_host
+RESET_DATABASE_NAME=your_database_name
+RESET_DATABASE_CONFIRMATION=WIPE your_database_host/your_database_name
+RESET_ORGANIZATION_NAME=Your Organization
+RESET_UNIVERSITY_NAME=Your University
+RESET_UNIVERSITY_CODE=YOUR-CODE
+RESET_SUPERADMIN_EMAIL=admin@example.edu
+RESET_SUPERADMIN_NAME=Super Admin
+RESET_SUPERADMIN_PASSWORD=use-a-unique-password-of-12-or-more-characters
+```
+
+Then, from the `server` directory, apply migrations and run the reset command:
+
+```bash
+npx prisma migrate deploy
+npm run reset-single-tenant
+```
+
+The command verifies the configured database host and connected database name,
+and requires the exact confirmation string shown above. In production, it also
+requires `ALLOW_DB_RESET=true`. Never run it against a database whose data must
+be retained.
 
 ## Running the Server
 
@@ -118,8 +160,8 @@ Authorization: Bearer <token>
 ### Main Modules
 
 #### Organizations
-- `GET /api/v1/organizations` - List all organizations (Superadmin)
-- `POST /api/v1/organizations` - Create organization (Superadmin)
+- `GET /api/v1/organizations` - Get the single organization
+- `POST /api/v1/organizations` - Create an organization only when none exists
 - `GET /api/v1/organizations/:id` - Get organization details
 - `PUT /api/v1/organizations/:id` - Update organization
 - `PUT /api/v1/organizations/:id/license` - Assign license
@@ -165,8 +207,8 @@ Authorization: Bearer <token>
 - `GET /api/v1/finance/fees` - List fee structures
 
 #### Operations Module
-- `GET /api/v1/operations/universities` - List universities
-- `POST /api/v1/operations/universities` - Create university
+- `GET /api/v1/operations/universities` - Get the single university
+- `POST /api/v1/operations/universities` - Create a university only when none exists
 - `GET /api/v1/operations/programs` - List programs
 - `GET /api/v1/operations/centers` - List study centers
 - `PUT /api/v1/operations/centers/:id/approve` - Approve center
@@ -234,7 +276,7 @@ After running `npm run seed`:
 - Helmet security headers
 - CORS protection
 - Input validation
-- MongoDB injection prevention
+- Prisma query parameterization
 
 ## Project Structure
 
@@ -244,7 +286,7 @@ server/
 │   ├── config/          # Configuration files
 │   ├── controllers/     # Route controllers
 │   ├── middleware/      # Custom middleware
-│   ├── models/          # Mongoose models
+│   ├── prisma/          # Prisma schema and migrations
 │   ├── routes/          # API routes
 │   ├── scripts/         # Utility scripts
 │   ├── services/        # Business logic
@@ -267,7 +309,7 @@ All errors are handled centrally with appropriate HTTP status codes:
 
 ## Performance
 
-- MongoDB indexes on frequently queried fields
+- PostgreSQL indexes on frequently queried fields
 - Compression middleware for response optimization
 - Efficient query population
 - Pagination support (can be added to list endpoints)
@@ -283,7 +325,7 @@ npm test
 
 ### Production Checklist
 - [ ] Set strong JWT_SECRET
-- [ ] Configure production MongoDB URI
+- [ ] Configure production PostgreSQL connection string
 - [ ] Set NODE_ENV=production
 - [ ] Enable HTTPS
 - [ ] Configure proper CORS origins

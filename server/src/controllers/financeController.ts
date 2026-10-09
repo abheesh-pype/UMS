@@ -538,7 +538,7 @@ export const getPendingPaymentCenters = asyncHandler(async (req: AuthRequest, re
   });
   const result = await Promise.all(centers.map(async center => {
     const universities = await prisma.university.findMany({
-      where: { id: { in: center.universityIds || [] }, organizationId: req.user.organizationId },
+      where: { id: { in: center.universityIds || [] }, organizationId: req.user.organizationId, singletonKey: 'primary' },
       select: { id: true, name: true, code: true }
     });
     const authFees = await prisma.universityAuthFee.findMany({

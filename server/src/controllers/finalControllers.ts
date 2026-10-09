@@ -16,7 +16,7 @@ export const getEmployeeProfile = asyncHandler(async (req: AuthRequest, res: Res
 // --- Public Controller ---
 export const getPublicUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
   const universities = await prisma.university.findMany({
-    where: { status: 'active' as any }
+    where: { singletonKey: 'primary', status: 'active' as any }
   });
   res.json({ success: true, count: universities.length, data: universities });
 });

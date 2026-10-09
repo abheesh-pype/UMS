@@ -5,13 +5,13 @@ import prisma from '../lib/prisma.js';
 import { generateToken, generateRefreshToken } from '../utils/jwt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, comparePassword, generateUserId } from '../utils/authUtils.js';
+import { getSingleTenantContext } from '../utils/contextHelper.js';
 
 // @desc    Register user
 // @route   POST /api/v1/auth/register
 // @access  Public (or Superadmin/OrgAdmin only)
 export const register = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
-    organizationId,
     departmentId,
     subDepartmentId,
     email,
@@ -22,6 +22,7 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     designation,
     reportingTo,
   } = req.body;
+  const { organizationId, universityId } = await getSingleTenantContext();
 
   // Check if user exists
   const userExists = await prisma.user.findUnique({ where: { email } });
@@ -39,6 +40,7 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
     data: {
       userId,
       organizationId,
+      universityId,
       departmentId,
       subDepartmentId,
       email,
@@ -83,9 +85,12 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     return;
   }
 
+  const { organizationId, universityId } = await getSingleTenantContext();
+
   // Check for user (by email or unique userId)
   const user = await prisma.user.findFirst({ 
     where: {
+      organizationId,
       OR: [
         { email: { equals: loginIdentifier, mode: 'insensitive' } },
         { userId: { equals: loginIdentifier, mode: 'insensitive' } }
@@ -139,8 +144,8 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        organizationId: user.organizationId,
-        universityId: user.universityId,
+        organizationId,
+        universityId,
         departmentId: user.departmentId,
         subDepartmentId: user.subDepartmentId,
         studyCenterId: user.studyCenterId,

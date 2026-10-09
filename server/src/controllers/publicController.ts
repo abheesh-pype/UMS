@@ -29,11 +29,16 @@ export const submitPaymentProof = asyncHandler(async (req: Request, res: Respons
 });
 
 export const getPublicUniversities = asyncHandler(async (req: Request, res: Response) => {
-  const universities = await prisma.university.findMany({ where: { status: 'active' as any } });
+  const universities = await prisma.university.findMany({
+    where: { singletonKey: 'primary', status: 'active' as any },
+  });
   res.json({ success: true, count: universities.length, data: universities });
 });
 
 export const getPublicPrograms = asyncHandler(async (req: Request, res: Response) => {
-  const programs = await prisma.program.findMany({ where: { status: 'active' as any }, include: { university: true } });
+  const programs = await prisma.program.findMany({
+    where: { status: 'active' as any, university: { singletonKey: 'primary' } },
+    include: { university: true },
+  });
   res.json({ success: true, count: programs.length, data: programs });
 });

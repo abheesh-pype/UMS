@@ -36,8 +36,9 @@ export const protect = async (
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+    const { organizationId, universityId } = await getSingleTenantContext();
+    const user = await prisma.user.findFirst({
+      where: { id: decoded.id, organizationId },
       include: {
         organization: true,
         department: true,
@@ -52,12 +53,10 @@ export const protect = async (
       return;
     }
 
-    const { organizationId: defaultOrgId, universityId: defaultUniId } = await getSingleTenantContext();
-
     req.user = {
       ...user,
-      organizationId: user.organizationId || defaultOrgId,
-      universityId: user.universityId || defaultUniId,
+      organizationId,
+      universityId,
     };
     next();
   } catch (error) {

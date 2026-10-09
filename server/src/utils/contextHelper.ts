@@ -1,35 +1,30 @@
 import prisma from '../lib/prisma.js';
 
-let cachedOrgId: string | null = null;
-let cachedUniId: string | null = null;
-
 /**
- * Returns the single primary organization ID from verified database records.
+ * Returns the only organization ID allowed by the single-tenant database constraint.
  */
 export const getDefaultOrganizationId = async (): Promise<string> => {
-  if (cachedOrgId) return cachedOrgId;
-  const org = await prisma.organization.findFirst({
-    orderBy: { createdAt: 'asc' }
+  const org = await prisma.organization.findUnique({
+    where: { singletonKey: 'primary' },
+    select: { id: true },
   });
   if (!org) {
-    throw new Error('No organization found in database.');
+    throw new Error('No primary organization found in database. Run the single-tenant setup.');
   }
-  cachedOrgId = org.id;
   return org.id;
 };
 
 /**
- * Returns the single primary university ID from verified database records.
+ * Returns the only university ID allowed by the single-tenant database constraint.
  */
 export const getDefaultUniversityId = async (): Promise<string> => {
-  if (cachedUniId) return cachedUniId;
-  const uni = await prisma.university.findFirst({
-    orderBy: { id: 'asc' }
+  const uni = await prisma.university.findUnique({
+    where: { singletonKey: 'primary' },
+    select: { id: true },
   });
   if (!uni) {
-    throw new Error('No university found in database.');
+    throw new Error('No primary university found in database. Run the single-tenant setup.');
   }
-  cachedUniId = uni.id;
   return uni.id;
 };
 

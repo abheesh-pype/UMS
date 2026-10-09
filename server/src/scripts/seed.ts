@@ -38,16 +38,27 @@ const seedData = async () => {
       }
     });
 
-    console.log('🏢 Creating system organization...');
-    const systemOrg = await prisma.organization.create({
+    console.log('🏢 Creating the single organization...');
+    const organization = await prisma.organization.create({
       data: {
-        id: 'system',
-        name: 'System Administration',
+        name: process.env.SEED_ORGANIZATION_NAME || 'EduTech Global',
+        email: 'contact@edutechglobal.com',
+        phone: '+1234567891',
+        address: '123 Education Street, Tech City, TC 12345',
         status: 'active',
-        email: 'system@example.com',
-        phone: '0000000000',
-        address: 'System Address'
+        licenseId: premiumLicense.id,
+        licenseExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       }
+    });
+
+    console.log('🏛️ Creating the single university...');
+    const university = await prisma.university.create({
+      data: {
+        organizationId: organization.id,
+        name: process.env.SEED_UNIVERSITY_NAME || 'EduTech University',
+        code: process.env.SEED_UNIVERSITY_CODE || 'EDUTECH',
+        status: 'active',
+      },
     });
 
     console.log('👤 Creating superadmin...');
@@ -55,25 +66,13 @@ const seedData = async () => {
     await prisma.user.create({
       data: {
         userId: 'superadmin',
-        organizationId: systemOrg.id,
+        organizationId: organization.id,
+        universityId: university.id,
         email: 'superadmin@erp.com',
         password: hashedPassword,
         name: 'Super Admin',
         role: 'superadmin' as any,
         status: 'active',
-      }
-    });
-
-    console.log('🏢 Creating sample organization...');
-    const organization = await prisma.organization.create({
-      data: {
-        name: 'EduTech Global',
-        email: 'contact@edutechglobal.com',
-        phone: '+1234567891',
-        address: '123 Education Street, Tech City, TC 12345',
-        status: 'active',
-        licenseId: premiumLicense.id,
-        licenseExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       }
     });
 
@@ -105,6 +104,7 @@ const seedData = async () => {
         data: {
           userId: user.id,
           organizationId: organization.id,
+          universityId: university.id,
           email: user.email,
           password: hashedUserPassword,
           name: user.name,

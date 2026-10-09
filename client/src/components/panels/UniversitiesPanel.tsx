@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, Building2, GitBranch, Globe, Lock } from 'lucide-react';
+import { Plus, Edit, Building2, GitBranch, Globe, Lock } from 'lucide-react';
+import { isAxiosError } from 'axios';
+import { toast } from 'sonner';
 // Card import removed — using custom sections instead
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -14,7 +16,7 @@ interface Branch { id: string; name: string; code: string; }
 interface University {
   id: string; name: string; code: string; address?: string;
   contact?: string; status: string; coordinatorName?: string;
-  category?: string; optionalFields?: any;
+  category?: string; optionalFields?: unknown;
   allowedBranchIds: Branch[];
 }
 
@@ -38,7 +40,8 @@ export function UniversitiesPanel() {
     try {
       const res = await api.get('/operations/universities');
       setUniversities(res.data.data || []);
-    } catch (err) {
+    } catch {
+      toast.error('Failed to fetch universities');
     } finally {
       setLoading(false);
     }
@@ -48,7 +51,8 @@ export function UniversitiesPanel() {
     try {
       const res = await api.get('/org/branches');
       setBranches(res.data.data || []);
-    } catch (err) {
+    } catch {
+      toast.error('Failed to fetch branches');
     }
   }, []);
 
@@ -73,8 +77,11 @@ export function UniversitiesPanel() {
       setDialogOpen(false);
       resetForm();
       fetchUniversities();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to save university');
+    } catch (error) {
+      const message = isAxiosError<{ message?: string }>(error)
+        ? error.response?.data?.message
+        : undefined;
+      alert(message || 'Failed to save university');
     }
   };
 
@@ -93,18 +100,18 @@ export function UniversitiesPanel() {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this university?')) return;
-    try {
-      await api.delete(`/operations/universities/${id}`);
-      fetchUniversities();
-    } catch (err) {
-    }
-  };
-
   const resetForm = () => {
     setEditingId(null);
-    setFormData({ name: '', code: '', address: '', contact: '', coordinatorName: '', status: 'active' });
+    setFormData({
+      name: '',
+      code: '',
+      address: '',
+      contact: '',
+      coordinatorName: '',
+      status: 'active',
+      category: 'team_lease',
+      optionalFields: '',
+    });
     setSelectedBranchIds([]);
     setAccessMode('all');
   };
@@ -114,10 +121,10 @@ export function UniversitiesPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">University Management</h2>
-          <p className="text-muted-foreground">Manage affiliated universities and institutions</p>
+          <p className="text-muted-foreground">Manage the single university for this organization</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          {isOrgAdmin && (
+          {isOrgAdmin && universities.length === 0 && (
             <DialogTrigger asChild>
               <Button><Plus className="w-4 h-4 mr-2" />Add University</Button>
             </DialogTrigger>
@@ -370,10 +377,7 @@ export function UniversitiesPanel() {
               <Badge variant="outline" className="text-xs bg-slate-50 capitalize">{u.category?.replace('_', ' ') || 'Team Lease'}</Badge>
               <Badge variant={u.status === 'active' ? 'default' : 'secondary'} className="text-xs">{u.status}</Badge>
               {isOrgAdmin && (
-                <>
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(u)}><Edit className="w-3.5 h-3.5" /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(u.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                </>
+                <Button variant="ghost" size="sm" onClick={() => handleEdit(u)}><Edit className="w-3.5 h-3.5" /></Button>
               )}
             </div>
           </div>

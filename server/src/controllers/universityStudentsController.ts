@@ -11,7 +11,7 @@ export const getUniversityStudents = asyncHandler(async (req: AuthRequest, res: 
 
   // Verify university exists and belongs to org
   const university = await prisma.university.findFirst({
-    where: { id: universityId, organizationId: organizationId }
+    where: { id: universityId, organizationId, singletonKey: 'primary' }
   });
 
   if (!university) {
@@ -92,7 +92,7 @@ export const getUniversityMetrics = asyncHandler(async (req: AuthRequest, res: R
   const organizationId = req.user.organizationId;
 
   const university = await prisma.university.findFirst({
-    where: { id: universityId, organizationId: organizationId }
+    where: { id: universityId, organizationId, singletonKey: 'primary' }
   });
 
   if (!university) {
