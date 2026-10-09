@@ -55,6 +55,8 @@ export function DepartmentsPanel() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
@@ -121,8 +123,10 @@ export function DepartmentsPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
 
     try {
+      setSubmitting(true);
       const payload: any = {
         name: formData.name,
         type: formData.type === 'custom' ? formData.customType.trim() : formData.type,
@@ -130,6 +134,7 @@ export function DepartmentsPanel() {
       };
       if (!payload.type) {
         toast.error('Please enter a custom department type');
+        setSubmitting(false);
         return;
       }
       // Only include managerId if a real user was selected
@@ -149,19 +154,24 @@ export function DepartmentsPanel() {
       fetchData();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Operation failed');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const confirmDelete = async () => {
-    if (!deletingDept) return;
+    if (!deletingDept || deleting) return;
 
     try {
+      setDeleting(true);
       await api.delete(`/departments/${deletingDept.id}`);
       toast.success('Department deleted successfully');
       setIsDeleteDialogOpen(false);
       fetchData();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to delete department');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -408,11 +418,18 @@ export function DepartmentsPanel() {
                 type="button"
                 variant="outline"
                 onClick={() => setIsDialogOpen(false)}
+                disabled={submitting}
               >
                 Cancel
               </Button>
-              <Button type="submit">
-                {editingDept ? 'Update' : 'Create'}
+              <Button type="submit" disabled={submitting}>
+                {submitting
+                  ? editingDept
+                    ? 'Updating...'
+                    : 'Creating...'
+                  : editingDept
+                  ? 'Update'
+                  : 'Create'}
               </Button>
             </DialogFooter>
           </form>
@@ -432,11 +449,12 @@ export function DepartmentsPanel() {
             <Button
               variant="outline"
               onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={deleting}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>
