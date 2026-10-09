@@ -60,12 +60,11 @@ const navItems: NavItem[] = [
   },
   {
     id: 'organizations',
-    label: 'Universities',
+    label: 'University Settings',
     icon: Building2,
     roles: ['superadmin'],
     children: [
-      { id: 'org-list', label: 'All Universities', icon: Building, roles: ['superadmin'] },
-      { id: 'licenses', label: 'Licenses', icon: Key, roles: ['superadmin'] },
+      { id: 'org-list', label: 'University Profile', icon: Building, roles: ['superadmin'] },
     ],
   },
   {

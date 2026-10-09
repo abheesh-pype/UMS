@@ -31,3 +31,4 @@ Thumbs.db
 # Prisma
 /server/src/generated/client/
 /server/dist/
+report.md

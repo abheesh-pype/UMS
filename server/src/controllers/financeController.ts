@@ -25,17 +25,12 @@ export const getInvoice = asyncHandler(async (req: AuthRequest, res: Response) =
 export const createInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { centerId, studentId, invoiceNo, amount, tax, total, status, items, dueDate } = req.body;
   
-  let finalCenterId = centerId;
+  let finalCenterId = (centerId && centerId !== 'null' && centerId !== 'none') ? centerId : null;
   if (!finalCenterId && studentId) {
     const student = await prisma.student.findUnique({ where: { id: studentId } });
-    if (student) {
+    if (student && student.centerId) {
       finalCenterId = student.centerId;
     }
-  }
-
-  if (!finalCenterId) {
-    res.status(400).json({ success: false, message: 'centerId is required' });
-    return;
   }
 
   const data: any = {

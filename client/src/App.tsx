@@ -204,8 +204,7 @@ function App() {
     if (user.role === 'superadmin') {
       return [
         { id: 'dashboard', label: 'Dashboard' },
-        { id: 'organizations', label: 'Universities' },
-        { id: 'licenses', label: 'Licenses' },
+        { id: 'organizations', label: 'University Settings' },
         { id: 'users', label: 'Users' },
         { id: 'departments', label: 'Departments' },
         { id: 'audit_logs', label: 'Audit Logs' },

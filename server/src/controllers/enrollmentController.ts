@@ -205,77 +205,97 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee
   } = req.body;
   const organizationId = req.user.organizationId;
-  const studyCenterId = req.user.studyCenterId;
+  const studyCenterId = req.user.studyCenterId || req.body.studyCenterId || null;
 
   if (!studentName || !studentEmail || !studentPhone || !studentAddress || !programId) {
     res.status(400).json({ success: false, message: 'Missing required fields' });
     return;
   }
-  if (!studyCenterId) {
+  if (req.user.role === 'center_admin' && !studyCenterId) {
     res.status(400).json({ success: false, message: 'No study center assigned to your account' });
     return;
   }
 
-  const linkedCenter = await prisma.studyCenter.findUnique({
-    where: { id: studyCenterId },
-    select: { universityIds: true }
-  });
-  const linkedUniversityIds = linkedCenter?.universityIds || [];
+  let selectedProgram: any = null;
+  if (studyCenterId) {
+    const linkedCenter = await prisma.studyCenter.findUnique({
+      where: { id: studyCenterId },
+      select: { universityIds: true }
+    });
+    const linkedUniversityIds = linkedCenter?.universityIds || [];
 
-  const selectedProgram = await prisma.program.findFirst({
-    where: {
-      id: programId,
-      organizationId,
-      status: 'active' as any,
-      OR: [
-        ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
-        {
-          programAllocations: {
-            some: { centerId: studyCenterId, isActive: true }
-          }
-        },
-        {
-          university: {
-            universityAllocations: {
+    selectedProgram = await prisma.program.findFirst({
+      where: {
+        id: programId,
+        organizationId,
+        status: 'active' as any,
+        OR: [
+          ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
+          {
+            programAllocations: {
               some: { centerId: studyCenterId, isActive: true }
             }
+          },
+          {
+            university: {
+              universityAllocations: {
+                some: { centerId: studyCenterId, isActive: true }
+              }
+            }
           }
-        }
-      ]
-    },
-    select: { id: true, universityId: true }
-  });
+        ]
+      },
+      select: { id: true, universityId: true }
+    });
 
-  if (!selectedProgram) {
-    res.status(403).json({ success: false, message: 'This program is not allocated to your study center' });
-    return;
+    if (!selectedProgram) {
+      res.status(403).json({ success: false, message: 'This program is not allocated to the selected study center' });
+      return;
+    }
+  } else {
+    selectedProgram = await prisma.program.findFirst({
+      where: {
+        id: programId,
+        organizationId,
+        status: 'active' as any,
+      },
+      select: { id: true, universityId: true }
+    });
+
+    if (!selectedProgram) {
+      res.status(404).json({ success: false, message: 'Selected program is invalid or inactive' });
+      return;
+    }
   }
 
-  // Form customisation validation
-  const center = await prisma.studyCenter.findUnique({
-    where: { id: studyCenterId }
-  });
-  if (center?.customEnrollmentFields) {
-    const config = typeof center.customEnrollmentFields === 'string' 
-      ? JSON.parse(center.customEnrollmentFields) 
-      : center.customEnrollmentFields;
-    if (config && typeof config === 'object' && !Array.isArray(config)) {
-      for (const [field, requirement] of Object.entries(config)) {
-        if (requirement === 'required') {
-          if (field.startsWith('doc_')) {
-            const docMap: any = { doc_aadhaar: 'Aadhaar Card', doc_10th: '10th Certificate', doc_12th: '12th Certificate', doc_degree: 'Degree Certificate' };
-            const reqName = docMap[field];
-            const docs = req.body.documents || [];
-            if (!docs.some((d: any) => d.reqName === reqName)) {
-              res.status(400).json({ success: false, message: `Document '${reqName}' is required by this center's configuration` });
+  // Form customisation validation (if center-based)
+  let center: any = null;
+  if (studyCenterId) {
+    center = await prisma.studyCenter.findUnique({
+      where: { id: studyCenterId }
+    });
+    if (center?.customEnrollmentFields) {
+      const config = typeof center.customEnrollmentFields === 'string' 
+        ? JSON.parse(center.customEnrollmentFields) 
+        : center.customEnrollmentFields;
+      if (config && typeof config === 'object' && !Array.isArray(config)) {
+        for (const [field, requirement] of Object.entries(config)) {
+          if (requirement === 'required') {
+            if (field.startsWith('doc_')) {
+              const docMap: any = { doc_aadhaar: 'Aadhaar Card', doc_10th: '10th Certificate', doc_12th: '12th Certificate', doc_degree: 'Degree Certificate' };
+              const reqName = docMap[field];
+              const docs = req.body.documents || [];
+              if (!docs.some((d: any) => d.reqName === reqName)) {
+                res.status(400).json({ success: false, message: `Document '${reqName}' is required by this center's configuration` });
+                return;
+              }
+              continue;
+            }
+            const val = req.body[field];
+            if (val === undefined || val === null || String(val).trim() === '') {
+              res.status(400).json({ success: false, message: `Field '${field}' is required by this center's configuration` });
               return;
             }
-            continue;
-          }
-          const val = req.body[field];
-          if (val === undefined || val === null || String(val).trim() === '') {
-            res.status(400).json({ success: false, message: `Field '${field}' is required by this center's configuration` });
-            return;
           }
         }
       }
@@ -375,7 +395,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
           currentlyWorking,
           status: 'pending',
           organization: { connect: { id: organizationId } },
-          center: { connect: { id: studyCenterId } },
+          center: studyCenterId ? { connect: { id: studyCenterId } } : undefined,
           user: { connect: { email: studentEmail } },
           program: { connect: { id: programId } }
         }
@@ -411,7 +431,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         totalFee: totalFee ? Number(totalFee) : null,
         organization: { connect: { id: organizationId } },
         program:      { connect: { id: programId } },
-        studyCenter:  { connect: { id: studyCenterId } },
+        studyCenter:  studyCenterId ? { connect: { id: studyCenterId } } : undefined,
         session:      { connect: { id: finalSessionId } },
         student:      { connect: { id: student.id } },
       }
@@ -433,6 +453,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     // Fetch program details for the message
     const prog = await prisma.program.findUnique({ where: { id: programId } });
     const programName = prog ? prog.name : '';
+    const centerNameText = center ? `by ${center.name} ` : 'via Direct Admission ';
 
     // Batch create notifications in a single DB call instead of N+1 loop
     await prisma.notification.createMany({
@@ -440,7 +461,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         organizationId,
         userId: opUser.id,
         title: '📄 New Enrollment Pending Verification',
-        message: `A new enrollment for ${studentName} has been submitted by ${center.name} for ${programName}.`,
+        message: `A new enrollment for ${studentName} has been submitted ${centerNameText}for ${programName}.`,
         type: 'general' as any,
         priority: 'medium' as any,
         link: 'enrollment_review'

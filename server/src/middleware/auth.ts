@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { getSingleTenantContext } from '../utils/contextHelper.js';
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -51,7 +52,13 @@ export const protect = async (
       return;
     }
 
-    req.user = user;
+    const { organizationId: defaultOrgId, universityId: defaultUniId } = await getSingleTenantContext();
+
+    req.user = {
+      ...user,
+      organizationId: user.organizationId || defaultOrgId,
+      universityId: user.universityId || defaultUniId,
+    };
     next();
   } catch (error) {
     res.status(500).json({ success: false, message: 'Auth error' });
