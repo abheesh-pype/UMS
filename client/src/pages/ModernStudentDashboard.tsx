@@ -34,7 +34,11 @@ const readStudentExamPortals = () => {
   }
 };
 
-export function ModernStudentDashboard() {
+interface ModernStudentDashboardProps {
+  initialTab?: string;
+}
+
+export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardProps) {
   const { logout } = useAuth();
   const [student, setStudent] = useState<any>(null);
   const [materials, setMaterials] = useState<any[]>([]);
@@ -42,7 +46,11 @@ export function ModernStudentDashboard() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal'>('portal');
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal'
+      ? initialTab
+      : 'portal'
+  );
   const [selectedExamination, setSelectedExamination] = useState<any>(null);
   const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -56,6 +64,14 @@ export function ModernStudentDashboard() {
     phone: '',
   });
   const [registrationConfirmed, setRegistrationConfirmed] = useState(false);
+
+  useEffect(() => {
+    setActiveSection(
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal'
+        ? initialTab
+        : 'portal'
+    );
+  }, [initialTab]);
 
   useEffect(() => {
     fetchStudentData();
@@ -277,29 +293,6 @@ export function ModernStudentDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Button
-              variant={activeSection === 'notifications' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={openNotifications}
-              className="relative gap-2"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="hidden sm:inline">Notifications</span>
-              {unreadNotifications > 0 && (
-                <Badge className="min-w-5 h-5 px-1 justify-center text-[10px]">
-                  {unreadNotifications}
-                </Badge>
-              )}
-            </Button>
-            <Button
-              variant={activeSection === 'active-session' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setActiveSection('active-session')}
-              className="gap-2"
-            >
-              <School className="w-4 h-4" />
-              <span className="hidden sm:inline">Active Session</span>
-            </Button>
             <div className="hidden md:block text-right">
               <p className="text-sm font-medium">{student.name}</p>
               <p className="text-xs text-muted-foreground">{student.enrollmentNo}</p>
@@ -313,39 +306,6 @@ export function ModernStudentDashboard() {
       </header>
 
       <div className="flex">
-        <aside className="hidden md:block w-56 shrink-0 border-r bg-background min-h-[calc(100vh-4rem)] p-4">
-          <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Main Navigation</p>
-          <Button
-            variant={activeSection === 'notifications' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2"
-            onClick={openNotifications}
-          >
-            <Bell className="w-4 h-4" />
-            Notifications
-            {unreadNotifications > 0 && (
-              <Badge className="ml-auto min-w-5 h-5 px-1 justify-center text-[10px]">
-                {unreadNotifications}
-              </Badge>
-            )}
-          </Button>
-          <Button
-            variant={activeSection === 'active-session' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2"
-            onClick={() => setActiveSection('active-session')}
-          >
-            <School className="w-4 h-4" />
-            Active Session
-          </Button>
-          <Button
-            variant={activeSection === 'examination-portal' ? 'secondary' : 'ghost'}
-            className="w-full justify-start gap-2"
-            onClick={() => setActiveSection('examination-portal')}
-          >
-            <ClipboardList className="w-4 h-4" />
-            Examination Portal
-          </Button>
-        </aside>
-
         <div className="flex-1 min-w-0">
         {activeSection === 'notifications' ? (
         <main className="container mx-auto px-4 py-8 max-w-4xl">

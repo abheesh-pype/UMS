@@ -87,6 +87,10 @@ const TABLE_TO_TAB: Record<string, string> = {
   center_enrollments: 'enrollments',
   center_programs: 'programs',
   center_rereg_report: 'rereg-report',
+  // Student portal
+  'student-notifications': 'notifications',
+  'student-active-session': 'active-session',
+  'student-examination-portal': 'examination-portal',
   // Employee
   notice_board: 'notice-board',
   ld_portal: 'ld-portal',
@@ -114,6 +118,7 @@ function App() {
       case 'hr_admin':
       case 'sales_admin': return 'overview';
       case 'academic_admin': return 'dashboard';
+      case 'student': return 'dashboard';
       default: return 'tasks';
     }
   };
@@ -288,6 +293,15 @@ function App() {
       ];
     }
 
+    if (user.role === 'student') {
+      return [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'student-notifications', label: 'Notifications' },
+        { id: 'student-active-session', label: 'Active Session' },
+        { id: 'student-examination-portal', label: 'Examination Portal' },
+      ];
+    }
+
     if (user.role === 'academic_admin') {
       return [
         { id: 'dashboard', label: 'Dashboard' },
@@ -369,6 +383,13 @@ function App() {
       setViewMode('dashboard');
       setActiveTable(table);
       setActiveTab(table);
+      return;
+    }
+
+    if (user?.role === 'student') {
+      setViewMode('dashboard');
+      setActiveTable(table);
+      setActiveTab(TABLE_TO_TAB[table]);
       return;
     }
 

@@ -127,18 +127,22 @@ export const getWalletTransactions = asyncHandler(async (req: AuthRequest, res: 
 });
 
 export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const where: any = { organizationId: req.user.organizationId, status: 'active' as any };
+  const where: any = {
+    organizationId: req.user.organizationId,
+    universityId: req.user.universityId,
+    status: 'active' as any
+  };
   const center = req.user.studyCenterId
     ? await prisma.studyCenter.findUnique({
         where: { id: req.user.studyCenterId },
         select: { universityIds: true }
       })
     : null;
-  const linkedUniversityIds = center?.universityIds || [];
+  const isLinkedToPrimaryUniversity = center?.universityIds?.includes(req.user.universityId);
   
   if (req.user.studyCenterId) {
     where.OR = [
-      ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
+      ...(isLinkedToPrimaryUniversity ? [{ universityId: req.user.universityId }] : []),
       {
         programAllocations: {
           some: {
@@ -222,15 +226,16 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       where: { id: studyCenterId },
       select: { universityIds: true }
     });
-    const linkedUniversityIds = linkedCenter?.universityIds || [];
+    const isLinkedToPrimaryUniversity = linkedCenter?.universityIds?.includes(req.user.universityId);
 
     selectedProgram = await prisma.program.findFirst({
       where: {
         id: programId,
         organizationId,
+        universityId: req.user.universityId,
         status: 'active' as any,
         OR: [
-          ...(linkedUniversityIds.length > 0 ? [{ universityId: { in: linkedUniversityIds } }] : []),
+          ...(isLinkedToPrimaryUniversity ? [{ universityId: req.user.universityId }] : []),
           {
             programAllocations: {
               some: { centerId: studyCenterId, isActive: true }
@@ -257,6 +262,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       where: {
         id: programId,
         organizationId,
+        universityId: req.user.universityId,
         status: 'active' as any,
       },
       select: { id: true, universityId: true }
@@ -309,7 +315,11 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       where: {
         id: finalSessionId,
         organizationId,
-        status: 'active'
+        status: 'active',
+        AND: [
+          { OR: [{ programId }, { programId: null }] },
+          { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+        ]
       }
     });
     if (!chosenSession) {
@@ -322,9 +332,9 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       where: {
         organizationId,
         status: 'active',
-        OR: [
-          { programId },
-          { programId: null }
+        AND: [
+          { OR: [{ programId }, { programId: null }] },
+          { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
         ]
       },
       orderBy: { createdAt: 'desc' }
@@ -584,18 +594,39 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
 });
 
 export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const programId = req.query.programId as string | undefined;
   const where: any = {
     organizationId: req.user.organizationId,
     status: 'active'
   };
-  if (req.query.universityId) {
-    const universityId = req.query.universityId as string;
+
+  if (programId) {
+    const program = await prisma.program.findFirst({
+      where: {
+        id: programId,
+        organizationId: req.user.organizationId,
+        universityId: req.user.universityId,
+        status: 'active' as any
+      },
+      select: { id: true }
+    });
+    if (!program) {
+      res.status(404).json({ success: false, message: 'Selected program is invalid or inactive' });
+      return;
+    }
+
+    where.AND = [
+        { OR: [{ programId: program.id }, { programId: null }] },
+        { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+    ];
+  } else {
     where.OR = [
-      { universityId },
-      { universityId: null, programId: null },
-      { universityId: null, program: { universityId } }
+      { universityId: req.user.universityId },
+      { universityId: null, program: { universityId: req.user.universityId } },
+      { universityId: null, programId: null }
     ];
   }
+
   const sessions = await prisma.admissionSession.findMany({
     where,
     orderBy: { name: 'asc' }

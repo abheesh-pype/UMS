@@ -128,22 +128,22 @@ export function EnrollStudentPanel() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const fetchSessions = async (univId: string) => {
+  const fetchSessions = async (programId: string) => {
     try {
-      const res = await api.get(`/enrollment/sessions?universityId=${univId}`);
+      const res = await api.get(`/enrollment/sessions?programId=${programId}`);
       setSessions(res.data.data || []);
     } catch (e) {
-      toast.error('Failed to load sessions for selected university');
+      toast.error('Failed to load admission sessions for this program');
     }
   };
 
   useEffect(() => {
-    if (selectedProgram?.university?.id) {
-      fetchSessions(selectedProgram.university.id);
+    if (selectedProgram?.id) {
+      fetchSessions(selectedProgram.id);
     } else {
       setSessions([]);
     }
-  }, [selectedProgram?.university?.id]);
+  }, [selectedProgram?.id]);
 
   useEffect(() => {
     setSelectedSessionId('');
@@ -169,13 +169,6 @@ export function EnrollStudentPanel() {
     } catch (e) {}
     setCheckingEmail(false);
   };
-
-  const allocatedUniversityNames = Array.isArray(centerConfig?.universities)
-    ? centerConfig.universities
-        .map((university: { name?: string }) => university.name)
-        .filter(Boolean)
-        .join(', ')
-    : '';
 
   const getTotalFee = (p: Program, pm?: string) => {
     if (!p.programFeeStructure || p.programFeeStructure.length === 0) return 0;
@@ -693,21 +686,7 @@ export function EnrollStudentPanel() {
           {activeStep === 1 && (
             <div className="space-y-6">
               <h3 className="font-semibold text-slate-800 text-sm border-b pb-2">Step 1: Program & Session Allocation</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>University <span className="text-destructive">*</span></Label>
-                  <Input
-                    value={selectedProgram?.university
-                      ? selectedProgram.university.name
-                      : allocatedUniversityNames}
-                    placeholder="No university allocated to this study center"
-                    readOnly
-                    disabled
-                    required
-                    className="bg-muted/40"
-                  />
-                </div>
-
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-1.5">
                   <Label>Program <span className="text-destructive">*</span></Label>
                   <select
@@ -1156,7 +1135,7 @@ export function EnrollStudentPanel() {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-bold text-primary">{selectedProgram.name}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Code: {selectedProgram.code} {selectedProgram.university ? `· University: ${selectedProgram.university.name}` : ''}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Code: {selectedProgram.code}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-extrabold text-base text-primary">₹{getTotalFee(selectedProgram).toLocaleString()}</p>

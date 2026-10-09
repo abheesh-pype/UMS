@@ -179,7 +179,7 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
   }
 
   if ((user as any)?.role === 'student') {
-    return <ModernStudentDashboard />;
+    return <ModernStudentDashboard initialTab={initialTab} />;
   }
 
   if (user?.role === 'employee') {

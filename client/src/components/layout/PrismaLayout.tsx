@@ -27,7 +27,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
-import { PunchWidget } from '@/components/attendance/PunchWidget';
 
 interface TableItem {
   id: string;
@@ -167,6 +166,9 @@ export function PrismaLayout({
       case 'ld-portal':
       case 'center_enrollments':
       case 'enrollments_finance': return <GraduationCap className={iconClass} />;
+      case 'student-notifications': return <Bell className={iconClass} />;
+      case 'student-active-session': return <Calendar className={iconClass} />;
+      case 'student-examination-portal': return <FileText className={iconClass} />;
       case 'licenses': return <ShieldCheck className={iconClass} />;
       case 'centers':
       case 'pending_verification': return <ShieldCheck className={iconClass} />;
@@ -348,7 +350,6 @@ export function PrismaLayout({
           </div>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-4 shrink-0">
-            <PunchWidget variant="header" />
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg border border-border">
               <ShieldCheck className="w-3.5 h-3.5 text-primary" />
               <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{schema}</span>
