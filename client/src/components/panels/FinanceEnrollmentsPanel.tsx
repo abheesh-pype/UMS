@@ -137,7 +137,7 @@ export function FinanceEnrollmentsPanel() {
   const getCenterName = (e: Enrollment) =>
     e.studyCenter && typeof e.studyCenter === 'object'
       ? `${e.studyCenter.name} (${e.studyCenter.code})`
-      : (typeof e.studyCenterId === 'object' ? `${(e.studyCenterId).name}` : e.studyCenterId);
+      : (typeof e.studyCenterId === 'object' ? `${(e.studyCenterId).name}` : (e.studyCenterId || 'Direct University Admission'));
 
   return (
     <div className="space-y-6">

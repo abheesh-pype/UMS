@@ -27,12 +27,16 @@ export const getStudents = asyncHandler(async (req: AuthRequest, res: Response) 
   }
   if (req.query.centerId && req.user.role !== 'center_admin') {
     const cid = req.query.centerId as string;
-    andConditions.push({
-      OR: [
-        { centerId: cid },
-        { enrollments: { some: { studyCenterId: cid } } }
-      ]
-    });
+    if (cid === 'direct' || cid === 'none') {
+      andConditions.push({ centerId: null });
+    } else {
+      andConditions.push({
+        OR: [
+          { centerId: cid },
+          { enrollments: { some: { studyCenterId: cid } } }
+        ]
+      });
+    }
   }
   if (req.query.universityId) {
     where.program = { ...where.program, universityId: req.query.universityId as string };
@@ -178,13 +182,7 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
   const finalName = name || `${firstName || ''} ${lastName || ''}`.trim() || 'Unknown Student';
   const finalEnrollmentNo = enrollmentNo || `ENR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  let finalCenterId = centerId;
-  if (!finalCenterId || finalCenterId === 'null') {
-    const center = await prisma.studyCenter.findFirst({ where: { organizationId: req.user.organizationId } });
-    if (center) {
-      finalCenterId = center.id;
-    }
-  }
+  let finalCenterId = (centerId && centerId !== 'null' && centerId !== 'none') ? centerId : null;
 
   if (!email) {
     res.status(400).json({ success: false, message: 'Email is required' });
@@ -228,7 +226,7 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
     name: finalName,
     enrollmentNo: finalEnrollmentNo,
     organization: { connect: { id: req.user.organizationId } },
-    center: { connect: { id: finalCenterId } },
+    center: finalCenterId ? { connect: { id: finalCenterId } } : undefined,
     user: { connect: { email: email } }
   };
 

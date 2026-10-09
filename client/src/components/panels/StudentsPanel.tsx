@@ -180,10 +180,14 @@ export function StudentsPanel() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        centerId: formData.centerId === 'direct' || !formData.centerId ? null : formData.centerId
+      };
       if (editingId) {
-        await api.put(`/students/${editingId}`, formData);
+        await api.put(`/students/${editingId}`, payload);
       } else {
-        await api.post('/students', formData);
+        await api.post('/students', payload);
       }
       setDialogOpen(false);
       resetForm();
@@ -294,8 +298,9 @@ export function StudentsPanel() {
                 <div>
                   <Label>Study Center</Label>
                   <Select value={formData.centerId} onValueChange={(value) => setFormData({...formData, centerId: value})}>
-                    <SelectTrigger><SelectValue placeholder="Select center" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select center (Optional for Direct)" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="direct">Direct University Admission (No Center)</SelectItem>
                       {centers.filter(c => c && (c.id || c.id)).map((center) => (
                         <SelectItem key={center.id || center.id} value={(center.id || center.id).toString()}>
                           {center.name}

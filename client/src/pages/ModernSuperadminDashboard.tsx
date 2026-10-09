@@ -93,11 +93,10 @@ export function ModernSuperadminDashboard({ initialTab, onNavigate: _onNavigate 
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-white/70 p-1.5 shadow-sm dark:bg-card/70">
           <TabsTrigger value="overview" className="rounded-xl px-4 py-2 text-xs font-semibold data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Overview</TabsTrigger>
           <TabsTrigger value="university-management" className="rounded-xl px-4 py-2 text-xs font-semibold">University Management</TabsTrigger>
-          <TabsTrigger value="organizations" className="rounded-xl px-4 py-2 text-xs font-semibold">Universities</TabsTrigger>
+          <TabsTrigger value="organizations" className="rounded-xl px-4 py-2 text-xs font-semibold">University Profile</TabsTrigger>
           <TabsTrigger value="users" className="rounded-xl px-4 py-2 text-xs font-semibold">Users</TabsTrigger>
           <TabsTrigger value="departments" className="rounded-xl px-4 py-2 text-xs font-semibold">Departments</TabsTrigger>
           <TabsTrigger value="subdepartments" className="rounded-xl px-4 py-2 text-xs font-semibold">Sub-Departments</TabsTrigger>
-          <TabsTrigger value="licenses" className="rounded-xl px-4 py-2 text-xs font-semibold">Licenses</TabsTrigger>
           <TabsTrigger value="center_admissions" className="rounded-xl px-4 py-2 text-xs font-semibold">Admissions</TabsTrigger>
         </TabsList>
 
@@ -128,9 +127,6 @@ export function ModernSuperadminDashboard({ initialTab, onNavigate: _onNavigate 
           <SubDepartmentsPanel />
         </TabsContent>
 
-        <TabsContent value="licenses">
-          <LicensesPanel />
-        </TabsContent>
         <TabsContent value="center_admissions">
           <CentersAdmissionsPanel />
         </TabsContent>

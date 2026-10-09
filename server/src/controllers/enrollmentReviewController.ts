@@ -79,22 +79,24 @@ export const rejectDeptEnrollment = asyncHandler(async (req: AuthRequest, res: R
 
   // Notify Study Center and Sales User - batch insert instead of N+1
   try {
-    const centerAdmins = await prisma.user.findMany({
+    const centerAdmins = enrollment.studyCenterId ? await prisma.user.findMany({
       where: { studyCenterId: enrollment.studyCenterId, role: 'center_admin' as any }
-    });
+    }) : [];
     const recipients = centerAdmins.map(a => a.id);
     if (enrollment.salesUserId) recipients.push(enrollment.salesUserId);
-    await prisma.notification.createMany({
-      data: recipients.map(userId => ({
-        organizationId: req.user.organizationId,
-        userId,
-        title: '❌ Enrollment Rejected by Operations',
-        message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks}`,
-        type: 'general' as any,
-        priority: 'high' as any,
-        link: userId === enrollment.salesUserId ? 'student-applications' : 'enrollments'
-      }))
-    });
+    if (recipients.length > 0) {
+      await prisma.notification.createMany({
+        data: recipients.map(userId => ({
+          organizationId: req.user.organizationId,
+          userId,
+          title: '❌ Enrollment Rejected by Operations',
+          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks}`,
+          type: 'general' as any,
+          priority: 'high' as any,
+          link: userId === enrollment.salesUserId ? 'student-applications' : 'enrollments'
+        }))
+      });
+    }
   } catch (notifErr) { console.error('Notification dispatch failed:', notifErr); }
 
   res.json({ success: true, data: enrollment });

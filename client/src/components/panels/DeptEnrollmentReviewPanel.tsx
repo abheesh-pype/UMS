@@ -115,7 +115,7 @@ export function DeptEnrollmentReviewPanel() {
   const getCenterName = (e: Enrollment) =>
     e.studyCenter && typeof e.studyCenter === 'object'
       ? e.studyCenter.name
-      : (typeof e.studyCenterId === 'object' ? (e.studyCenterId as any).name : e.studyCenterId);
+      : (typeof e.studyCenterId === 'object' ? (e.studyCenterId as any).name : (e.studyCenterId || 'Direct University Admission'));
 
   const uniqueUniversities = Array.from(new Set(enrollments.filter(e => e.program?.university).map(e => JSON.stringify({ id: e.program!.university!.id, name: e.program!.university!.name })))).map(s => JSON.parse(s));
   const uniqueCenters = Array.from(new Set(enrollments.filter(e => e.studyCenter).map(e => JSON.stringify({ id: e.studyCenter!.id, name: e.studyCenter!.name })))).map(s => JSON.parse(s));

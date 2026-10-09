@@ -560,7 +560,7 @@ model StudyCenter {
 
 model Student {
   id                  String         @id @default(uuid())
-  centerId            String
+  centerId            String?
   organizationId      String
   enrollmentNo        String         @unique
   uniEnrollmentNumber String?
@@ -596,7 +596,7 @@ model Student {
 
   universityFeePayments UniversityFeePayment[] @relation("StudentUniFeePayments")
   invoices              Invoice[]
-  center                StudyCenter            @relation(fields: [centerId], references: [id])
+  center                StudyCenter?           @relation(fields: [centerId], references: [id])
   user                  User                   @relation(fields: [email], references: [email])
   organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program               Program                @relation(fields: [programId], references: [id])
@@ -612,7 +612,7 @@ model Student {
 model Invoice {
   id             String         @id @default(uuid())
   organizationId String
-  centerId       String
+  centerId       String?
   studentId      String?
   invoiceNo      String         @unique
   amount         Float
@@ -624,7 +624,7 @@ model Invoice {
   paidAt         DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-  center         StudyCenter    @relation(fields: [centerId], references: [id])
+  center         StudyCenter?   @relation(fields: [centerId], references: [id])
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student        Student?       @relation(fields: [studentId], references: [id])
   payments       PaymentEntry[]
@@ -982,7 +982,7 @@ model Enrollment {
   organizationId       String
   studentId            String?
   programId            String
-  studyCenterId        String
+  studyCenterId        String?
   sessionId            String
   specialisation       String?
   abcId                String?
@@ -1035,7 +1035,7 @@ model Enrollment {
   program              Program             @relation(fields: [programId], references: [id])
   session              AdmissionSession    @relation(fields: [sessionId], references: [id])
   student              Student?            @relation(fields: [studentId], references: [id])
-  studyCenter          StudyCenter         @relation(fields: [studyCenterId], references: [id])
+  studyCenter          StudyCenter?        @relation(fields: [studyCenterId], references: [id])
   universityReviewer   User?               @relation("UniversityReviewedBy", fields: [universityReviewedBy], references: [id])
   payment              EnrollmentPayment?
   commissionIn         CommissionIn?
