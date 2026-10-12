@@ -39,6 +39,7 @@ import { StatusRequestsPanel } from '@/components/panels/StatusRequestsPanel';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 
 export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
@@ -71,6 +72,8 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
 </div>
       );
       case 'my_subdept': return <SubOpsPortalPanel />;
+      case 'my_team':
+      case 'team': return <MyTeamPanel departmentType="operations" title="Operations Team" />;
       case 'students': return <StudentsPanel />;
       case 'programs': return <ProgramsPanel readOnly />;
       case 'centers': return <StudyCentersPanel operationsMode />;
@@ -108,6 +111,7 @@ export function getOpsNavItems(isSubDeptManager: boolean) {
     { id: '__ops_section', label: 'Operations', isSection: true },
     { id: 'overview', label: 'Overview' },
     ...(isSubDeptManager ? [{ id: 'my_subdept', label: 'My Sub-Dept' }] : []),
+    { id: 'my_team', label: 'My Team' },
     { id: 'students', label: 'Students' },
     { id: 'programs', label: 'Programs' },
     { id: 'centers', label: 'Study Centers' },

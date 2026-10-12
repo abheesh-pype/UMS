@@ -95,7 +95,8 @@ const TABLE_TO_TAB: Record<string, string> = {
   notice_board: 'notice-board',
   ld_portal: 'ld-portal',
   payslips: 'payslips',
-  my_team: 'team',
+  my_team: 'my_team',
+  team: 'my_team',
   // Common
   escalations: 'escalations',
   audit_logs: 'overview',

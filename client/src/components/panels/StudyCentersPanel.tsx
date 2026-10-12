@@ -26,7 +26,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
   const { user } = useAuth();
   const canWrite = ['org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'sales_admin', 'bde', 'employee'].includes(user?.role || '');
   const canCreateCenter = (operationsMode && user?.role === 'ops_admin')
-    || (salesMode && ['sales_admin', 'bde'].includes(user?.role || ''))
+    || (salesMode && ['sales_admin', 'bde', 'employee'].includes(user?.role || ''))
     || (universityAdminMode && user?.role === 'org_admin');
   const canViewOperationsCenters = operationsMode
     && ['ops_admin', 'ops_sub_admin', 'employee'].includes(user?.role || '');
@@ -50,10 +50,16 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
     contact: '',
     email: '',
     status: 'pending',
-    referredById: '',
+    referredById: salesMode ? (user?.id || '') : '',
     branchName: '',
     coordinatorName: ''
   });
+
+  useEffect(() => {
+    if (salesMode && user?.id && !formData.referredById && !editingId) {
+      setFormData(prev => ({ ...prev, referredById: user.id }));
+    }
+  }, [salesMode, user?.id, editingId, formData.referredById]);
   const [universities, setUniversities] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
   const [operationsCenterView, setOperationsCenterView] = useState<'progress' | 'rejected'>('progress');
@@ -137,6 +143,9 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      if (salesMode) {
+        params.set('mode', 'sales');
+      }
       if (canViewOperationsCenters) {
         params.set('status', operationsCenterView);
       } else if (canViewFinanceCenters) {
@@ -155,7 +164,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, universityFilter, operationsCenterView, financeCenterView, canViewOperationsCenters, canViewFinanceCenters]);
+  }, [salesMode, statusFilter, universityFilter, operationsCenterView, financeCenterView, canViewOperationsCenters, canViewFinanceCenters]);
 
   const fetchUniversities = useCallback(async () => {
     try {
@@ -389,7 +398,8 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
         email: (formData.email || '').trim().toLowerCase(),
         branchName: (formData.branchName || '').trim(),
         coordinatorName: (formData.coordinatorName || '').trim(),
-        referredById: formData.referredById === '__none__' || !formData.referredById ? null : formData.referredById.trim()
+        referredById: formData.referredById === '__none__' || !formData.referredById ? null : formData.referredById.trim(),
+        salesMode
       };
       if (editingId) {
         await api.put(`/operations/centers/${editingId}`, payload);
@@ -514,7 +524,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
 
   const resetForm = () => {
     setEditingId(null);
-    setFormData({ name: '', code: '', address: '', contact: '', email: '', status: 'pending', referredById: '', branchName: '', coordinatorName: '' });
+    setFormData({ name: '', code: '', address: '', contact: '', email: '', status: 'pending', referredById: salesMode ? (user?.id || '') : '', branchName: '', coordinatorName: '' });
   };
 
   // Helper to get center's effective branch name
@@ -766,7 +776,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
         </div>
         {(canWrite || canViewFinanceCenters) && (
           <div className="flex items-center gap-2">
-            {canWrite && !operationsMode && (
+            {canWrite && !operationsMode && !salesMode && (
               <Button
                 onClick={() => {
                   setImportCenters([]);
@@ -858,14 +868,17 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                 <Label>Coordinator Name (optional)</Label>
                 <Input value={formData.coordinatorName} onChange={(e) => setFormData({ ...formData, coordinatorName: e.target.value })} />
               </div>
-               {team.length > 0 && (
+               {(!salesMode || user?.role === 'sales_admin') && (team.length > 0 || (salesMode && user?.role === 'sales_admin')) && (
                 <div>
                   <Label>Assigned Sales Agent</Label>
                   <Select value={formData.referredById} onValueChange={(v) => setFormData({ ...formData, referredById: v })}>
                     <SelectTrigger><SelectValue placeholder="Select a sales representative..." /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">None</SelectItem>
-                      {team.map((t: any) => (
+                      {!salesMode && <SelectItem value="__none__">None</SelectItem>}
+                      {salesMode && user && (
+                        <SelectItem value={user.id}>{user.name} (Myself)</SelectItem>
+                      )}
+                      {team.filter((t: any) => t.id !== user?.id).map((t: any) => (
                         <SelectItem key={t.id} value={t.id}>
                           {t.name} ({t.role?.replace(/_/g, ' ')})
                         </SelectItem>
