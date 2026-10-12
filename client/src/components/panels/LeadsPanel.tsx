@@ -148,7 +148,14 @@ export function LeadsPanel() {
   const handleConvertToCenter = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/operations/centers', centerFormData);
+      const payload = {
+        name: (centerFormData.name || '').trim(),
+        code: (centerFormData.code || '').trim().toUpperCase(),
+        address: (centerFormData.address || '').trim(),
+        contact: (centerFormData.contact || '').trim(),
+        email: (centerFormData.email || '').trim().toLowerCase(),
+      };
+      await api.post('/operations/centers', payload);
       const leadId = selectedLead.id || selectedLead.id;
       await api.put(`/sales/leads/${leadId}`, { status: 'converted' });
       setConvertDialogOpen(false);

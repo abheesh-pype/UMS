@@ -19,7 +19,7 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
+      const success = await login((email || '').trim(), (password || '').trim());
       if (!success) setError('Invalid email/User ID or password');
     } catch (error: any) {
       const responseData = error.response?.data;

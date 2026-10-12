@@ -4,10 +4,14 @@ import prisma from '../lib/prisma.js';
  * Returns the only organization ID allowed by the single-tenant database constraint.
  */
 export const getDefaultOrganizationId = async (): Promise<string> => {
-  const org = await prisma.organization.findUnique({
-    where: { singletonKey: 'primary' },
-    select: { id: true },
-  });
+  const org =
+    (await prisma.organization.findUnique({
+      where: { singletonKey: 'primary' },
+      select: { id: true },
+    })) ??
+    (await prisma.organization.findFirst({
+      select: { id: true },
+    }));
   if (!org) {
     throw new Error('No primary organization found in database. Run the single-tenant setup.');
   }
@@ -18,10 +22,14 @@ export const getDefaultOrganizationId = async (): Promise<string> => {
  * Returns the only university ID allowed by the single-tenant database constraint.
  */
 export const getDefaultUniversityId = async (): Promise<string> => {
-  const uni = await prisma.university.findUnique({
-    where: { singletonKey: 'primary' },
-    select: { id: true },
-  });
+  const uni =
+    (await prisma.university.findUnique({
+      where: { singletonKey: 'primary' },
+      select: { id: true },
+    })) ??
+    (await prisma.university.findFirst({
+      select: { id: true },
+    }));
   if (!uni) {
     throw new Error('No primary university found in database. Run the single-tenant setup.');
   }
