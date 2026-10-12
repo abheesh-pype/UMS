@@ -24,6 +24,7 @@ interface Enrollment {
   status: string;
   createdAt: string;
   departmentRemarks?: string;
+  financeRemarks?: string;
   documents?: { name: string; url: string }[] | null;
   educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[] | null;
 }
@@ -37,7 +38,11 @@ const STATUS_COLOR: Record<string, string> = {
   pending_finance_review: 'bg-orange-100 text-orange-700',
   enrolled: 'bg-success/10 text-success',
   rejected: 'bg-destructive/10 text-destructive',
+  department_rejected: 'bg-destructive/10 text-destructive',
+  finance_rejected: 'bg-destructive/10 text-destructive',
 };
+
+const isRejectedStatus = (status: string) => ['rejected', 'department_rejected', 'finance_rejected'].includes(status);
 
 export function StudyCenterEnrollmentsPanel() {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -280,7 +285,7 @@ export function StudyCenterEnrollmentsPanel() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <Badge className={cn('text-[10px] uppercase font-bold', STATUS_COLOR[e.status] || 'bg-muted text-muted-foreground')}>
-                      {e.status.replace(/_/g, ' ')}
+                      {e.status === 'department_rejected' ? 'Rejected by Operations' : e.status === 'finance_rejected' ? 'Rejected by Finance' : e.status.replace(/_/g, ' ')}
                     </Badge>
                     {e.enrollmentNumber && <span className="text-xs text-muted-foreground">{e.enrollmentNumber}</span>}
                   </div>
@@ -292,10 +297,25 @@ export function StudyCenterEnrollmentsPanel() {
                     {getUniversityName(e) && <span>{getUniversityName(e)}</span>}
                     <span>{new Date(e.createdAt).toLocaleDateString()}</span>
                   </div>
+                  {isRejectedStatus(e.status) && (e.departmentRemarks || e.financeRemarks) && (
+                    <div className="mt-2.5 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-2.5 flex items-start gap-2">
+                      <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">Rejection Reason:</span> {e.departmentRemarks || e.financeRemarks}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setSelectedEnrollment(e)}>
-                  <Eye className="w-4 h-4 mr-1.5" /> View Details
-                </Button>
+                <div className="flex items-center gap-2">
+                  {isRejectedStatus(e.status) && (
+                    <Button size="sm" onClick={() => handleStartEdit(e)}>
+                      Edit & Re-submit
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setSelectedEnrollment(e)}>
+                    <Eye className="w-4 h-4 mr-1.5" /> View Details
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -318,10 +338,10 @@ export function StudyCenterEnrollmentsPanel() {
 
               <div className="space-y-6 pt-3">
                 {/* Rejection remarks */}
-                {selectedEnrollment.status === 'rejected' && (
+                {isRejectedStatus(selectedEnrollment.status) && (
                   <div className="bg-destructive/10 text-destructive border border-destructive/20 p-4 rounded-xl text-sm">
-                    <p className="font-bold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Rejection Remarks by Operations:</p>
-                    <p className="mt-1 font-medium italic">{selectedEnrollment.departmentRemarks || 'No remarks provided.'}</p>
+                    <p className="font-bold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Rejection Remarks:</p>
+                    <p className="mt-1 font-medium italic">{selectedEnrollment.departmentRemarks || selectedEnrollment.financeRemarks || 'No remarks provided.'}</p>
                   </div>
                 )}
 
@@ -475,7 +495,7 @@ export function StudyCenterEnrollmentsPanel() {
                 <Button variant="secondary" onClick={() => handlePrintApp(selectedEnrollment)}>
                   <Printer className="w-4 h-4 mr-2" /> Print App
                 </Button>
-                {selectedEnrollment.status === 'rejected' && (
+                {isRejectedStatus(selectedEnrollment.status) && (
                   <Button onClick={() => handleStartEdit(selectedEnrollment)}>Edit & Re-submit</Button>
                 )}
                 {selectedEnrollment.status === 'payment_pending' && (

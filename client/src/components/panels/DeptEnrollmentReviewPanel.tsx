@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle, XCircle, Mail, Phone, MapPin, GraduationCap, FileText, Calendar, ShieldAlert } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, Mail, Phone, MapPin, GraduationCap, FileText, Calendar, ShieldAlert, UserCheck, Users, Send, AlertTriangle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 interface Enrollment {
@@ -23,6 +24,7 @@ interface Enrollment {
   status: string;
   createdAt: string;
   departmentRemarks?: string;
+  financeRemarks?: string;
   specialisation?: string;
   abcId?: string;
   debId?: string;
@@ -37,6 +39,9 @@ interface Enrollment {
   pincode?: string;
   alternativePhone?: string;
   admissionDate?: string;
+  assignedOpsUserId?: string;
+  assignedOpsUser?: { id: string; name: string; email: string; role?: string };
+  departmentReviewer?: { id: string; name: string };
   program?: { name: string; code: string; university?: { id: string; name: string } };
   studyCenter?: { id: string; name: string };
   session?: { name: string };
@@ -53,10 +58,19 @@ const STATUS_COLOR: Record<string, string> = {
   pending_finance_review: 'bg-orange-100 text-orange-700',
   enrolled: 'bg-success/10 text-success',
   rejected: 'bg-destructive/10 text-destructive',
+  department_rejected: 'bg-destructive/10 text-destructive',
+  finance_rejected: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
 export function DeptEnrollmentReviewPanel() {
+  const { user } = useAuth();
+  const isOpsAdmin = ['ops_admin', 'superadmin', 'org_admin'].includes(user?.role || '');
+
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
@@ -80,8 +94,44 @@ export function DeptEnrollmentReviewPanel() {
     }
   };
 
+  const fetchTeamMembers = async () => {
+    try {
+      const res = await api.get('/users?departmentType=operations');
+      const users = res.data.data || [];
+      const opsSubordinates = users.filter((u: any) => {
+        const role = (u.role || '').toLowerCase();
+        const isEligibleRole = ['employee', 'ops_sub_admin', 'operation subadmin'].includes(role);
+        return isEligibleRole && u.status !== 'inactive';
+      });
+      setTeamMembers(opsSubordinates);
+    } catch (e) {
+      console.error('Failed to load operations team members', e);
+    }
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetch(); }, [activeTab]);
+
+  useEffect(() => {
+    if (isOpsAdmin) {
+      fetchTeamMembers();
+    }
+  }, [isOpsAdmin]);
+
+  const handleAssign = async (enrollmentId: string, assignedOpsUserId: string | null) => {
+    setAssigningId(enrollmentId);
+    try {
+      await api.put(`/enrollment/review/${enrollmentId}/assign`, {
+        assignedOpsUserId: assignedOpsUserId || null,
+      });
+      toast.success(assignedOpsUserId ? 'Assigned successfully' : 'Unassigned successfully');
+      fetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to assign');
+    } finally {
+      setAssigningId(null);
+    }
+  };
 
   const handleApprove = async (id: string) => {
     try {
@@ -91,6 +141,17 @@ export function DeptEnrollmentReviewPanel() {
       fetch();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to approve');
+    }
+  };
+
+  const handleResubmit = async (id: string) => {
+    try {
+      await api.put(`/enrollment/review/${id}/resubmit`);
+      toast.success('Enrollment resubmitted to Finance');
+      setSelectedEnrollment(null);
+      fetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to resubmit');
     }
   };
 
@@ -127,7 +188,13 @@ export function DeptEnrollmentReviewPanel() {
       if (universityFilter !== 'all' && e.program?.university?.id !== universityFilter) return false;
       if (centerFilter !== 'all' && (e.studyCenter?.id !== centerFilter && e.studyCenterId !== centerFilter)) return false;
       if (programFilter !== 'all' && e.programId !== programFilter) return false;
-      
+
+      if (assigneeFilter === 'unassigned') {
+        if (e.assignedOpsUserId) return false;
+      } else if (assigneeFilter !== 'all') {
+        if (e.assignedOpsUserId !== assigneeFilter) return false;
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
@@ -157,75 +224,145 @@ export function DeptEnrollmentReviewPanel() {
           <TabsTrigger value="history">Review History</TabsTrigger>
         </TabsList>
 
-        <div className="flex flex-col md:flex-row gap-4">
-          <Input 
-            placeholder="Search name, email, or enrollment no..." 
+        <div className="flex flex-col md:flex-row gap-3 flex-wrap">
+          <Input
+            placeholder="Search name, email, or enrollment no..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="md:w-1/4"
+            className="md:w-64"
           />
-          <select 
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:w-1/4"
+          <select
+            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm md:w-48"
             value={universityFilter}
             onChange={e => setUniversityFilter(e.target.value)}
           >
             <option value="all">All Universities</option>
             {uniqueUniversities.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <select 
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:w-1/4"
+          <select
+            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm md:w-48"
             value={centerFilter}
             onChange={e => setCenterFilter(e.target.value)}
           >
             <option value="all">All Centers</option>
             {uniqueCenters.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select 
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:w-1/4"
+          <select
+            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm md:w-48"
             value={programFilter}
             onChange={e => setProgramFilter(e.target.value)}
           >
             <option value="all">All Programs</option>
             {uniquePrograms.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          {isOpsAdmin && (
+            <select
+              className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm md:w-56"
+              value={assigneeFilter}
+              onChange={e => setAssigneeFilter(e.target.value)}
+            >
+              <option value="all">All Assignees</option>
+              <option value="unassigned">⚠️ Unassigned Only</option>
+              {teamMembers.map((m: any) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.role === 'ops_sub_admin' || m.role === 'operation subadmin' ? 'Sub-Admin' : 'Employee'})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <TabsContent value="pending" className="space-y-4">
           {loading ? (
-            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}</div>
+            <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}</div>
           ) : filteredEnrollments.length === 0 ? (
             <Card><CardContent className="py-16 text-center text-muted-foreground">No enrollments pending review.</CardContent></Card>
           ) : (
             <div className="space-y-3">
               {filteredEnrollments.map(e => (
                 <Card key={e.id} className="hover:border-primary/30 transition-colors">
-                  <CardContent className="p-5 flex items-center justify-between gap-4">
-                    <div className="flex-1 min-w-0 cursor-pointer group/item" onClick={() => setSelectedEnrollment(e)}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge className="bg-warning/10 text-warning text-[10px] uppercase font-bold">
-                          {e.status.replace(/_/g, ' ')}
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0 cursor-pointer group/item" onClick={() => setSelectedEnrollment(e)}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge className={cn('text-[10px] uppercase font-bold', STATUS_COLOR[e.status] || 'bg-warning/10 text-warning')}>
+                            {e.status === 'finance_rejected' ? 'Rejected by Finance' : e.status.replace(/_/g, ' ')}
+                          </Badge>
+                          {e.enrollmentNumber && <span className="text-xs text-muted-foreground">{e.enrollmentNumber}</span>}
+                        </div>
+                        <h4 className="font-semibold text-base group-hover/item:text-primary transition-colors flex items-center gap-1.5">
+                          {e.studentName}
+                          <span className="text-[10px] text-primary opacity-0 group-hover/item:opacity-100 transition-opacity font-normal">(Click to review details)</span>
+                        </h4>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
+                          <span>{e.studentEmail}</span>
+                          <span>{getProgramName(e)}</span>
+                          <span>{getCenterName(e)}</span>
+                          <span>{new Date(e.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        {e.status === 'finance_rejected' && (
+                          <div className="mt-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-300 p-2.5 rounded-lg text-xs flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-semibold">Finance Rejection Reason:</span> {e.financeRemarks || 'No remarks provided.'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {e.status === 'finance_rejected' ? (
+                          <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm" onClick={() => handleResubmit(e.id)}>
+                            <Send className="w-4 h-4 mr-1" />Resubmit to Finance
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" className="text-success border-success/30 hover:bg-success/10" onClick={() => handleApprove(e.id)}>
+                            <CheckCircle className="w-4 h-4 mr-1" />Approve
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { setRejectDialog({ open: true, id: e.id }); setRemarks(''); }}>
+                          <XCircle className="w-4 h-4 mr-1" />Reject
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Assignment Row */}
+                    {isOpsAdmin ? (
+                      <div className="pt-3 border-t border-border flex items-center justify-between flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-muted-foreground font-medium flex items-center gap-1">
+                            <UserCheck className="w-3.5 h-3.5 text-primary" /> Assign Reviewer:
+                          </span>
+                          <select
+                            value={e.assignedOpsUserId || ''}
+                            disabled={assigningId === e.id}
+                            onChange={(ev) => handleAssign(e.id, ev.target.value || null)}
+                            className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer disabled:opacity-50"
+                          >
+                            <option value="">⚠️ Unassigned (Select employee)</option>
+                            {teamMembers.map((m: any) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({m.role === 'ops_sub_admin' || m.role === 'operation subadmin' ? 'Sub-Admin' : 'Employee'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {e.assignedOpsUser ? (
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[11px] font-medium py-0.5">
+                            Assigned to: {e.assignedOpsUser.name}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[11px] font-medium py-0.5">
+                            Needs Assignment
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="pt-3 border-t border-border flex items-center justify-between flex-wrap gap-2 text-xs">
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px] font-medium py-0.5">
+                          <CheckCircle className="w-3 h-3 mr-1" /> Assigned to You
                         </Badge>
-                        {e.enrollmentNumber && <span className="text-xs text-muted-foreground">{e.enrollmentNumber}</span>}
                       </div>
-                      <h4 className="font-semibold text-base group-hover/item:text-primary transition-colors flex items-center gap-1.5">
-                        {e.studentName}
-                        <span className="text-[10px] text-primary opacity-0 group-hover/item:opacity-100 transition-opacity font-normal">(Click to review details)</span>
-                      </h4>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
-                        <span>{e.studentEmail}</span>
-                        <span>{getProgramName(e)}</span>
-                        <span>{getCenterName(e)}</span>
-                        <span>{new Date(e.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="text-success border-success/30 hover:bg-success/10" onClick={() => handleApprove(e.id)}>
-                        <CheckCircle className="w-4 h-4 mr-1" />Approve
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { setRejectDialog({ open: true, id: e.id }); setRemarks(''); }}>
-                        <XCircle className="w-4 h-4 mr-1" />Reject
-                      </Button>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -235,7 +372,7 @@ export function DeptEnrollmentReviewPanel() {
 
         <TabsContent value="history" className="space-y-4">
           {loading ? (
-            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}</div>
+            <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}</div>
           ) : filteredEnrollments.length === 0 ? (
             <Card><CardContent className="py-16 text-center text-muted-foreground">No review history found.</CardContent></Card>
           ) : (
@@ -260,6 +397,12 @@ export function DeptEnrollmentReviewPanel() {
                         <span>{getCenterName(e)}</span>
                         <span>{new Date(e.createdAt).toLocaleDateString()}</span>
                       </div>
+                      {(e.assignedOpsUser || e.departmentReviewer) && (
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground pt-2 border-t border-border/50 flex-wrap">
+                          {e.assignedOpsUser && <span>Assigned to: <strong className="text-foreground">{e.assignedOpsUser.name}</strong></span>}
+                          {e.departmentReviewer && <span>Reviewed by: <strong className="text-foreground">{e.departmentReviewer.name}</strong></span>}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -298,10 +441,22 @@ export function DeptEnrollmentReviewPanel() {
 
               <div className="space-y-6 py-4">
                 {/* Rejection remarks */}
+                {selectedEnrollment.status === 'finance_rejected' && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-300 p-4 rounded-xl text-sm">
+                    <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Rejected by Finance:</p>
+                    <p className="mt-1 font-medium italic">{selectedEnrollment.financeRemarks || 'No remarks provided.'}</p>
+                  </div>
+                )}
+                {selectedEnrollment.status === 'department_rejected' && (
+                  <div className="bg-destructive/10 text-destructive border border-destructive/20 p-4 rounded-xl text-sm">
+                    <p className="font-bold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Rejection Remarks by Operations:</p>
+                    <p className="mt-1 font-medium italic">{selectedEnrollment.departmentRemarks || 'No remarks provided.'}</p>
+                  </div>
+                )}
                 {selectedEnrollment.status === 'rejected' && (
                   <div className="bg-destructive/10 text-destructive border border-destructive/20 p-4 rounded-xl text-sm">
                     <p className="font-bold flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Rejection Remarks:</p>
-                    <p className="mt-1 font-medium italic">{selectedEnrollment.departmentRemarks || 'No remarks provided.'}</p>
+                    <p className="mt-1 font-medium italic">{selectedEnrollment.departmentRemarks || selectedEnrollment.financeRemarks || 'No remarks provided.'}</p>
                   </div>
                 )}
 
@@ -496,14 +651,23 @@ export function DeptEnrollmentReviewPanel() {
                         setRemarks('');
                       }}
                     >
-                      <XCircle className="w-4 h-4 mr-1" /> Reject
+                      <XCircle className="w-4 h-4 mr-1" /> Reject to Center
                     </Button>
-                    <Button
-                      className="text-white bg-success hover:bg-success/90"
-                      onClick={() => handleApprove(selectedEnrollment.id)}
-                    >
-                      <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                    </Button>
+                    {selectedEnrollment.status === 'finance_rejected' ? (
+                      <Button
+                        className="text-white bg-amber-600 hover:bg-amber-700 shadow-sm"
+                        onClick={() => handleResubmit(selectedEnrollment.id)}
+                      >
+                        <Send className="w-4 h-4 mr-1" /> Resubmit to Finance
+                      </Button>
+                    ) : (
+                      <Button
+                        className="text-white bg-success hover:bg-success/90"
+                        onClick={() => handleApprove(selectedEnrollment.id)}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                      </Button>
+                    )}
                   </>
                 )}
               </DialogFooter>

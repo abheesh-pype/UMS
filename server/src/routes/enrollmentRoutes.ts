@@ -21,6 +21,8 @@ import {
   getDeptReviewEnrollments,
   approveDeptEnrollment,
   rejectDeptEnrollment,
+  assignDeptEnrollment,
+  resubmitToFinance,
 } from '../controllers/enrollmentReviewController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
@@ -63,7 +65,9 @@ router.get('/all', authorize('superadmin', 'org_admin', 'ceo', 'ops_admin', 'fin
 
 // Dept/Sub-dept manager review routes
 router.get('/review', authorize('ops_admin', 'ops_sub_admin', 'employee'), getPendingReviews);
+router.put('/review/:id/assign', authorize('ops_admin', 'ops_sub_admin', 'superadmin', 'org_admin'), assignDeptEnrollment);
 router.put('/review/:id/approve', authorize('ops_admin', 'ops_sub_admin', 'employee'), approveDeptEnrollment);
 router.put('/review/:id/reject', authorize('ops_admin', 'ops_sub_admin', 'employee'), rejectDeptEnrollment);
+router.put('/review/:id/resubmit', authorize('ops_admin', 'ops_sub_admin', 'employee', 'superadmin', 'org_admin'), resubmitToFinance);
 
 export default router;
