@@ -17,12 +17,15 @@ import {
   Settings,
   ShieldCheck,
   Calendar,
+  ClipboardList,
   MessageSquare,
   Wallet,
   Clock,
   Menu,
   GitBranch,
-  Bell
+  Bell,
+  Video,
+  Award
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -34,6 +37,7 @@ interface TableItem {
   icon?: React.ReactNode;
   isSection?: boolean;
   children?: TableItem[];
+  disabled?: boolean;
 }
 
 interface PrismaLayoutProps {
@@ -162,6 +166,7 @@ export function PrismaLayout({
       case 'subdepartments': return <GitBranch className={iconClass} />;
       case 'announcements': return <Bell className={iconClass} />;
       case 'programs':
+      case 'academic-study-material':
       case 'ld_portal':
       case 'ld-portal':
       case 'center_enrollments':
@@ -169,6 +174,14 @@ export function PrismaLayout({
       case 'student-notifications': return <Bell className={iconClass} />;
       case 'student-active-session': return <Calendar className={iconClass} />;
       case 'student-examination-portal': return <FileText className={iconClass} />;
+      case 'student-payment-info': return <Wallet className={iconClass} />;
+      case 'student-video-classes': return <Video className={iconClass} />;
+      case 'student-examinations': return <ClipboardList className={iconClass} />;
+      case 'student-e-books': return <BookOpen className={iconClass} />;
+      case 'student-documents': return <FileText className={iconClass} />;
+      case 'student-result': return <Award className={iconClass} />;
+      case 'student-notice': return <Bell className={iconClass} />;
+      case 'student-schedule': return <Calendar className={iconClass} />;
       case 'licenses': return <ShieldCheck className={iconClass} />;
       case 'centers':
       case 'pending_verification': return <ShieldCheck className={iconClass} />;
@@ -190,6 +203,7 @@ export function PrismaLayout({
   }
 
   const activeTableItem = normalizedTables.find(t => !t.isSection && t.id === activeTable) || normalizedTables.find(t => !t.isSection);
+  const isStudent = userRole === 'student';
 
   return (
     <div className="h-screen flex bg-background font-sans overflow-hidden relative">
@@ -256,11 +270,13 @@ export function PrismaLayout({
             return (
               <div key={table.id}>
                 <button
+                  disabled={table.disabled}
                   onClick={() => hasChildren
                     ? setExpandedItems(current => ({ ...current, [table.id]: !isExpanded }))
                     : onTableChange(table.id)}
                   className={cn(
                     'w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all duration-200 flex items-center gap-3 group',
+                    table.disabled && 'cursor-not-allowed opacity-50',
                     isActive
                       ? 'bg-sidebar-primary/15 text-sidebar-primary font-semibold shadow-sm ring-1 ring-sidebar-primary/10'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
@@ -341,13 +357,41 @@ export function PrismaLayout({
             <Menu className="w-5 h-5" />
           </Button>
 
-          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary hidden sm:flex shrink-0">
-              {activeTableItem?.icon}
+          {isStudent ? (
+            <>
+              <div className="flex items-center gap-2 shrink-0">
+                <GraduationCap className="w-5 h-5 text-primary" />
+                <span className="font-bold text-foreground">Student Portal</span>
+              </div>
+              <nav aria-label="Student navigation" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {normalizedTables.filter(table => !table.isSection).map(table => (
+                  <button
+                    key={table.id}
+                    disabled={table.disabled}
+                    onClick={() => onTableChange(table.id)}
+                    aria-current={activeTable === table.id ? 'page' : undefined}
+                    className={cn(
+                      'shrink-0 rounded-lg px-2.5 py-2 text-sm transition-colors sm:px-3',
+                      table.disabled && 'cursor-not-allowed opacity-50',
+                      activeTable === table.id
+                        ? 'bg-primary/10 font-semibold text-primary'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    {table.label}
+                  </button>
+                ))}
+              </nav>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary hidden sm:flex shrink-0">
+                {activeTableItem?.icon}
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground/30 hidden sm:block shrink-0" />
+              <span className="text-base sm:text-lg font-bold text-foreground truncate hidden xs:block">{activeTableItem?.label}</span>
             </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground/30 hidden sm:block shrink-0" />
-            <span className="text-base sm:text-lg font-bold text-foreground truncate hidden xs:block">{activeTableItem?.label}</span>
-          </div>
+          )}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-4 shrink-0">
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg border border-border">

@@ -9,9 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  GraduationCap, 
   BookOpen, 
-  Bell,
   Download, 
   FileText, 
   ClipboardList, 
@@ -278,33 +276,6 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
   return (
     <div className="min-h-screen bg-muted/30 pb-12">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-md">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <GraduationCap className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <span className="font-bold text-lg tracking-tight">Student Portal</span>
-              <span className="hidden sm:inline-block ml-2 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full border">
-                v1.0
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden md:block text-right">
-              <p className="text-sm font-medium">{student.name}</p>
-              <p className="text-xs text-muted-foreground">{student.enrollmentNo}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={logout} className="gap-2">
-              <LogOut className="w-4 h-4" />
-              <span>Log Out</span>
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <div className="flex">
         <div className="flex-1 min-w-0">
         {activeSection === 'notifications' ? (
@@ -316,7 +287,6 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                 <CardDescription>Updates and announcements for your student account.</CardDescription>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setActiveSection('portal')}>Back to Portal</Button>
                 <Button variant="secondary" onClick={markAllNotificationsRead} disabled={unreadNotifications === 0}>
                   Mark all read
                 </Button>
