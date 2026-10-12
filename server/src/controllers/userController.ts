@@ -18,12 +18,33 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
   if (req.query.departmentId) where.departmentId = req.query.departmentId as string;
   if (req.query.status) where.status = req.query.status as string;
 
+  if (req.query.departmentType) {
+    const deptType = (req.query.departmentType as string).trim().toLowerCase();
+    where.OR = [
+      { department: { type: { equals: deptType, mode: 'insensitive' } } },
+      { department: { name: { contains: deptType, mode: 'insensitive' } } },
+      { subDepartment: { parentDept: { type: { equals: deptType, mode: 'insensitive' } } } },
+      { subDepartment: { parentDept: { name: { contains: deptType, mode: 'insensitive' } } } },
+    ];
+  }
+
   const users = await prisma.user.findMany({
     where,
     include: {
-      organization: { select: { name: true } },
-      department: { select: { name: true } },
-    }
+      organization: { select: { id: true, name: true } },
+      department: { select: { id: true, name: true, type: true } },
+      subDepartment: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          parentDept: { select: { id: true, name: true, type: true } }
+        }
+      },
+      branch: { select: { id: true, name: true } },
+      designationRef: { select: { id: true, title: true } },
+    },
+    orderBy: { createdAt: 'desc' }
   });
 
   res.status(200).json({ success: true, count: users.length, data: users });

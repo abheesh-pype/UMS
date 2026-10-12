@@ -187,6 +187,8 @@ model User {
   employeeProfileDetail         EmployeeProfile?
   deptReviewedEnrollments       Enrollment[]           @relation("DeptReviewedBy")
   financeReviewedEnrollments    Enrollment[]           @relation("FinanceReviewedBy")
+  opsAssignedEnrollments        Enrollment[]           @relation("OpsAssignedEnrollments")
+  financeAssignedEnrollments    Enrollment[]           @relation("FinanceAssignedEnrollments")
   universityReviewedEnrollments Enrollment[]           @relation("UniversityReviewedBy")
   salesLedEnrollments           Enrollment[]           @relation("SalesUserEnrollments")
   studentFeeReceipts            StudentFeeReceipt[]
@@ -1033,6 +1035,10 @@ model Enrollment {
   salesUser            User?               @relation("SalesUserEnrollments", fields: [salesUserId], references: [id])
   departmentReviewer   User?               @relation("DeptReviewedBy", fields: [departmentReviewedBy], references: [id])
   financeReviewer      User?               @relation("FinanceReviewedBy", fields: [financeReviewedBy], references: [id])
+  assignedOpsUserId    String?
+  assignedOpsUser      User?               @relation("OpsAssignedEnrollments", fields: [assignedOpsUserId], references: [id])
+  assignedFinanceUserId String?
+  assignedFinanceUser  User?               @relation("FinanceAssignedEnrollments", fields: [assignedFinanceUserId], references: [id])
   organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program              Program             @relation(fields: [programId], references: [id])
   session              AdmissionSession    @relation(fields: [sessionId], references: [id])

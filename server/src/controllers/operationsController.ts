@@ -633,7 +633,10 @@ export const updateExaminationModules = asyncHandler(async (req: AuthRequest, re
 
 // Study Centers
 export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const departmentType = (req.user.department?.type || req.user.subDepartment?.parentDept?.type || '').toLowerCase();
+  const departmentName = (req.user.department?.name || req.user.subDepartment?.parentDept?.name || '').toLowerCase();
+  const isSalesDept = departmentType === 'sales' || departmentName.includes('sales');
+
   const isAssignedOperationsUser = req.user.role === 'ops_sub_admin'
     || (req.user.role === 'employee' && departmentType === 'operations');
   const isFinanceDepartmentUser = ['finance_admin', 'finance_sub_admin'].includes(req.user.role)
@@ -641,8 +644,60 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
   const isAssignedFinanceUser = req.user.role === 'finance_sub_admin'
     || (req.user.role === 'employee' && departmentType === 'finance');
 
+  const isSalesAdmin = req.user.role === 'sales_admin';
+  const isSalesStaff = (req.user.role === 'employee' && isSalesDept)
+    || req.user.role === 'bde'
+    || req.user.role === 'sales_sub_admin'
+    || (req.user.role === 'employee' && req.query.mode === 'sales');
+
   const where: any = { organizationId: req.user.organizationId };
-  if (isFinanceDepartmentUser) {
+  if (req.query.mode === 'sales' || isSalesStaff || isSalesAdmin) {
+    if (isSalesAdmin) {
+      // Sales admin: view admin-created study centers PLUS subordinate study centers
+      async function getSubordinateIds(managerId: string): Promise<string[]> {
+        const subs = await prisma.user.findMany({
+          where: { reportingTo: managerId },
+          select: { id: true }
+        });
+        const ids = subs.map(s => s.id);
+        if (ids.length === 0) return [];
+        const nested = await Promise.all(ids.map(id => getSubordinateIds(id)));
+        return [...ids, ...nested.flat()];
+      }
+
+      const directSubordinateIds = await getSubordinateIds(req.user.id);
+      const salesDeptEmployees = await prisma.user.findMany({
+        where: {
+          organizationId: req.user.organizationId,
+          id: { not: req.user.id },
+          role: { in: ['employee', 'bde', 'sales_sub_admin', 'sales subadmin'] as any },
+          OR: [
+            { department: { type: { equals: 'sales', mode: 'insensitive' } } },
+            { department: { name: { contains: 'sales', mode: 'insensitive' } } },
+            { subDepartment: { parentDept: { type: { equals: 'sales', mode: 'insensitive' } } } },
+            { subDepartment: { parentDept: { name: { contains: 'sales', mode: 'insensitive' } } } },
+          ]
+        },
+        select: { id: true }
+      });
+
+      const allSubordinateIds = Array.from(new Set([
+        ...directSubordinateIds,
+        ...salesDeptEmployees.map(u => u.id)
+      ]));
+
+      where.referredBy = { in: [req.user.id, ...allSubordinateIds] };
+      if (req.query.status && req.query.status !== 'all') {
+        where.status = req.query.status as string;
+      }
+    } else {
+      // Sales staff: view ONLY staff-created study centers
+      where.referredBy = req.user.id;
+      if (req.query.status && req.query.status !== 'all') {
+        where.status = req.query.status as string;
+      }
+    }
+  } else if (isFinanceDepartmentUser) {
     if (req.query.status === 'rejected') {
       where.status = 'rejected';
       where.verifiedBy = { not: null };
@@ -738,7 +793,16 @@ export const getStudyCenter = asyncHandler(async (req: AuthRequest, res: Respons
   res.json({ success: true, data: center });
 });
 export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const isSales = req.user.role === 'sales_admin' || req.user.role === 'bde' || req.user.role === 'employee';
+  const departmentType = (req.user.department?.type || req.user.subDepartment?.parentDept?.type || '').toLowerCase();
+  const departmentName = (req.user.department?.name || req.user.subDepartment?.parentDept?.name || '').toLowerCase();
+  const isSalesDept = departmentType === 'sales' || departmentName.includes('sales');
+
+  const isSalesAdmin = req.user.role === 'sales_admin';
+  const isSalesStaff = (req.user.role === 'employee' && isSalesDept)
+    || req.user.role === 'bde'
+    || req.user.role === 'sales_sub_admin'
+    || (req.user.role === 'employee' && req.body.salesMode);
+  const isSales = isSalesAdmin || isSalesStaff;
   const { name: rawName, referredById, ...restBody } = req.body;
   const rawEmail = req.body.email || req.body.contactEmail;
   const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
@@ -774,7 +838,11 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
     const dbData: any = {
       organizationId: req.user.organizationId,
       status: isSales ? 'pending_verification' : (typeof req.body.status === 'string' ? req.body.status.trim() : (req.body.status || 'pending')),
-      referredBy: isSales ? req.user.id : (referredById === 'null' || !referredById ? null : (typeof referredById === 'string' ? referredById.trim() : referredById)),
+      referredBy: isSalesAdmin
+        ? ((referredById && referredById !== '__none__' && referredById !== 'null') ? referredById.trim() : req.user.id)
+        : isSalesStaff
+        ? req.user.id
+        : (referredById === 'null' || !referredById || referredById === '__none__' ? null : (typeof referredById === 'string' ? referredById.trim() : referredById)),
       credentials: { userId, password: rawPassword },
       email,
       name,

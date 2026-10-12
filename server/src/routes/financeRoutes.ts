@@ -63,6 +63,7 @@ import {
   rejectFinanceEnrollment,
   getAllEnrollments,
   processRefund,
+  assignFinanceEnrollment,
 } from '../controllers/financeEnrollmentController.js';
 import {
   getStudentPaymentLogs,
@@ -153,11 +154,12 @@ router.post('/student-payments/:id/receipt', authorize('finance_admin'), recordR
 router.post('/student-payments/:id/extra-fee', authorize('finance_admin'), addExtraFee);
 
 // Finance Enrollment Review
-router.get('/enrollments/all', authorize('finance_admin'), getAllEnrollments);
-router.get('/enrollments', authorize('finance_admin'), getFinanceEnrollments);
-router.put('/enrollments/:id/approve', authorize('finance_admin'), approveFinanceEnrollment);
-router.put('/enrollments/:id/reject', authorize('finance_admin'), rejectFinanceEnrollment);
-router.post('/enrollments/:id/refund', authorize('finance_admin'), processRefund);
+router.get('/enrollments/all', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), getAllEnrollments);
+router.get('/enrollments', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), getFinanceEnrollments);
+router.put('/enrollments/:id/assign', authorize('finance_admin', 'finance_sub_admin', 'superadmin', 'org_admin'), assignFinanceEnrollment);
+router.put('/enrollments/:id/approve', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), approveFinanceEnrollment);
+router.put('/enrollments/:id/reject', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), rejectFinanceEnrollment);
+router.post('/enrollments/:id/refund', authorize('finance_admin', 'superadmin', 'org_admin'), processRefund);
 
 // Reports
 router.get('/reports/income-expenditure', authorize('finance_admin'), getIncomeExpenditureReport);

@@ -10,7 +10,16 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
   const where: any = { organizationId: req.user.organizationId };
 
   if (status) {
-    where.status = status as string;
+    if (status === 'rejected') {
+      where.status = { in: ['rejected', 'finance_rejected'] };
+    } else {
+      where.status = status as string;
+    }
+  }
+
+  // Regular employees only see enrollments assigned to them
+  if (req.user.role === 'employee') {
+    where.assignedFinanceUserId = req.user.id;
   }
 
   if (search) {
@@ -22,18 +31,25 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
     ];
   }
 
+  const summaryWhere: any = { organizationId: req.user.organizationId };
+  if (req.user.role === 'employee') {
+    summaryWhere.assignedFinanceUserId = req.user.id;
+  }
+
   const [enrollments, allEnrollmentsForSummary] = await Promise.all([
     prisma.enrollment.findMany({
       where,
       include: {
         program: { select: { name: true, code: true } },
         studyCenter: { select: { name: true, code: true } },
-        payment: true
+        payment: true,
+        assignedFinanceUser: { select: { id: true, name: true, email: true, role: true } },
+        assignedOpsUser: { select: { id: true, name: true, email: true, role: true } }
       },
       orderBy: { createdAt: 'desc' }
     }),
     prisma.enrollment.findMany({
-      where: { organizationId: req.user.organizationId },
+      where: summaryWhere,
       select: { status: true }
     })
   ]);
@@ -53,7 +69,7 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
     else if (e.status === 'document_review' || e.status === 'pending_doc_review') summary.document_review++;
     else if (e.status === 'pending_finance_review') summary.pending_finance_review++;
     else if (e.status === 'enrolled') summary.enrolled++;
-    else if (e.status === 'rejected') summary.rejected++;
+    else if (e.status === 'rejected' || e.status === 'finance_rejected') summary.rejected++;
     else if (e.status === 'department_rejected') summary.department_rejected++;
   });
 
@@ -61,12 +77,68 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
 });
 
 export const getFinanceEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const where: any = { organizationId: req.user.organizationId, status: 'pending_finance_review' };
+  if (req.user.role === 'employee') {
+    where.assignedFinanceUserId = req.user.id;
+  }
+
   const enrollments = await prisma.enrollment.findMany({
-    where: { organizationId: req.user.organizationId, status: 'pending_finance_review' },
-    include: { program: true, studyCenter: true, payment: true },
+    where,
+    include: {
+      program: true,
+      studyCenter: true,
+      payment: true,
+      assignedFinanceUser: { select: { id: true, name: true, email: true, role: true } },
+      assignedOpsUser: { select: { id: true, name: true, email: true, role: true } }
+    },
     orderBy: { createdAt: 'asc' }
   });
   res.json({ success: true, count: enrollments.length, data: enrollments });
+});
+
+export const assignFinanceEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { assignedFinanceUserId } = req.body;
+
+  if (assignedFinanceUserId) {
+    const targetUser = await prisma.user.findFirst({
+      where: { id: assignedFinanceUserId, organizationId: req.user.organizationId }
+    });
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'Assignee not found in organization' });
+      return;
+    }
+  }
+
+  const enrollment = await prisma.enrollment.update({
+    where: { id: req.params.id },
+    data: {
+      assignedFinanceUserId: assignedFinanceUserId || null
+    },
+    include: {
+      assignedFinanceUser: { select: { id: true, name: true, email: true, role: true } },
+      program: true
+    }
+  });
+
+  if (assignedFinanceUserId) {
+    try {
+      await prisma.notification.create({
+        data: {
+          organizationId: req.user.organizationId,
+          userId: assignedFinanceUserId,
+          title: '💰 Finance Enrollment Review Assigned',
+          message: `You have been assigned to verify fee & enrollment for ${enrollment.studentName} (${enrollment.program?.name || 'Program'}).`,
+          type: 'general',
+          priority: 'medium',
+          link: 'enrollments_finance'
+        }
+      });
+    } catch (notifErr) {
+      console.error('Notification dispatch failed:', notifErr);
+    }
+  }
+
+  res.json({ success: true, data: enrollment });
 });
 
 export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -170,7 +242,7 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
 
   const gstEntry = addFees.find((f: any) => f.label === 'GST');
   const gstAmount = gstEntry ? Math.round((subtotal * gstEntry.amount) / 100) : 0;
-  
+
   // Use the totalFee calculated at enrollment time (which respects paymentMethod), or fallback
   const totalFee = (dbEnrollment as any).totalFee || (subtotal + gstAmount);
 
@@ -317,7 +389,7 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
       if (existing.length === 0) {
         const breakdown = (feeStructure.feeBreakdown as any[]) || [];
         const isSemester = feeStructure.billingCycle === 'per_semester';
-        
+
         if (breakdown.length > 0) {
           const paymentsToCreate = breakdown.map((cycle, index) => ({
             organizationId: req.user.organizationId,
@@ -374,33 +446,77 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
 export const rejectFinanceEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const enrollment = await prisma.enrollment.update({
     where: { id: req.params.id },
-    data: { status: 'rejected' as any, financeReviewer: { connect: { id: req.user.id } }, financeReviewedAt: new Date(), financeRemarks: req.body.remarks },
+    data: {
+      status: 'finance_rejected' as any,
+      financeReviewer: { connect: { id: req.user.id } },
+      financeReviewedAt: new Date(),
+      financeRemarks: req.body.remarks
+    },
     include: { program: true }
   });
 
-  // Create notifications
+  // Create notifications for Operations team and Study Center
   try {
+    const notificationsToCreate: any[] = [];
+
+    // 1. Notify Operations team so they can review and resubmit from Pending Reviews
+    const opsUsers = await prisma.user.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        OR: [
+          { role: { in: ['ops_admin', 'ops_sub_admin'] } as any },
+          ...(enrollment.assignedOpsUserId ? [{ id: enrollment.assignedOpsUserId }] : [])
+        ]
+      }
+    });
+
+    opsUsers.forEach(opUser => {
+      notificationsToCreate.push({
+        organizationId: req.user.organizationId,
+        userId: opUser.id,
+        title: '⚠️ Enrollment Rejected by Finance',
+        message: `Enrollment for ${enrollment.studentName} (${enrollment.program?.name}) was rejected by Finance. Reason: ${req.body.remarks || 'No remarks'}. Action required in Pending Reviews.`,
+        type: 'general' as any,
+        priority: 'high' as any,
+        link: 'enrollment_review'
+      });
+    });
+
+    // 2. Notify Study Center & Sales User
     const centerAdmins = enrollment.studyCenterId ? await prisma.user.findMany({
       where: { studyCenterId: enrollment.studyCenterId, role: 'center_admin' as any }
     }) : [];
-    const recipients = centerAdmins.map(a => a.id);
-    if (enrollment.salesUserId) recipients.push(enrollment.salesUserId);
 
-    // Batch create all notifications in a single DB call
-    if (recipients.length > 0) {
-      await prisma.notification.createMany({
-        data: recipients.map(userId => ({
-          organizationId: req.user.organizationId,
-          userId,
-          title: '❌ Enrollment Rejected by Finance',
-          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks}`,
-          type: 'general' as any,
-          priority: 'high' as any,
-          link: userId === enrollment.salesUserId ? 'student-applications' : 'enrollments'
-        }))
+    centerAdmins.forEach(admin => {
+      notificationsToCreate.push({
+        organizationId: req.user.organizationId,
+        userId: admin.id,
+        title: '⚠️ Enrollment Rejected by Finance',
+        message: `Enrollment for ${enrollment.studentName} was rejected by Finance. Remarks: ${req.body.remarks || 'No remarks'}`,
+        type: 'general' as any,
+        priority: 'high' as any,
+        link: 'enrollments'
+      });
+    });
+
+    if (enrollment.salesUserId) {
+      notificationsToCreate.push({
+        organizationId: req.user.organizationId,
+        userId: enrollment.salesUserId,
+        title: '⚠️ Enrollment Rejected by Finance',
+        message: `Enrollment for ${enrollment.studentName} was rejected by Finance. Remarks: ${req.body.remarks || 'No remarks'}`,
+        type: 'general' as any,
+        priority: 'high' as any,
+        link: 'student-applications'
       });
     }
-  } catch (notifErr) { console.error('Notification dispatch failed:', notifErr); }
+
+    if (notificationsToCreate.length > 0) {
+      await prisma.notification.createMany({ data: notificationsToCreate });
+    }
+  } catch (notifErr) {
+    console.error('Notification dispatch failed:', notifErr);
+  }
 
   res.json({ success: true, data: enrollment });
 });
@@ -422,7 +538,7 @@ export const processRefund = asyncHandler(async (req: AuthRequest, res: Response
   await prisma.$transaction(async (tx) => {
     if (refundStatus === 'processed' && enrollment.paymentType === 'wallet') {
       const amountToCredit = Number(refundAmount) || (enrollment.payment ? enrollment.payment.amount : 0);
-      
+
       const wallet = await tx.studyCenterWallet.findUnique({
         where: { studyCenterId: enrollment.studyCenterId }
       });
