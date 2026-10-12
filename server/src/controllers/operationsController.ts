@@ -739,8 +739,10 @@ export const getStudyCenter = asyncHandler(async (req: AuthRequest, res: Respons
 });
 export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const isSales = req.user.role === 'sales_admin' || req.user.role === 'bde' || req.user.role === 'employee';
-  const { name, referredById, ...restBody } = req.body;
-  const email = req.body.email || req.body.contactEmail;
+  const { name: rawName, referredById, ...restBody } = req.body;
+  const rawEmail = req.body.email || req.body.contactEmail;
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
 
   if (!email) {
     res.status(400).json({ success: false, message: 'Email or contactEmail is required' });
@@ -755,9 +757,10 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   // 1. Generate credentials
-  const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`;
+  const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`.trim();
   const hashedPassword = await hashPassword(rawPassword);
-  const userId = await generateStudyCenterUserId(req.user.organizationId);
+  const rawUserId = await generateStudyCenterUserId(req.user.organizationId);
+  const userId = (rawUserId || '').trim();
 
   // 2. Create in transaction
   const centerWithCreds = await prisma.$transaction(async (tx) => {
@@ -765,18 +768,28 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
     const linkedUniversityIds = req.user.universityId
       ? [req.user.universityId]
       : (Array.isArray(req.body.universityIds) ? req.body.universityIds : []);
+    const rawContact = req.body.contact || req.body.contactPhone || req.body.contactPerson || 'Not Provided';
+    const contact = typeof rawContact === 'string' ? rawContact.trim() : rawContact;
+
     const dbData: any = {
       organizationId: req.user.organizationId,
-      status: isSales ? 'pending_verification' : (req.body.status || 'pending'),
-      referredBy: isSales ? req.user.id : (referredById === 'null' || !referredById ? null : referredById),
+      status: isSales ? 'pending_verification' : (typeof req.body.status === 'string' ? req.body.status.trim() : (req.body.status || 'pending')),
+      referredBy: isSales ? req.user.id : (referredById === 'null' || !referredById ? null : (typeof referredById === 'string' ? referredById.trim() : referredById)),
       credentials: { userId, password: rawPassword },
       email,
-      contact: req.body.contact || req.body.contactPhone || req.body.contactPerson || 'Not Provided',
+      name,
+      contact,
       universityIds: linkedUniversityIds
     };
 
     for (const field of allowedFields) {
-      if (req.body[field] !== undefined) dbData[field] = req.body[field];
+      if (req.body[field] !== undefined) {
+        dbData[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+      }
+    }
+
+    if (dbData.code && typeof dbData.code === 'string') {
+      dbData.code = dbData.code.trim().toUpperCase();
     }
 
     // A university-scoped admin cannot assign the center to another university.
@@ -792,7 +805,7 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
         userId,
         email,
         password: hashedPassword,
-        name: `${name} Admin`,
+        name: `${name} Admin`.trim(),
         role: 'center_admin',
         organizationId: req.user.organizationId,
         universityId: linkedUniversityIds[0] || null,
@@ -810,14 +823,14 @@ export const updateStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
   const { referredById, ...rest } = req.body;
   const data: any = { ...rest };
   if (Object.prototype.hasOwnProperty.call(req.body, 'referredById')) {
-    data.referredBy = referredById === '__none__' || !referredById ? null : referredById;
+    data.referredBy = referredById === '__none__' || !referredById ? null : (typeof referredById === 'string' ? referredById.trim() : referredById);
   }
   if (Object.prototype.hasOwnProperty.call(req.body, 'assignedOperationsUserId')) {
     if (req.user.role !== 'ops_admin') {
       res.status(403).json({ success: false, message: 'Only Operations Admin can assign study centers' });
       return;
     }
-    const assignedUserId = req.body.assignedOperationsUserId;
+    const assignedUserId = typeof req.body.assignedOperationsUserId === 'string' ? req.body.assignedOperationsUserId.trim() : req.body.assignedOperationsUserId;
     if (assignedUserId) {
       const assignedUser = await prisma.user.findFirst({
         where: {
@@ -834,6 +847,20 @@ export const updateStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
     }
     data.assignedOperationsUserId = assignedUserId || null;
   }
+
+  const textFields = ['name', 'code', 'address', 'city', 'state', 'contact', 'email', 'branchName', 'coordinatorName', 'opsRemarks', 'paymentRemarks'];
+  for (const field of textFields) {
+    if (typeof data[field] === 'string') {
+      data[field] = data[field].trim();
+    }
+  }
+  if (data.code && typeof data.code === 'string') {
+    data.code = data.code.toUpperCase();
+  }
+  if (data.email && typeof data.email === 'string') {
+    data.email = data.email.toLowerCase();
+  }
+
   const center = await prisma.studyCenter.update({ where: { id: req.params.id }, data });
   res.json({ success: true, data: { ...center, _id: center.id } });
 });
@@ -1239,9 +1266,10 @@ export const bulkImportStudyCenters = asyncHandler(async (req: AuthRequest, res:
     }
 
     try {
-      const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`;
+      const rawPassword = `Center@${Math.floor(1000 + Math.random() * 9000)}`.trim();
       const hashedPassword = await hashPassword(rawPassword);
-      const userId = await generateStudyCenterUserId(organizationId);
+      const rawUserId = await generateStudyCenterUserId(organizationId);
+      const userId = (rawUserId || '').trim();
 
       await prisma.$transaction(async (tx) => {
         const center = await tx.studyCenter.create({

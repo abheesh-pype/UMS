@@ -382,7 +382,14 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
     try {
       const payload = {
         ...formData,
-        referredById: formData.referredById === '__none__' || !formData.referredById ? null : formData.referredById
+        name: (formData.name || '').trim(),
+        code: (formData.code || '').trim().toUpperCase(),
+        address: (formData.address || '').trim(),
+        contact: (formData.contact || '').trim(),
+        email: (formData.email || '').trim().toLowerCase(),
+        branchName: (formData.branchName || '').trim(),
+        coordinatorName: (formData.coordinatorName || '').trim(),
+        referredById: formData.referredById === '__none__' || !formData.referredById ? null : formData.referredById.trim()
       };
       if (editingId) {
         await api.put(`/operations/centers/${editingId}`, payload);
@@ -390,7 +397,11 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
       } else {
         const res = await api.post('/operations/centers', payload);
         if (res.data.data.credentials) {
-          setCreds(res.data.data.credentials);
+          const credsData = res.data.data.credentials;
+          setCreds({
+            userId: (credsData.userId || '').trim(),
+            password: (credsData.password || '').trim()
+          });
           setShowCreds(true);
         }
         toast.success('Center created successfully');
@@ -404,7 +415,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
   };
 
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText((text || '').trim());
     toast.success(`${label} copied to clipboard`);
   };
 

@@ -651,27 +651,35 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
 });
 
 export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { name, code, email, contact, referredById, ...rest } = req.body;
+  const { name: rawName, code: rawCode, email: rawEmail, contact: rawContact, referredById, ...rest } = req.body;
+  const name = typeof rawName === 'string' ? rawName.trim() : rawName;
+  const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : rawCode;
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : rawEmail;
+  const contact = typeof rawContact === 'string' ? rawContact.trim() : rawContact;
+
   const linkedUniversityIds = req.user.universityId
     ? [req.user.universityId]
     : (Array.isArray(req.body.universityIds) ? req.body.universityIds : []);
   
-  const rawPassword = 'admin123';
+  const rawPassword = 'admin123'.trim();
   const hashedPassword = await hashPassword(rawPassword);
-  const userId = await generateStudyCenterUserId(req.user.organizationId);
+  const rawUserId = await generateStudyCenterUserId(req.user.organizationId);
+  const userId = (rawUserId || '').trim();
+
+  const userEmail = email || `admin.${code}@example.com`.trim();
 
   const center = await prisma.studyCenter.create({
     data: {
       ...rest,
       name,
       code,
-      email,
+      email: userEmail,
       contact,
       organizationId: req.user.organizationId,
       status: 'active' as any,
       financeApprovedBy: req.user.id,
       financeApprovedAt: new Date(),
-      referredBy: referredById || null,
+      referredBy: typeof referredById === 'string' ? (referredById.trim() || null) : (referredById || null),
       universityIds: linkedUniversityIds,
       credentials: { userId, password: rawPassword }
     }
@@ -683,9 +691,9 @@ export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Resp
       organizationId: req.user.organizationId,
       universityId: linkedUniversityIds[0] || null,
       studyCenterId: center.id,
-      email: email || `admin.${code}@example.com`,
+      email: userEmail,
       password: hashedPassword,
-      name: `${name} Admin`,
+      name: `${name} Admin`.trim(),
       role: 'center_admin' as any,
       phone: contact,
       status: 'active' as any
