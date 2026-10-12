@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle, XCircle, Search, GraduationCap, Clock, AlertCircle, Ban } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, Search, GraduationCap, Clock, AlertCircle, Ban, UserCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 interface Enrollment {
@@ -22,6 +24,8 @@ interface Enrollment {
   status: string;
   departmentRemarks?: string;
   financeRemarks?: string;
+  assignedFinanceUserId?: string;
+  assignedFinanceUser?: { id: string; name: string; email: string; role?: string } | null;
   payment?: { amount: number; debitedAt: string; walletId?: string } | null;
   createdAt: string;
   enrolledAt?: string;
@@ -43,6 +47,7 @@ const STATUS_META: Record<string, { label: string; color: string; icon: React.Re
   enrolled:            { label: 'Enrolled',         color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',     icon: <CheckCircle className="w-3 h-3" /> },
   rejected:            { label: 'Rejected',         color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <XCircle className="w-3 h-3" /> },
   department_rejected: { label: 'Dept Rejected',    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
+  finance_rejected:    { label: 'Finance Rejected', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
 };
 
 const FILTER_TABS = [
@@ -55,7 +60,14 @@ const FILTER_TABS = [
 ];
 
 export function FinanceEnrollmentsPanel() {
+  const { user } = useAuth();
+  const isFinanceAdmin = ['finance_admin', 'superadmin', 'org_admin'].includes(user?.role || '');
+
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [financeTeamMembers, setFinanceTeamMembers] = useState<any[]>([]);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -80,8 +92,46 @@ export function FinanceEnrollmentsPanel() {
     }
   };
 
+  const fetchFinanceTeam = async () => {
+    try {
+      const res = await api.get('/users?departmentType=finance');
+      const users = res.data.data || [];
+      const finSubordinates = users.filter((u: any) => {
+        const role = (u.role || '').toLowerCase();
+        const isEligibleRole = ['employee', 'finance_sub_admin', 'finance subadmin'].includes(role);
+        return isEligibleRole && u.status !== 'inactive';
+      });
+      setFinanceTeamMembers(finSubordinates);
+    } catch (e) {
+      console.error('Failed to load finance team members', e);
+    }
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (isFinanceAdmin) {
+      fetchFinanceTeam();
+    }
+  }, [isFinanceAdmin]);
+
+  const handleAssign = async (enrollmentId: string, assignedFinanceUserId: string | null) => {
+    setAssigningId(enrollmentId);
+    try {
+      await api.put(`/finance/enrollments/${enrollmentId}/assign`, {
+        assignedFinanceUserId: assignedFinanceUserId || null
+      });
+      toast.success(assignedFinanceUserId ? 'Assigned successfully' : 'Unassigned successfully');
+      fetchData();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to assign');
+    } finally {
+      setAssigningId(null);
+    }
+  };
 
   const handleTabChange = (key: string) => {
     setStatusFilter(key);
@@ -189,19 +239,37 @@ export function FinanceEnrollmentsPanel() {
           ))}
         </div>
 
-        {/* Search */}
-        <form onSubmit={handleSearch} className="flex gap-2 ml-auto">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search name, email, ID..."
-              className="pl-8 h-8 text-sm w-56"
-            />
-          </div>
-          <Button type="submit" size="sm" variant="outline" className="h-8">Search</Button>
-        </form>
+        {/* Search & Assignee Filter */}
+        <div className="flex items-center gap-2 ml-auto flex-wrap">
+          {isFinanceAdmin && (
+            <select
+              className="h-8 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-44"
+              value={assigneeFilter}
+              onChange={e => setAssigneeFilter(e.target.value)}
+            >
+              <option value="all">All Assignees</option>
+              <option value="unassigned">⚠️ Unassigned Only</option>
+              {financeTeamMembers.map((m: any) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.role === 'finance_sub_admin' || m.role === 'finance subadmin' ? 'Sub-Admin' : 'Employee'})
+                </option>
+              ))}
+            </select>
+          )}
+
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search name, email, ID..."
+                className="pl-8 h-8 text-sm w-56"
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline" className="h-8">Search</Button>
+          </form>
+        </div>
       </div>
 
       {/* Table */}
@@ -225,12 +293,22 @@ export function FinanceEnrollmentsPanel() {
                 <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Center</th>
                 <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">Fee Paid</th>
                 <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Assigned Reviewer</th>
                 <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
                 <th className="text-right p-3 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {enrollments.map(e => {
+              {enrollments
+                .filter(e => {
+                  if (assigneeFilter === 'unassigned') {
+                    if (e.assignedFinanceUserId) return false;
+                  } else if (assigneeFilter !== 'all') {
+                    if (e.assignedFinanceUserId !== assigneeFilter) return false;
+                  }
+                  return true;
+                })
+                .map(e => {
                 const meta = STATUS_META[e.status] || { label: e.status, color: 'bg-muted text-muted-foreground', icon: null };
                 return (
                   <tr key={e.id} className="hover:bg-muted/30 transition-colors">
@@ -264,6 +342,34 @@ export function FinanceEnrollmentsPanel() {
                         <p className="text-[10px] text-muted-foreground mt-0.5 max-w-[160px] truncate" title={e.financeRemarks || e.departmentRemarks}>
                           {e.financeRemarks || e.departmentRemarks}
                         </p>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      {isFinanceAdmin ? (
+                        <div className="flex flex-col gap-1">
+                          <select
+                            value={e.assignedFinanceUserId || ''}
+                            disabled={assigningId === e.id}
+                            onChange={(ev) => handleAssign(e.id, ev.target.value || null)}
+                            className="h-7 text-xs rounded border border-input bg-background px-2 py-0.5 font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer disabled:opacity-50 max-w-[170px]"
+                          >
+                            <option value="">⚠️ Unassigned</option>
+                            {financeTeamMembers.map((m: any) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({m.role === 'finance_sub_admin' || m.role === 'finance subadmin' ? 'Sub-Admin' : 'Employee'})
+                              </option>
+                            ))}
+                          </select>
+                          {e.assignedFinanceUser && (
+                            <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[170px]">
+                              ✓ {e.assignedFinanceUser.name}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[11px] font-medium py-0.5 whitespace-nowrap">
+                          <CheckCircle className="w-3 h-3 mr-1" /> Assigned to You
+                        </Badge>
                       )}
                     </td>
                     <td className="p-3 hidden lg:table-cell text-muted-foreground text-xs">

@@ -64,6 +64,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 
 export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
@@ -106,6 +107,8 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
           payrollBatches={payrollBatches} loading={loading} onNavigate={setActiveTab}
         />
       );
+      case 'my_team':
+      case 'team': return <MyTeamPanel departmentType="finance" title="Finance Team" />;
       case 'invoices': return <InvoicesPanel />;
       case 'payments': return <PaymentsPanel />;
       case 'university_fees': return <FinanceUniversityFeePanel />;
@@ -158,6 +161,7 @@ export function getFinanceNavItems() {
   return [
     { id: '__finance_section', label: 'Finance Management', isSection: true },
     { id: 'overview', label: 'Overview' },
+    { id: 'my_team', label: 'My Team' },
     { id: 'student_payment_log', label: 'Student Payment Log' },
     { id: 'invoices', label: 'Invoices' },
     { id: 'payments', label: 'Payments' },

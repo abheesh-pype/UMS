@@ -94,16 +94,34 @@ export const getTeamPerformance = asyncHandler(async (req: AuthRequest, res: Res
 });
 
 // Recursive helper to get all subordinate user IDs
-async function getAllSubordinateIds(managerId: string): Promise<string[]> {
+async function getAllSubordinateIds(managerId: string, orgId?: string): Promise<string[]> {
   const subordinates = await prisma.user.findMany({
     where: { reportingTo: managerId },
     select: { id: true }
   });
   const ids = subordinates.map(s => s.id);
-  if (ids.length === 0) return [];
-  const subPromises = ids.map(id => getAllSubordinateIds(id));
-  const subIds = await Promise.all(subPromises);
-  return [...ids, ...subIds.flat()];
+  const nested = await Promise.all(ids.map(id => getAllSubordinateIds(id, orgId)));
+  const reportingSubIds = [...ids, ...nested.flat()];
+
+  if (orgId) {
+    const deptEmployees = await prisma.user.findMany({
+      where: {
+        organizationId: orgId,
+        id: { not: managerId },
+        role: { in: ['employee', 'bde', 'sales_sub_admin', 'sales subadmin'] as any },
+        OR: [
+          { department: { type: { equals: 'sales', mode: 'insensitive' } } },
+          { department: { name: { contains: 'sales', mode: 'insensitive' } } },
+          { subDepartment: { parentDept: { type: { equals: 'sales', mode: 'insensitive' } } } },
+          { subDepartment: { parentDept: { name: { contains: 'sales', mode: 'insensitive' } } } },
+        ]
+      },
+      select: { id: true }
+    });
+    return Array.from(new Set([...reportingSubIds, ...deptEmployees.map(u => u.id)]));
+  }
+
+  return reportingSubIds;
 }
 
 // Study Centers
@@ -112,9 +130,14 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
   let whereClause: any = { organizationId: req.user.organizationId };
   
   if (!isAuth) {
-    const subordinateIds = await getAllSubordinateIds(req.user.id);
-    const visibleUserIds = [req.user.id, ...subordinateIds];
-    whereClause.referredBy = { in: visibleUserIds };
+    if (req.user.role === 'sales_admin') {
+      const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
+      const visibleUserIds = [req.user.id, ...subordinateIds];
+      whereClause.referredBy = { in: visibleUserIds };
+    } else {
+      // Sales staff: view ONLY staff-created study centers
+      whereClause.referredBy = req.user.id;
+    }
   }
 
   const centers = await prisma.studyCenter.findMany({
@@ -133,9 +156,13 @@ export const getMyCenterAdmissions = asyncHandler(async (req: AuthRequest, res: 
   let whereCenterClause: any = { organizationId: req.user.organizationId };
   
   if (!isAuth) {
-    const subordinateIds = await getAllSubordinateIds(req.user.id);
-    const visibleUserIds = [req.user.id, ...subordinateIds];
-    whereCenterClause.referredBy = { in: visibleUserIds };
+    if (req.user.role === 'sales_admin') {
+      const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
+      const visibleUserIds = [req.user.id, ...subordinateIds];
+      whereCenterClause.referredBy = { in: visibleUserIds };
+    } else {
+      whereCenterClause.referredBy = req.user.id;
+    }
   }
 
   const visibleCenters = await prisma.studyCenter.findMany({
@@ -174,8 +201,11 @@ export const getMyCenterDetail = asyncHandler(async (req: AuthRequest, res: Resp
 
   const isAuth = ['superadmin', 'org_admin', 'ceo'].includes(req.user.role);
   if (!isAuth) {
-    const subordinateIds = await getAllSubordinateIds(req.user.id);
-    const visibleUserIds = [req.user.id, ...subordinateIds];
+    let visibleUserIds = [req.user.id];
+    if (req.user.role === 'sales_admin') {
+      const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
+      visibleUserIds = [req.user.id, ...subordinateIds];
+    }
     if (!center.referredBy || !visibleUserIds.includes(center.referredBy)) {
       res.status(403).json({ success: false, message: 'Access denied' });
       return;
@@ -231,24 +261,12 @@ export const getMyCenterDetail = asyncHandler(async (req: AuthRequest, res: Resp
 
 export const getTeamMembers = asyncHandler(async (req: AuthRequest, res: Response) => {
   const isAuth = ['superadmin', 'org_admin', 'ceo'].includes(req.user.role);
-  let users;
-  if (isAuth) {
+  let users = [];
+  if (isAuth || req.user.role === 'sales_admin') {
+    const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
     users = await prisma.user.findMany({
       where: {
         organizationId: req.user.organizationId,
-        role: { in: ['sales_admin', 'bde', 'employee'] }
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true
-      }
-    });
-  } else {
-    const subordinateIds = await getAllSubordinateIds(req.user.id);
-    users = await prisma.user.findMany({
-      where: {
         id: { in: subordinateIds }
       },
       select: {
@@ -258,6 +276,8 @@ export const getTeamMembers = asyncHandler(async (req: AuthRequest, res: Respons
         role: true
       }
     });
+  } else {
+    users = [];
   }
   res.json({ success: true, data: users });
 });
@@ -282,7 +302,7 @@ export const reassignCenter = asyncHandler(async (req: AuthRequest, res: Respons
 
   const isAuth = ['superadmin', 'org_admin', 'ceo'].includes(req.user.role);
   if (!isAuth) {
-    const subordinateIds = await getAllSubordinateIds(req.user.id);
+    const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
     if (!subordinateIds.includes(newSalesUserId)) {
       res.status(403).json({ success: false, message: 'You can only reassign to sales users on your team' });
       return;

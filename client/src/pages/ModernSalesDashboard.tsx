@@ -18,6 +18,7 @@ import { HolidaysPanel } from '@/components/panels/HolidaysPanel';
 import { NoticeBoardPanel } from '@/components/panels/NoticeBoardPanel';
 import { SubSalesPortalPanel } from '@/components/panels/SubSalesPortalPanel';
 import { TeamPerformancePanel } from '@/components/panels/TeamPerformancePanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 import { StudyCentersPanel } from '@/components/panels/StudyCentersPanel';
 import { CenterOnboardingOverviewPanel } from '@/components/panels/CenterOnboardingOverviewPanel';
@@ -98,7 +99,8 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
       case 'leads': return null;
       case 'targets': return <TargetsPanel endpoint="/sales/targets" title="Sales Targets" />;
       case 'invite_links': return <SalesInvitePanel />;
-      case 'my_team': return <TeamPerformancePanel />;
+      case 'my_team':
+      case 'team': return <MyTeamPanel departmentType="sales" title="Sales Team" />;
       case 'study_centre': return <StudyCentersPanel salesMode />;
       case 'center_admissions': return <CentersAdmissionsPanel />;
       case 'center_onboarding': return <CenterOnboardingOverviewPanel mode="sales" />;
@@ -557,7 +559,8 @@ function SalesEmployeePortal({ initialTab, user }: { initialTab?: string; user: 
           case 'leads': return null;
           case 'targets': return <TargetsPanel endpoint="/sales/targets" title="My Targets" />;
           case 'invite_links': return <SalesInvitePanel />;
-          case 'my_team': return <TeamPerformancePanel />;
+          case 'my_team':
+          case 'team': return <MyTeamPanel departmentType="sales" title="Sales Team" />;
           case 'study_centre': return <StudyCentersPanel salesMode />;
           case 'center_onboarding': return <CenterOnboardingOverviewPanel mode="sales" />;
           case 'my_attendance': return <AttendancePanel isPersonalView />;

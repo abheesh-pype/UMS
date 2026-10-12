@@ -11,20 +11,95 @@ export const getPendingReviews = asyncHandler(async (req: AuthRequest, res: Resp
   };
 
   if (isHistory) {
-    where.status = { in: ['pending_finance_review', 'payment_pending', 'enrolled', 'rejected'] } as any;
+    where.status = { in: ['pending_finance_review', 'payment_pending', 'enrolled', 'rejected', 'department_rejected'] } as any;
+    if (req.user.role === 'employee') {
+      where.OR = [
+        { assignedOpsUserId: req.user.id },
+        { departmentReviewedBy: req.user.id }
+      ];
+    }
   } else {
-    where.status = 'pending_doc_review';
+    // Both pending document review and finance-rejected forms need Operations action
+    where.status = { in: ['pending_doc_review', 'finance_rejected'] } as any;
+    // Regular employees only see reviews specifically assigned to them
+    if (req.user.role === 'employee') {
+      where.assignedOpsUserId = req.user.id;
+    }
   }
 
   const enrollments = await prisma.enrollment.findMany({
     where,
-    include: { program: { include: { university: true } }, studyCenter: true, session: true }
+    include: {
+      program: { include: { university: true } },
+      studyCenter: true,
+      session: true,
+      assignedOpsUser: { select: { id: true, name: true, email: true, role: true } },
+      departmentReviewer: { select: { id: true, name: true } }
+    },
+    orderBy: { createdAt: 'asc' }
   });
   res.json({ success: true, count: enrollments.length, data: enrollments });
 });
 
+export const assignDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { assignedOpsUserId } = req.body;
+
+  if (assignedOpsUserId) {
+    const targetUser = await prisma.user.findFirst({
+      where: { id: assignedOpsUserId, organizationId: req.user.organizationId }
+    });
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: 'Assignee not found in organization' });
+      return;
+    }
+  }
+
+  const enrollment = await prisma.enrollment.update({
+    where: { id: req.params.id },
+    data: {
+      assignedOpsUserId: assignedOpsUserId || null
+    },
+    include: {
+      assignedOpsUser: { select: { id: true, name: true, email: true, role: true } },
+      program: true
+    }
+  });
+
+  if (assignedOpsUserId) {
+    try {
+      await prisma.notification.create({
+        data: {
+          organizationId: req.user.organizationId,
+          userId: assignedOpsUserId,
+          title: '📋 Enrollment Review Assigned',
+          message: `You have been assigned to review enrollment for ${enrollment.studentName} (${enrollment.program?.name || 'Program'}).`,
+          type: 'general',
+          priority: 'medium',
+          link: 'enrollment_review'
+        }
+      });
+    } catch (notifErr) {
+      console.error('Notification dispatch failed:', notifErr);
+    }
+  }
+
+  res.json({ success: true, data: enrollment });
+});
+
 export const getDeptReviewEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const enrollments = await prisma.enrollment.findMany({ where: { organizationId: req.user.organizationId, status: 'pending_doc_review' }, include: { program: { include: { university: true } }, studyCenter: true, session: true } });
+  const where: any = { organizationId: req.user.organizationId, status: 'pending_doc_review' };
+  if (req.user.role === 'employee') {
+    where.assignedOpsUserId = req.user.id;
+  }
+  const enrollments = await prisma.enrollment.findMany({
+    where,
+    include: {
+      program: { include: { university: true } },
+      studyCenter: true,
+      session: true,
+      assignedOpsUser: { select: { id: true, name: true, email: true, role: true } }
+    }
+  });
   res.json({ success: true, count: enrollments.length, data: enrollments });
 });
 
@@ -39,13 +114,16 @@ export const approveDeptEnrollment = asyncHandler(async (req: AuthRequest, res: 
     return;
   }
 
-  const category = (currentEnrollment.program.university as any).category || 'team_lease';
-  const isDirectToUni = currentEnrollment.paymentType === 'direct_to_university';
-  const nextStatus = (category === 'team_lease' || category === 'direct_iits' || isDirectToUni) ? 'pending_finance_review' : 'payment_pending';
+  // Once approved by Operations, always forward to Finance Review so it shows in Finance Admin panel
+  const nextStatus = 'pending_finance_review';
 
   const enrollment = await prisma.enrollment.update({
     where: { id: req.params.id },
-    data: { status: nextStatus, departmentReviewer: { connect: { id: req.user.id } }, departmentReviewedAt: new Date() },
+    data: {
+      status: nextStatus,
+      departmentReviewer: { connect: { id: req.user.id } },
+      departmentReviewedAt: new Date()
+    },
     include: { program: true }
   });
 
@@ -73,7 +151,12 @@ export const approveDeptEnrollment = asyncHandler(async (req: AuthRequest, res: 
 export const rejectDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const enrollment = await prisma.enrollment.update({
     where: { id: req.params.id },
-    data: { status: 'rejected' as any, departmentReviewer: { connect: { id: req.user.id } }, departmentReviewedAt: new Date(), departmentRemarks: req.body.remarks },
+    data: {
+      status: 'department_rejected' as any,
+      departmentReviewer: { connect: { id: req.user.id } },
+      departmentReviewedAt: new Date(),
+      departmentRemarks: req.body.remarks
+    },
     include: { program: true }
   });
 
@@ -90,13 +173,56 @@ export const rejectDeptEnrollment = asyncHandler(async (req: AuthRequest, res: R
           organizationId: req.user.organizationId,
           userId,
           title: '❌ Enrollment Rejected by Operations',
-          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks}`,
+          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks || 'No remarks'}. Please edit and re-submit from My Enrollments.`,
           type: 'general' as any,
           priority: 'high' as any,
           link: userId === enrollment.salesUserId ? 'student-applications' : 'enrollments'
         }))
       });
     }
+  } catch (notifErr) { console.error('Notification dispatch failed:', notifErr); }
+
+  res.json({ success: true, data: enrollment });
+});
+
+export const resubmitToFinance = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const currentEnrollment = await prisma.enrollment.findUnique({
+    where: { id: req.params.id },
+    include: { program: true }
+  });
+
+  if (!currentEnrollment) {
+    res.status(404).json({ success: false, message: 'Enrollment not found' });
+    return;
+  }
+
+  const enrollment = await prisma.enrollment.update({
+    where: { id: req.params.id },
+    data: {
+      status: 'pending_finance_review',
+      departmentRemarks: req.body.remarks || currentEnrollment.departmentRemarks,
+      departmentReviewer: { connect: { id: req.user.id } },
+      departmentReviewedAt: new Date()
+    },
+    include: { program: true }
+  });
+
+  // Notify Finance Admins
+  try {
+    const financeAdmins = await prisma.user.findMany({
+      where: { organizationId: req.user.organizationId, role: 'finance_admin' as any }
+    });
+    await prisma.notification.createMany({
+      data: financeAdmins.map(admin => ({
+        organizationId: req.user.organizationId,
+        userId: admin.id,
+        title: '📄 Enrollment Re-submitted by Operations',
+        message: `${enrollment.studentName} has been re-submitted by Operations for fee verification (${enrollment.program?.name || 'Program'}).`,
+        type: 'general' as any,
+        priority: 'medium' as any,
+        link: 'enrollments_finance'
+      }))
+    });
   } catch (notifErr) { console.error('Notification dispatch failed:', notifErr); }
 
   res.json({ success: true, data: enrollment });

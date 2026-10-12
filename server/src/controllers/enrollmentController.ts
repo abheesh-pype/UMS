@@ -36,7 +36,7 @@ export const submitTopUp = asyncHandler(async (req: AuthRequest, res: Response) 
     studyCenterId: req.user.studyCenterId || '',
     organizationId: req.user.organizationId,
   };
-  
+
   if (req.file) {
     data.proofDocument = `/uploads/${req.file.filename}`;
   }
@@ -74,8 +74,8 @@ export const getWalletTransactions = asyncHandler(async (req: AuthRequest, res: 
 
   // Get student invoices paid by center wallet
   const studentInvoices = await prisma.invoice.findMany({
-    where: { 
-      centerId, 
+    where: {
+      centerId,
       studentId: { not: null },
       status: 'paid'
     },
@@ -134,12 +134,12 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
   };
   const center = req.user.studyCenterId
     ? await prisma.studyCenter.findUnique({
-        where: { id: req.user.studyCenterId },
-        select: { universityIds: true }
-      })
+      where: { id: req.user.studyCenterId },
+      select: { universityIds: true }
+    })
     : null;
   const isLinkedToPrimaryUniversity = center?.universityIds?.includes(req.user.universityId);
-  
+
   if (req.user.studyCenterId) {
     where.OR = [
       ...(isLinkedToPrimaryUniversity ? [{ universityId: req.user.universityId }] : []),
@@ -203,7 +203,7 @@ export const checkEmailUniqueness = asyncHandler(async (req: AuthRequest, res: R
 });
 
 export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { 
+  const {
     studentName, studentEmail, studentPhone, studentAddress, programId, documents, educationalDetails, sessionId, specialisation,
     abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto, admissionDate,
     pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee
@@ -281,8 +281,8 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       where: { id: studyCenterId }
     });
     if (center?.customEnrollmentFields) {
-      const config = typeof center.customEnrollmentFields === 'string' 
-        ? JSON.parse(center.customEnrollmentFields) 
+      const config = typeof center.customEnrollmentFields === 'string'
+        ? JSON.parse(center.customEnrollmentFields)
         : center.customEnrollmentFields;
       if (config && typeof config === 'object' && !Array.isArray(config)) {
         for (const [field, requirement] of Object.entries(config)) {
@@ -364,7 +364,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     let user = await tx.user.findUnique({ where: { email: studentEmail } });
     if (!user) {
       const userId = `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      
+
       user = await tx.user.create({
         data: {
           userId,
@@ -440,10 +440,10 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         paymentMethod: paymentMethod || 'installment',
         totalFee: totalFee ? Number(totalFee) : null,
         organization: { connect: { id: organizationId } },
-        program:      { connect: { id: programId } },
-        studyCenter:  studyCenterId ? { connect: { id: studyCenterId } } : undefined,
-        session:      { connect: { id: finalSessionId } },
-        student:      { connect: { id: student.id } },
+        program: { connect: { id: programId } },
+        studyCenter: studyCenterId ? { connect: { id: studyCenterId } } : undefined,
+        session: { connect: { id: finalSessionId } },
+        student: { connect: { id: student.id } },
       }
     });
   }, { timeout: 15000 });
@@ -451,7 +451,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   // Notify Operations Users
   try {
     const opsUsers = await prisma.user.findMany({
-      where: { 
+      where: {
         organizationId,
         OR: [
           { role: { in: ['ops_admin', 'ops_sub_admin'] } as any },
@@ -459,7 +459,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         ]
       }
     });
-    
+
     // Fetch program details for the message
     const prog = await prisma.program.findUnique({ where: { id: programId } });
     const programName = prog ? prog.name : '';
@@ -488,7 +488,11 @@ export const getMyEnrollments = asyncHandler(async (req: AuthRequest, res: Respo
   const where: any = { studyCenterId: req.user.studyCenterId || '' };
 
   if (status) {
-    where.status = status as string;
+    if (status === 'rejected') {
+      where.status = { in: ['rejected', 'department_rejected', 'finance_rejected'] };
+    } else {
+      where.status = status as string;
+    }
   }
 
   const enrollments = await prisma.enrollment.findMany({
@@ -616,8 +620,8 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
     }
 
     where.AND = [
-        { OR: [{ programId: program.id }, { programId: null }] },
-        { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+      { OR: [{ programId: program.id }, { programId: null }] },
+      { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
     ];
   } else {
     where.OR = [
@@ -636,7 +640,7 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
 
 export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
-  const { 
+  const {
     studentName, studentEmail, studentPhone, studentAddress, programId, documents, educationalDetails, sessionId, specialisation,
     abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto, admissionDate,
     pincode, alternativePhone, maritalStatus, currentlyWorking
@@ -658,7 +662,7 @@ export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     return;
   }
 
-  if (enrollment.status !== 'rejected') {
+  if (!['rejected', 'department_rejected', 'finance_rejected'].includes(enrollment.status)) {
     res.status(400).json({ success: false, message: 'Only rejected enrollments can be edited and re-submitted' });
     return;
   }
@@ -668,8 +672,8 @@ export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     where: { id: studyCenterId }
   });
   if (center?.customEnrollmentFields) {
-    const config = typeof center.customEnrollmentFields === 'string' 
-      ? JSON.parse(center.customEnrollmentFields) 
+    const config = typeof center.customEnrollmentFields === 'string'
+      ? JSON.parse(center.customEnrollmentFields)
       : center.customEnrollmentFields;
     if (config && typeof config === 'object' && !Array.isArray(config)) {
       for (const [field, requirement] of Object.entries(config)) {
@@ -739,10 +743,38 @@ export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       sessionId: finalSessionId,
       status: 'pending_doc_review',
       departmentRemarks: null, // Clear remarks since it is re-submitted
+      financeRemarks: null,
       documents: documents ? (typeof documents === 'string' ? JSON.parse(documents) : documents) : enrollment.documents,
       educationalDetails: educationalDetails ? (typeof educationalDetails === 'string' ? JSON.parse(educationalDetails) : educationalDetails) : enrollment.educationalDetails,
     }
   });
+
+  // Notify Operations Users of the re-submission
+  try {
+    const opsUsers = await prisma.user.findMany({
+      where: {
+        organizationId,
+        OR: [
+          { role: { in: ['ops_admin', 'ops_sub_admin'] } as any },
+          ...(enrollment.assignedOpsUserId ? [{ id: enrollment.assignedOpsUserId }] : [])
+        ]
+      }
+    });
+
+    await prisma.notification.createMany({
+      data: opsUsers.map(opUser => ({
+        organizationId,
+        userId: opUser.id,
+        title: '📄 Enrollment Re-submitted by Study Center',
+        message: `Enrollment for ${updatedEnrollment.studentName} was updated and re-submitted by the study center. Ready for Operations review.`,
+        type: 'general' as any,
+        priority: 'medium' as any,
+        link: 'enrollment_review'
+      }))
+    });
+  } catch (notifErr) {
+    console.error('Notification dispatch failed:', notifErr);
+  }
 
   res.status(200).json({ success: true, data: updatedEnrollment });
 });
