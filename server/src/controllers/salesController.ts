@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { mapPrismaToFrontendCourseType } from '../utils/courseTypeHelper.js';
+import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 
 // Leads
 export const getLeads = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -143,6 +144,7 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
   const centers = await prisma.studyCenter.findMany({
     where: whereClause,
     include: {
+      onboardingStatus: true,
       referrer: {
         select: { id: true, name: true, email: true, role: true }
       }
@@ -152,29 +154,24 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
     success: true,
     data: centers.map(center => ({
       ...center,
-      status: center.status === 'rejected' && center.verifiedBy && center.paymentRemarks
-        ? 'rejected_from_finance'
-        : center.status,
+      status: center.onboardingStatus?.code || center.status,
     })),
   });
 });
 
 export const resubmitFinanceRejectedCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const centerId = req.params.studyCenterId || req.params.id;
   const center = await prisma.studyCenter.findFirst({
     where: {
-      id: req.params.studyCenterId,
+      id: centerId,
       organizationId: req.user.organizationId,
-      status: 'rejected',
-      verifiedBy: { not: null },
-      paymentRemarks: null,
+      OR: [
+        { status: { in: ['rejected', 'ops_rejected', 'finance_rejected', 'rejected_from_finance'] } },
+        { onboardingStatus: { state: 'rejected' } },
+      ],
     },
-    select: {
-      id: true,
-      referredBy: true,
-      status: true,
-      verifiedBy: true,
-      paymentRemarks: true,
-      statusHistory: true,
+    include: {
+      onboardingStatus: true,
     },
   });
   if (!center) {
@@ -186,22 +183,26 @@ export const resubmitFinanceRejectedCenter = asyncHandler(async (req: AuthReques
   if (req.user.role === 'sales_admin') {
     visibleUserIds = [...visibleUserIds, ...await getAllSubordinateIds(req.user.id, req.user.organizationId)];
   }
-  if (!isAdmin && (!center.referredBy || !visibleUserIds.includes(center.referredBy))) {
+  if (!isAdmin && center.referredBy && !visibleUserIds.includes(center.referredBy)) {
     res.status(403).json({ success: false, message: 'You can only update study centers referred by you or your team' });
     return;
   }
 
-  const fields = ['name', 'code', 'email', 'contact', 'address', 'city', 'state', 'coordinatorName', 'branchName'];
-  const data: Record<string, string> = {};
-  for (const field of fields) {
-    if (typeof req.body[field] === 'string') data[field] = req.body[field].trim();
-  }
-  if (!data.name || !data.code) {
-    res.status(400).json({ success: false, message: 'Center name and code are required' });
-    return;
-  }
-  data.code = data.code.toUpperCase();
-  if (data.email) data.email = data.email.toLowerCase();
+  const name = typeof req.body.name === 'string' && req.body.name.trim() ? req.body.name.trim() : center.name;
+  const rawCode = typeof req.body.code === 'string' && req.body.code.trim() ? req.body.code.trim() : center.code;
+  const code = rawCode.toUpperCase();
+
+  const data: Record<string, any> = {
+    name,
+    code,
+    email: typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : center.email,
+    contact: typeof req.body.contact === 'string' ? req.body.contact.trim() : center.contact,
+    address: typeof req.body.address === 'string' ? req.body.address.trim() : center.address,
+    city: typeof req.body.city === 'string' ? req.body.city.trim() : center.city,
+    state: typeof req.body.state === 'string' ? req.body.state.trim() : center.state,
+    coordinatorName: typeof req.body.coordinatorName === 'string' ? req.body.coordinatorName.trim() : center.coordinatorName,
+    branchName: typeof req.body.branchName === 'string' ? req.body.branchName.trim() : center.branchName,
+  };
 
   const duplicateCode = await prisma.studyCenter.findFirst({
     where: {
@@ -216,28 +217,56 @@ export const resubmitFinanceRejectedCenter = asyncHandler(async (req: AuthReques
     return;
   }
 
+  // Workflow Rule:
+  // When Operations rejected: move to ops_resubmitted (stage: operations, state: resubmitted)
+  // When Finance rejected: move to finance_resubmitted (stage: finance, state: resubmitted)
+  const isFinanceRejection = center.onboardingStatus?.stage === 'finance'
+    || center.status === 'finance_rejected'
+    || center.status === 'rejected_from_finance'
+    || (center.status === 'rejected' && center.verifiedBy && center.paymentRemarks);
+
+  const targetStatusCode = isFinanceRejection ? 'finance_resubmitted' : 'ops_resubmitted';
+  const targetStatus = await getOnboardingStatusByCode(targetStatusCode);
+
+  const remarks = req.body.remarks || (
+    isFinanceRejection
+      ? 'Payment and center details updated and resubmitted to Finance for re-verification'
+      : 'Updated and resubmitted to Operations for re-verification'
+  );
+
+  const historyEntry = {
+    status: targetStatus?.code || targetStatusCode,
+    statusName: targetStatus?.name || (isFinanceRejection ? 'Finance Resubmitted' : 'Operations Resubmitted'),
+    stage: targetStatus?.stage || (isFinanceRejection ? 'finance' : 'operations'),
+    state: targetStatus?.state || 'resubmitted',
+    actorId: req.user.id,
+    actorName: req.user.name,
+    remarks,
+    timestamp: new Date().toISOString(),
+  };
+
   const updatedCenter = await prisma.studyCenter.update({
     where: { id: center.id },
     data: {
       ...data,
-      status: 'pending_verification',
-      verifiedBy: null,
-      verifiedAt: null,
-      opsRemarks: null,
+      onboardingStatusId: targetStatus?.id || null,
+      status: targetStatusCode,
+      ...(isFinanceRejection ? {} : { verifiedBy: null, verifiedAt: null, opsRemarks: null }),
       statusHistory: [
         ...((center.statusHistory as any[]) || []),
-        {
-          status: 'pending_verification',
-          actorId: req.user.id,
-          actorName: req.user.name,
-          remarks: 'Updated and resubmitted to Operations for verification',
-          timestamp: new Date().toISOString(),
-        },
+        historyEntry,
       ],
     },
+    include: {
+      onboardingStatus: true,
+      referrer: { select: { id: true, name: true, email: true, role: true } },
+    }
   });
   res.json({ success: true, data: updatedCenter });
 });
+
+export const resubmitStudyCenter = resubmitFinanceRejectedCenter;
+
 
 export const getMyCenterAdmissions = asyncHandler(async (req: AuthRequest, res: Response) => {
   const isAuth = ['superadmin', 'org_admin', 'ceo'].includes(req.user.role);
@@ -276,6 +305,7 @@ export const getMyCenterDetail = asyncHandler(async (req: AuthRequest, res: Resp
   const center = await prisma.studyCenter.findUnique({
     where: { id: req.params.studyCenterId },
     include: {
+      onboardingStatus: true,
       referrer: { select: { id: true, name: true, email: true, role: true } },
       allowedPrograms: true,
       associatedUniversities: true
@@ -337,6 +367,11 @@ export const getMyCenterDetail = asyncHandler(async (req: AuthRequest, res: Resp
     data: {
       center: {
         ...center,
+        status: center.onboardingStatus?.code || (
+          center.status === 'rejected' && center.verifiedBy && center.paymentRemarks
+            ? 'rejected_from_finance'
+            : (center.status === 'rejected' ? 'ops_rejected' : center.status)
+        ),
         associatedUniversityIds: center.associatedUniversities,
         allowedProgramIds: center.allowedPrograms
       },

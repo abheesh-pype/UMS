@@ -553,6 +553,8 @@ model StudyCenter {
   targets                Target[]
   centerAdmins           User[]                 @relation("CenterAdmin")
   walletTopUps           WalletTopUp[]
+  onboardingStatusId     String?
+  onboardingStatus       StudyCenterOnboardingStatus? @relation("CenterOnboardingStatus", fields: [onboardingStatusId], references: [id], onDelete: SetNull)
   allowedPrograms        Program[]              @relation("ProgramToStudyCenter")
   assignedSubDepts       SubDepartment[]        @relation("SubDeptToCenter")
   associatedUniversities University[]           @relation("UniversityToStudyCenter")
@@ -560,7 +562,26 @@ model StudyCenter {
 
   @@unique([organizationId, code])
   @@index([organizationId])
+  @@index([onboardingStatusId])
 }
+
+model StudyCenterOnboardingStatus {
+  id                  String        @id @default(uuid())
+  code                String        @unique
+  name                String
+  stage               String        // 'operations' | 'finance' | 'completed'
+  state               String        // 'pending' | 'approved' | 'rejected' | 'resubmitted' | 'active'
+  stepOrder           Int           @default(1)
+  description         String?
+  allowedNextStatuses Json          @default("[]")
+  isActive            Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  studyCenters        StudyCenter[] @relation("CenterOnboardingStatus")
+
+  @@map("study_centre_onboarding_statuses")
+}
+
 
 model Student {
   id                  String         @id @default(uuid())

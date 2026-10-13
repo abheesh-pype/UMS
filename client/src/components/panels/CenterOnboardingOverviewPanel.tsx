@@ -79,13 +79,21 @@ interface EnrollmentData {
   monthly: { month: string; total: number; enrolled: number; pending: number; rejected: number }[];
 }
 
+const isRejected = (s: string) => ['rejected', 'ops_rejected', 'finance_rejected', 'rejected_from_finance'].includes(s);
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; step: number }> = {
   pending_verification: { label: 'Pending Ops Review', color: 'bg-warning/10 text-warning border-warning/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
+  ops_resubmitted:      { label: 'Ops Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
+  ops_rejected:         { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
+  rejected:             { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
   ops_verified:         { label: 'Ops Approved', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 2 },
-  pending_payment:      { label: 'Pending Finance', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 3 },
-  active:               { label: 'Active', color: 'bg-success/10 text-success border-success/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 4 },
-  rejected:             { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
-  rejected_from_finance: { label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
+  pending_payment:      { label: 'Pending Finance Review', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 2 },
+  finance_resubmitted:  { label: 'Finance Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 2 },
+  finance_rejected:     { label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 2 },
+  rejected_from_finance:{ label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 2 },
+  active:               { label: 'Active', color: 'bg-success/10 text-success border-success/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 3 },
+  suspended:            { label: 'Suspended', color: 'bg-muted text-muted-foreground border-border', icon: <XCircle className="w-3.5 h-3.5" />, step: 3 },
+  inactive:             { label: 'Inactive', color: 'bg-muted text-muted-foreground border-border', icon: <XCircle className="w-3.5 h-3.5" />, step: 3 },
 };
 
 const ENROLLMENT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -99,10 +107,9 @@ const ENROLLMENT_STATUS_CONFIG: Record<string, { label: string; color: string }>
 };
 
 const STEPS = [
-  { key: 'pending_verification', label: 'Registered' },
-  { key: 'ops_verified', label: 'Ops Verified' },
-  { key: 'pending_payment', label: 'Payment' },
-  { key: 'active', label: 'Active' },
+  { key: 'operations', label: 'Operations Review', stepNumber: 1 },
+  { key: 'finance', label: 'Finance Review', stepNumber: 2 },
+  { key: 'active', label: 'Active', stepNumber: 3 },
 ];
 
 function formatDuration(hours: number) {
@@ -146,17 +153,17 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
         const SLA_HOURS = 48;
         const enriched = rawCenters.map(c => {
           const hrs = Math.round((Date.now() - new Date(c.updatedAt).getTime()) / 3600000);
-          const slaBreached = c.status === 'pending_verification' && hrs > SLA_HOURS;
+          const slaBreached = ['pending_verification', 'ops_resubmitted', 'pending'].includes(c.status) && hrs > SLA_HOURS;
           return { ...c, hoursAtCurrentStage: hrs, slaBreached };
         });
         setCenters(enriched);
         setSummary({
           total: enriched.length,
-          pending_verification: enriched.filter(c => c.status === 'pending_verification').length,
-          ops_verified: enriched.filter(c => c.status === 'ops_verified').length,
-          pending_payment: enriched.filter(c => c.status === 'pending_payment').length,
+          pending_verification: enriched.filter(c => ['pending_verification', 'ops_resubmitted', 'pending'].includes(c.status)).length,
+          ops_verified: enriched.filter(c => ['pending_payment', 'ops_verified'].includes(c.status)).length,
+          pending_payment: enriched.filter(c => ['pending_payment', 'finance_resubmitted'].includes(c.status)).length,
           active: enriched.filter(c => c.status === 'active').length,
-          rejected: enriched.filter(c => ['rejected', 'rejected_from_finance'].includes(c.status)).length,
+          rejected: enriched.filter(c => isRejected(c.status)).length,
           slaBreached: enriched.filter(c => c.slaBreached).length,
         });
       }
@@ -177,7 +184,7 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
     setResubmitting(true);
     try {
       await api.put(`/sales/my-centers/${editingCenter.id}/resubmit`, Object.fromEntries(formData.entries()));
-      toast.success('Study center updated and resubmitted to Finance');
+      toast.success('Study center updated and resubmitted');
       setEditingCenter(null);
       await fetchData();
     } catch (error: any) {
@@ -190,8 +197,13 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
   const filteredCenters = statusFilter === 'all'
     ? centers
     : statusFilter === 'rejected'
-      ? centers.filter(c => ['rejected', 'rejected_from_finance'].includes(c.status))
-      : centers.filter(c => c.status === statusFilter);
+      ? centers.filter(c => isRejected(c.status))
+      : statusFilter === 'pending_verification'
+        ? centers.filter(c => ['pending_verification', 'ops_resubmitted', 'pending'].includes(c.status))
+        : statusFilter === 'pending_payment'
+          ? centers.filter(c => ['pending_payment', 'finance_resubmitted'].includes(c.status))
+          : centers.filter(c => c.status === statusFilter);
+
 
   return (
     <div className="space-y-6">
@@ -431,7 +443,7 @@ function CenterList({
                   )}
 
                   {/* Progress stepper */}
-                  {center.status !== 'rejected' && (
+                  {!isRejected(center.status) && (
                     <div className="flex items-center gap-1 mt-3">
                       {STEPS.map((step, i) => (
                         <div key={step.key} className="flex items-center gap-1">
@@ -467,7 +479,7 @@ function CenterList({
                     {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     {isExpanded ? 'Hide' : 'Details'}
                   </button>
-                  {center.status === 'rejected' && onResubmit && (
+                  {isRejected(center.status) && onResubmit && (
                     <Button size="sm" onClick={() => onResubmit(center)}>
                       Update and Resubmit
                     </Button>

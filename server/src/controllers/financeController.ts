@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateStudyCenterUserId } from '../utils/authUtils.js';
+import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 
 // Invoices
 export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -527,10 +528,14 @@ export const getPendingPaymentCenters = asyncHandler(async (req: AuthRequest, re
   const centers = await prisma.studyCenter.findMany({
     where: {
       organizationId: req.user.organizationId,
-      status: 'pending_payment' as any,
+      OR: [
+        { onboardingStatus: { stage: 'finance', state: { in: ['pending', 'resubmitted'] } } },
+        { status: { in: ['pending_payment', 'finance_resubmitted'] } },
+      ],
       ...(isFinanceAssignee ? { assignedFinanceUserId: req.user.id } : {}),
     },
     include: {
+      onboardingStatus: true,
       verifier: { select: { id: true, name: true, email: true } },
       assignedFinanceUser: { select: { id: true, name: true, role: true } },
     },
@@ -551,6 +556,7 @@ export const getPendingPaymentCenters = asyncHandler(async (req: AuthRequest, re
     }));
     return {
       ...center,
+      status: center.onboardingStatus?.code || center.status,
       verifiedBy: center.verifier,
       authFees: universities.map(university => ({
         universityId: university.id,
@@ -568,7 +574,10 @@ export const assignFinanceCenter = asyncHandler(async (req: AuthRequest, res: Re
     where: {
       id: req.params.id,
       organizationId: req.user.organizationId,
-      status: 'pending_payment' as any,
+      OR: [
+        { onboardingStatus: { stage: 'finance' } },
+        { status: { in: ['pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance'] } },
+      ],
     },
     select: { id: true },
   });
@@ -619,7 +628,15 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
     return;
   }
   const existingCenter = await prisma.studyCenter.findFirst({
-    where: { id: req.params.id, organizationId: req.user.organizationId, status: 'pending_payment' as any }
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      OR: [
+        { onboardingStatus: { stage: 'finance' } },
+        { status: { in: ['pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance'] } },
+      ],
+    },
+    include: { onboardingStatus: true },
   });
   if (!existingCenter) {
     res.status(404).json({ success: false, message: 'Pending payment center not found' });
@@ -638,27 +655,46 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
     res.status(400).json({ success: false, message: 'A payment proof must be uploaded before approving this study center' });
     return;
   }
+
+  // Workflow Rule:
+  // When Finance approves: Only after final approval should the centre be activated! (active).
+  // When Finance rejects: keep at Finance stage (finance_rejected).
+  const targetStatusCode = action === 'approve' ? 'active' : 'finance_rejected';
+  const targetStatus = await getOnboardingStatusByCode(targetStatusCode);
+
+  const historyEntry = {
+    status: targetStatus?.code || targetStatusCode,
+    statusName: targetStatus?.name || (action === 'approve' ? 'Active' : 'Finance Rejected'),
+    stage: targetStatus?.stage || (action === 'approve' ? 'completed' : 'finance'),
+    state: targetStatus?.state || (action === 'approve' ? 'active' : 'rejected'),
+    actorId: req.user.id,
+    actorName: req.user.name,
+    remarks: remarks?.trim() || '',
+    timestamp: new Date().toISOString(),
+  };
+
   const center = await prisma.studyCenter.update({
     where: { id: req.params.id },
     data: {
-      status: action === 'approve' ? 'active' as any : 'rejected_from_finance',
+      onboardingStatusId: targetStatus?.id || null,
+      status: targetStatusCode,
       financeApprovedBy: action === 'approve' ? req.user.id : undefined,
       financeApprovedAt: action === 'approve' ? new Date() : undefined,
       paymentRemarks: remarks?.trim() || null,
       statusHistory: [
         ...((existingCenter.statusHistory as any[]) || []),
-        {
-          status: action === 'approve' ? 'active' : 'rejected_from_finance',
-          actorId: req.user.id,
-          actorName: req.user.name,
-          remarks: remarks?.trim() || '',
-          timestamp: new Date().toISOString(),
-        },
+        historyEntry
       ],
+    },
+    include: {
+      onboardingStatus: true,
+      verifier: { select: { id: true, name: true, email: true } },
+      assignedFinanceUser: { select: { id: true, name: true, role: true } },
     }
   });
   res.json({ success: true, data: center });
 });
+
 
 export const createStudyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name: rawName, code: rawCode, email: rawEmail, contact: rawContact, referredById, ...rest } = req.body;

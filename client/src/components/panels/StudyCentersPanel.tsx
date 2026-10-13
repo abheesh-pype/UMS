@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Edit, Trash2, MapPin, Upload, Download, AlertTriangle, CheckCircle2, Copy, Search, Settings, ChevronDown, ChevronRight, Building2, GitBranch, ArrowLeft, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, MapPin, Upload, Download, AlertTriangle, AlertCircle, RefreshCw, CheckCircle2, Copy, Search, Settings, ChevronDown, ChevronRight, Building2, GitBranch, ArrowLeft, Eye } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 interface AssignableOpsUser {
@@ -82,6 +83,22 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
   const [importReferredById, setImportReferredById] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
+
+  // Resubmit Study Center state
+  const [resubmitDialogCenter, setResubmitDialogCenter] = useState<any | null>(null);
+  const [resubmitFormData, setResubmitFormData] = useState({
+    name: '',
+    code: '',
+    email: '',
+    contact: '',
+    address: '',
+    city: '',
+    state: '',
+    coordinatorName: '',
+    branchName: '',
+    remarks: '',
+  });
+  const [resubmittingCenter, setResubmittingCenter] = useState(false);
 
   // Form Config customization state
   const [configOpen, setConfigOpen] = useState(false);
@@ -522,6 +539,41 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
     }
   };
 
+  const handleOpenResubmit = (center: any) => {
+    setResubmitDialogCenter(center);
+    setResubmitFormData({
+      name: center.name || '',
+      code: center.code || '',
+      email: center.email || '',
+      contact: center.contact || '',
+      address: center.address || '',
+      city: center.city || '',
+      state: center.state || '',
+      coordinatorName: center.coordinatorName || '',
+      branchName: center.branchName || '',
+      remarks: '',
+    });
+  };
+
+  const handleResubmitSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resubmitDialogCenter) return;
+    setResubmittingCenter(true);
+    try {
+      const res = await api.put(`/operations/centers/${resubmitDialogCenter.id}/resubmit`, resubmitFormData);
+      toast.success(res.data?.message || 'Study center successfully resubmitted to Operations!');
+      setResubmitDialogCenter(null);
+      if (selectedCenter && selectedCenter.id === resubmitDialogCenter.id) {
+        setSelectedCenter(res.data.data || null);
+      }
+      fetchCenters();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to resubmit study center');
+    } finally {
+      setResubmittingCenter(false);
+    }
+  };
+
   const resetForm = () => {
     setEditingId(null);
     setFormData({ name: '', code: '', address: '', contact: '', email: '', status: 'pending', referredById: salesMode ? (user?.id || '') : '', branchName: '', coordinatorName: '' });
@@ -586,6 +638,15 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
       ['Last Updated', selectedCenter.updatedAt ? new Date(selectedCenter.updatedAt).toLocaleString() : undefined],
     ];
 
+    const isSelectedFinanceRejected = selectedCenter.status === 'rejected_from_finance'
+      || selectedCenter.status === 'finance_rejected'
+      || selectedCenter.onboardingStatus?.code === 'finance_rejected'
+      || (selectedCenter.status === 'rejected' && selectedCenter.verifiedBy && selectedCenter.paymentRemarks);
+    const isSelectedOpsRejected = (selectedCenter.status === 'ops_rejected'
+      || (selectedCenter.status === 'rejected' && !isSelectedFinanceRejected)
+      || selectedCenter.onboardingStatus?.code === 'ops_rejected'
+      || (selectedCenter.onboardingStatus?.state === 'rejected' && selectedCenter.onboardingStatus?.stage === 'operations'));
+
     return (
       <>
         {proofPreviewUrl && (
@@ -613,6 +674,15 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
               <p className="text-muted-foreground">Complete study center details and university associations</p>
             </div>
             <div className="flex items-center gap-2">
+              {isSelectedOpsRejected && (
+                <Button
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
+                  onClick={() => handleOpenResubmit(selectedCenter)}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Resubmit to Operations
+                </Button>
+              )}
               <Select value={selectedCenterStatus} onValueChange={setSelectedCenterStatus} disabled={operationsMode || financeMode}>
                 <SelectTrigger className="w-[190px]">
                   <SelectValue placeholder="Change status" />
@@ -620,10 +690,13 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                 <SelectContent>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="pending_verification">Pending Verification</SelectItem>
+                  <SelectItem value="ops_resubmitted">Resubmitted to Ops</SelectItem>
                   <SelectItem value="pending_payment">Pending Payment</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="ops_rejected">Rejected from Ops</SelectItem>
+                  <SelectItem value="rejected_from_finance">Rejected from Finance</SelectItem>
                 </SelectContent>
               </Select>
               {!financeMode && (
@@ -633,6 +706,31 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
               )}
             </div>
           </div>
+
+          {isSelectedOpsRejected && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-destructive text-sm">Study Center Rejected by Operations Department</h4>
+                  <p className="text-sm text-foreground/90 mt-0.5">
+                    {selectedCenter.opsRemarks ? (
+                      <><strong>Rejection Reason:</strong> {selectedCenter.opsRemarks}</>
+                    ) : (
+                      'Operations requested review and correction of this center before verification can proceed.'
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium shrink-0 shadow-sm"
+                onClick={() => handleOpenResubmit(selectedCenter)}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Resubmit to Operations
+              </Button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2">
@@ -985,10 +1083,13 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="pending_verification">Pending Verification</SelectItem>
+                  <SelectItem value="ops_resubmitted">Resubmitted to Ops</SelectItem>
                   <SelectItem value="pending_payment">Pending Payment</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="ops_rejected">Rejected from Ops</SelectItem>
+                  <SelectItem value="rejected_from_finance">Rejected from Finance</SelectItem>
                 </SelectContent>
               </Select>
               )}
@@ -1070,14 +1171,31 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                       {/* Centers under this branch */}
                       {isExpanded && (
                         <div className="divide-y">
-                          {branchCenters.map((c: any) => (
-                            <div key={c.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
+                          {branchCenters.map((c: any) => {
+                            const isFinanceRejected = c.status === 'rejected_from_finance'
+                              || c.status === 'finance_rejected'
+                              || c.onboardingStatus?.code === 'finance_rejected'
+                              || (c.status === 'rejected' && c.verifiedBy && c.paymentRemarks);
+                            const isOpsRejected = (c.status === 'ops_rejected'
+                              || (c.status === 'rejected' && !isFinanceRejected)
+                              || c.onboardingStatus?.code === 'ops_rejected'
+                              || (c.onboardingStatus?.state === 'rejected' && c.onboardingStatus?.stage === 'operations'));
+
+                            return (
+                            <div key={c.id} className={cn("flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors", isOpsRejected && "bg-destructive/[0.02] border-l-2 border-l-destructive")}>
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                                   <MapPin className="w-4 h-4 text-primary" />
                                 </div>
                                 <div>
-                                  <div className="font-medium text-sm">{c.name}</div>
+                                  <div className="font-medium text-sm flex items-center gap-2">
+                                    <span>{c.name}</span>
+                                    {isOpsRejected && (
+                                      <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40 bg-destructive/10">
+                                        Ops Rejected
+                                      </Badge>
+                                    )}
+                                  </div>
                                   <div className="text-xs text-muted-foreground">Code: {c.code}{c.email ? ` • ${c.email}` : ''}</div>
                                   {c.referrer && (
                                     <div className="text-xs text-muted-foreground mt-0.5">
@@ -1085,6 +1203,15 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                     </div>
                                   )}
                                   {c.address && <div className="text-xs text-muted-foreground">{c.address}</div>}
+                                  {isOpsRejected && c.opsRemarks && (
+                                    <div className="mt-1.5 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-1.5 flex items-start gap-1.5 max-w-lg">
+                                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-destructive" />
+                                      <div>
+                                        <span className="font-semibold text-destructive">Operations Feedback:</span>{' '}
+                                        <span className="text-foreground/90">{c.opsRemarks}</span>
+                                      </div>
+                                    </div>
+                                  )}
                                   {c.credentials && (user?.role === 'org_admin' || user?.role === 'superadmin' || user?.role === 'ceo') && (
                                     <div className="text-xs text-muted-foreground mt-1 p-1.5 bg-muted rounded border inline-block">
                                       <span className="font-semibold text-foreground">ID:</span> <span className="font-mono">{c.credentials.userId}</span>
@@ -1094,11 +1221,35 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap justify-end">
-                                <Badge className="text-xs">
-                                  {c.status === 'rejected_from_finance'
-                                    ? 'Rejected from Finance'
-                                    : c.status.replace(/_/g, ' ')}
+                                <Badge className={cn(
+                                  "text-xs",
+                                  isOpsRejected && "bg-destructive/10 text-destructive border-destructive/30",
+                                  isFinanceRejected && "bg-destructive/10 text-destructive border-destructive/30",
+                                  c.status === 'ops_resubmitted' && "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                )}>
+                                  {c.onboardingStatus?.name || (
+                                    isFinanceRejected
+                                      ? 'Rejected from Finance'
+                                      : isOpsRejected
+                                      ? 'Rejected from Operations'
+                                      : c.status === 'ops_resubmitted'
+                                      ? 'Resubmitted to Ops'
+                                      : c.status.replace(/_/g, ' ')
+                                  )}
                                 </Badge>
+
+                                {isOpsRejected && (
+                                  <Button
+                                    size="sm"
+                                    className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium h-8 px-2.5 text-xs"
+                                    onClick={() => handleOpenResubmit(c)}
+                                    title="Resubmit center to Operations"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                                    Resubmit Center
+                                  </Button>
+                                )}
+
                                 {c.allowInternalMarks && (
                                   <Badge variant="outline" className="text-xs border-violet-400 text-violet-600 bg-violet-50">Marks ✓</Badge>
                                 )}
@@ -1136,7 +1287,8 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                 )}
                               </div>
                             </div>
-                          ))}
+                          );
+                        })}
                         </div>
                       )}
                     </div>
@@ -1464,6 +1616,130 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
               Save Config
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resubmitDialogCenter} onOpenChange={(open) => !open && setResubmitDialogCenter(null)}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-amber-600" />
+              Resubmit Study Center to Operations
+            </DialogTitle>
+            <DialogDescription>
+              Review the Operations rejection feedback, update or correct center details, and resubmit to Operations for verification.
+            </DialogDescription>
+          </DialogHeader>
+
+          {resubmitDialogCenter?.opsRemarks && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-destructive" />
+              <div>
+                <span className="font-semibold text-destructive">Operations Rejection Reason:</span>
+                <p className="mt-0.5 text-foreground/90 leading-relaxed">{resubmitDialogCenter.opsRemarks}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleResubmitSubmit} className="space-y-4 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-name">Center Name *</Label>
+                <Input
+                  id="resubmit-name"
+                  required
+                  value={resubmitFormData.name}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-code">Center Code *</Label>
+                <Input
+                  id="resubmit-code"
+                  required
+                  value={resubmitFormData.code}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, code: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-email">Email Address *</Label>
+                <Input
+                  id="resubmit-email"
+                  type="email"
+                  required
+                  value={resubmitFormData.email}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-contact">Contact Phone *</Label>
+                <Input
+                  id="resubmit-contact"
+                  required
+                  value={resubmitFormData.contact}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, contact: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-coordinator">Coordinator Name</Label>
+                <Input
+                  id="resubmit-coordinator"
+                  value={resubmitFormData.coordinatorName}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, coordinatorName: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-branch">Branch Name</Label>
+                <Input
+                  id="resubmit-branch"
+                  value={resubmitFormData.branchName}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, branchName: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="resubmit-address">Address</Label>
+                <Input
+                  id="resubmit-address"
+                  value={resubmitFormData.address}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, address: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-city">City</Label>
+                <Input
+                  id="resubmit-city"
+                  value={resubmitFormData.city}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="resubmit-state">State</Label>
+                <Input
+                  id="resubmit-state"
+                  value={resubmitFormData.state}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, state: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="resubmit-remarks">Resubmission Remarks / Correction Notes</Label>
+                <Input
+                  id="resubmit-remarks"
+                  placeholder="Describe what corrections were made for Operations review..."
+                  value={resubmitFormData.remarks}
+                  onChange={e => setResubmitFormData({ ...resubmitFormData, remarks: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2 border-t gap-2">
+              <Button type="button" variant="outline" onClick={() => setResubmitDialogCenter(null)} disabled={resubmittingCenter}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={resubmittingCenter}>
+                {resubmittingCenter ? 'Resubmitting...' : 'Confirm & Resubmit to Operations'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

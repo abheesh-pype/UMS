@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, RefreshCw, ExternalLink, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,7 +30,9 @@ interface Center {
   contact: string;
   address: string;
   status: string;
+  opsRemarks?: string | null;
   paymentRemarks?: string | null;
+  paymentProof?: { url?: string; remarks?: string; uploadedAt?: string } | string | null;
   assignedOperationsUserId?: string | null;
   associatedUniversityIds: University[];
   pendingDocuments: { name: string; url: string }[];
@@ -44,7 +46,7 @@ export function OpsCenterVerificationPanel() {
   const [assignableOpsUsers, setAssignableOpsUsers] = useState<AssignableOpsUser[]>([]);
   const [assigningCenterId, setAssigningCenterId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [dialog, setDialog] = useState<{ center: Center; action: 'approve' | 'reject' } | null>(null);
+  const [dialog, setDialog] = useState<{ center: Center; action: 'approve' | 'reject' | 'resubmit' } | null>(null);
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -180,11 +182,13 @@ export function OpsCenterVerificationPanel() {
         action: dialog.action,
         remarks,
       });
-      toast.success(dialog.action === 'approve'
-        ? dialog.center.status === 'rejected_from_finance'
-          ? 'Center resubmitted to Finance for payment review'
-          : 'Center approved — moved to pending payment'
-        : 'Center rejected');
+      if (dialog.action === 'resubmit') {
+        toast.success('Center resubmitted to Finance for payment verification');
+      } else if (dialog.action === 'approve') {
+        toast.success('Center approved — advanced to Finance verification');
+      } else {
+        toast.success('Center rejected — kept awaiting corrections');
+      }
       setDialog(null);
       setRemarks('');
       fetch();
@@ -199,8 +203,8 @@ export function OpsCenterVerificationPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Pending Verification</h2>
-          <p className="text-muted-foreground text-sm mt-1">Review and verify study center documents.</p>
+          <h2 className="text-2xl font-bold tracking-tight">Pending Verification</h2>
+          <p className="text-muted-foreground text-sm mt-1">Review, verify, and manage study center onboarding applications.</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetch} disabled={loading}>
           <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
@@ -216,113 +220,212 @@ export function OpsCenterVerificationPanel() {
         </CardContent></Card>
       ) : (
         <div className="space-y-4">
-          {centers.map(c => (
-            <Card key={c.id} className="hover:border-primary/30 transition-colors">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold">{c.name}</h4>
-                      <Badge variant="outline" className="text-[10px]">{c.code}</Badge>
-                      {c.status === 'rejected_from_finance' && (
-                        <Badge className="bg-destructive/10 text-destructive">Rejected from Finance</Badge>
+          {centers.map(c => {
+            const isFinanceRejected = ['finance_rejected', 'rejected_from_finance'].includes(c.status);
+            const rawProofUrl = typeof c.paymentProof === 'string'
+              ? c.paymentProof
+              : c.paymentProof?.url || '';
+
+            return (
+              <Card key={c.id} className={cn('hover:border-primary/30 transition-colors', isFinanceRejected && 'border-destructive/30 bg-destructive/[0.01]')}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h4 className="font-semibold text-base">{c.name}</h4>
+                        <Badge variant="outline" className="text-[10px] font-mono">{c.code}</Badge>
+                        {isFinanceRejected && (
+                          <Badge className="bg-destructive/10 text-destructive border-destructive/30 flex items-center gap-1 font-medium">
+                            <XCircle className="w-3 h-3" /> Rejected from Finance
+                          </Badge>
+                        )}
+                        {c.status === 'ops_resubmitted' && (
+                          <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/30">Resubmitted to Ops</Badge>
+                        )}
+                        {(c.status === 'ops_rejected' || c.status === 'rejected') && (
+                          <Badge className="bg-destructive/10 text-destructive">Rejected from Ops</Badge>
+                        )}
+                        {c.status === 'pending_verification' && (
+                          <Badge className="bg-warning/10 text-warning border-warning/30">Pending Ops Review</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{c.email} · {c.contact}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.address}</p>
+
+                      {/* Prominent Finance Rejection Callout */}
+                      {isFinanceRejected && c.paymentRemarks && (
+                        <div className="mt-3 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive flex items-start gap-2.5">
+                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-destructive" />
+                          <div className="space-y-0.5 flex-1">
+                            <p className="font-semibold text-destructive">Finance Department Rejection Reason:</p>
+                            <p className="text-foreground/90 leading-relaxed">{c.paymentRemarks}</p>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{c.email} · {c.contact}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{c.address}</p>
-                    {c.status === 'rejected_from_finance' && c.paymentRemarks && (
-                      <p className="mt-2 rounded-md bg-destructive/5 p-2 text-xs">
-                        <span className="font-medium">Finance remarks:</span> {c.paymentRemarks}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {(c.associatedUniversityIds || []).map(u => (
-                        <Badge key={u.id} variant="secondary" className="text-[10px]">{u.name}</Badge>
-                      ))}
-                    </div>
-                    {(c.pendingDocuments?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {(c.pendingDocuments || []).map((doc, i) => (
+
+                      {/* Payment proof receipt if present */}
+                      {rawProofUrl && (
+                        <div className="mt-2.5 flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground font-medium">Payment Proof:</span>
                           <a
-                            key={i}
-                            href={doc.url}
+                            href={rawProofUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-primary hover:underline"
+                            className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
                           >
-                            <FileText className="w-3 h-3" />{doc.name}
-                            <ExternalLink className="w-3 h-3" />
+                            <FileText className="w-3.5 h-3.5" /> View Payment Receipt <ExternalLink className="w-3 h-3" />
                           </a>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-1 mt-2.5">
+                        {(c.associatedUniversityIds || []).map(u => (
+                          <Badge key={u.id} variant="secondary" className="text-[10px]">{u.name}</Badge>
                         ))}
                       </div>
-                    )}
-                    {c.referredBy && (
-                      <p className="text-xs text-muted-foreground mt-1">Referred by: {c.referredBy.name}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    {user?.role === 'ops_admin' && (
-                      <Select
-                        value={assignableOpsUsers.some(candidate => candidate.id === c.assignedOperationsUserId) ? c.assignedOperationsUserId || '__none__' : '__none__'}
-                        onValueChange={value => handleAssignCenter(c, value)}
-                        disabled={assigningCenterId === c.id}
-                      >
-                        <SelectTrigger className="w-[180px]" aria-label="Assigned To">
-                          <SelectValue placeholder="Assigned To" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Unassigned</SelectItem>
-                          {assignableOpsUsers.map(candidate => (
-                            <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>
+
+                      {(c.pendingDocuments?.length ?? 0) > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {(c.pendingDocuments || []).map((doc, i) => (
+                            <a
+                              key={i}
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs text-primary hover:underline"
+                            >
+                              <FileText className="w-3 h-3" />{doc.name}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
                           ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <Button size="sm" variant="outline" className="text-error border-error/30 hover:bg-error/10"
-                      onClick={() => { setDialog({ center: c, action: 'reject' }); setRemarks(''); }}>
-                      <XCircle className="w-4 h-4 mr-1" />Reject
-                    </Button>
-                    <Button size="sm" onClick={() => { setDialog({ center: c, action: 'approve' }); setRemarks(''); }}>
-                      <CheckCircle className="w-4 h-4 mr-1" />{c.status === 'rejected_from_finance' ? 'Resubmit' : 'Approve'}
-                    </Button>
+                        </div>
+                      )}
+                      {c.referredBy && (
+                        <p className="text-xs text-muted-foreground mt-1">Referred by: {c.referredBy.name}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      {user?.role === 'ops_admin' && (
+                        <Select
+                          value={assignableOpsUsers.some(candidate => candidate.id === c.assignedOperationsUserId) ? c.assignedOperationsUserId || '__none__' : '__none__'}
+                          onValueChange={value => handleAssignCenter(c, value)}
+                          disabled={assigningCenterId === c.id}
+                        >
+                          <SelectTrigger className="w-[180px]" aria-label="Assigned To">
+                            <SelectValue placeholder="Assigned To" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Unassigned</SelectItem>
+                            {assignableOpsUsers.map(candidate => (
+                              <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-error border-error/30 hover:bg-error/10"
+                        onClick={() => { setDialog({ center: c, action: 'reject' }); setRemarks(''); }}
+                      >
+                        <XCircle className="w-4 h-4 mr-1" />
+                        {isFinanceRejected ? 'Reject to Sales' : 'Reject'}
+                      </Button>
+
+                      {isFinanceRejected ? (
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                          onClick={() => { setDialog({ center: c, action: 'resubmit' }); setRemarks(''); }}
+                        >
+                          <RefreshCw className="w-4 h-4 mr-1" />Resubmit to Finance
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => { setDialog({ center: c, action: 'approve' }); setRemarks(''); }}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-1" />Approve
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
       <Dialog open={!!dialog} onOpenChange={() => { setDialog(null); setRemarks(''); }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>
-              {dialog?.action === 'approve'
-                ? dialog.center.status === 'rejected_from_finance' ? 'Resubmit to Finance' : 'Approve'
-                : 'Reject'} — {dialog?.center.name}
+              {dialog?.action === 'resubmit'
+                ? `Resubmit to Finance — ${dialog?.center.name}`
+                : dialog?.action === 'approve'
+                  ? `Approve & Advance to Finance — ${dialog?.center.name}`
+                  : `Reject Application — ${dialog?.center.name}`}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label>Remarks {dialog?.action === 'reject' && <span className="text-error">*</span>}</Label>
-            <Textarea
-              value={remarks}
-              onChange={e => setRemarks(e.target.value)}
-              placeholder={dialog?.action === 'reject' ? 'Reason for rejection (required)' : 'Optional remarks'}
-              rows={3}
-            />
+
+          <div className="space-y-4 py-2">
+            {dialog?.action === 'resubmit' && dialog?.center.paymentRemarks && (
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" /> Original Finance Rejection Reason:
+                </p>
+                <p className="text-foreground/90">{dialog.center.paymentRemarks}</p>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>
+                {dialog?.action === 'resubmit'
+                  ? 'Operations Verification / Resubmission Remarks for Finance'
+                  : dialog?.action === 'reject'
+                    ? 'Reason for Rejection'
+                    : 'Verification Remarks'}
+                {dialog?.action === 'reject' && <span className="text-error font-bold"> *</span>}
+              </Label>
+              <Textarea
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                placeholder={
+                  dialog?.action === 'resubmit'
+                    ? 'Enter notes for Finance team (e.g. verified documents, corrected fee proof, etc.)'
+                    : dialog?.action === 'reject'
+                      ? 'Reason for rejection (required)'
+                      : 'Optional remarks for Finance'
+                }
+                rows={3}
+              />
+            </div>
+
+            {dialog?.action === 'resubmit' && (
+              <p className="text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-lg border">
+                💡 <strong>Resubmission Note:</strong> This will place the study center back into Finance department's pending queue for payment verification and activation.
+              </p>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDialog(null); setRemarks(''); }}>Cancel</Button>
             <Button
               onClick={handleAction}
               disabled={submitting}
               variant={dialog?.action === 'reject' ? 'destructive' : 'default'}
+              className={dialog?.action === 'resubmit' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
             >
               {submitting
                 ? 'Processing...'
-                : dialog?.action === 'approve'
-                  ? dialog.center.status === 'rejected_from_finance' ? 'Resubmit' : 'Approve'
-                  : 'Reject'}
+                : dialog?.action === 'resubmit'
+                  ? 'Resubmit to Finance'
+                  : dialog?.action === 'approve'
+                    ? 'Approve & Advance'
+                    : 'Reject'}
             </Button>
           </DialogFooter>
         </DialogContent>
