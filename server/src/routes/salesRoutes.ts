@@ -17,6 +17,7 @@ import {
   regenerateInvite,
   getTeamPerformance,
   getMyCenters,
+  resubmitFinanceRejectedCenter,
   getMyCenterAdmissions,
   getMyCenterDetail,
   getProgramsByUniversity,
@@ -53,6 +54,7 @@ router.get('/team-members', getTeamMembers);
 
 // My study centers (via invite links — self + subordinates)
 router.get('/my-centers', getMyCenters);
+router.put('/my-centers/:studyCenterId/resubmit', resubmitFinanceRejectedCenter);
 router.get('/my-centers/admissions', getMyCenterAdmissions);
 router.get('/my-centers/:studyCenterId', getMyCenterDetail);
 router.put('/my-centers/:studyCenterId/reassign', reassignCenter);

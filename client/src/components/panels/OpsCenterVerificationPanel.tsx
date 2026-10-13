@@ -30,6 +30,7 @@ interface Center {
   contact: string;
   address: string;
   status: string;
+  paymentRemarks?: string | null;
   assignedOperationsUserId?: string | null;
   associatedUniversityIds: University[];
   pendingDocuments: { name: string; url: string }[];
@@ -179,7 +180,11 @@ export function OpsCenterVerificationPanel() {
         action: dialog.action,
         remarks,
       });
-      toast.success(dialog.action === 'approve' ? 'Center approved — moved to pending payment' : 'Center rejected');
+      toast.success(dialog.action === 'approve'
+        ? dialog.center.status === 'rejected_from_finance'
+          ? 'Center resubmitted to Finance for payment review'
+          : 'Center approved — moved to pending payment'
+        : 'Center rejected');
       setDialog(null);
       setRemarks('');
       fetch();
@@ -219,9 +224,17 @@ export function OpsCenterVerificationPanel() {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold">{c.name}</h4>
                       <Badge variant="outline" className="text-[10px]">{c.code}</Badge>
+                      {c.status === 'rejected_from_finance' && (
+                        <Badge className="bg-destructive/10 text-destructive">Rejected from Finance</Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">{c.email} · {c.contact}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{c.address}</p>
+                    {c.status === 'rejected_from_finance' && c.paymentRemarks && (
+                      <p className="mt-2 rounded-md bg-destructive/5 p-2 text-xs">
+                        <span className="font-medium">Finance remarks:</span> {c.paymentRemarks}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1 mt-2">
                       {(c.associatedUniversityIds || []).map(u => (
                         <Badge key={u.id} variant="secondary" className="text-[10px]">{u.name}</Badge>
@@ -270,7 +283,7 @@ export function OpsCenterVerificationPanel() {
                       <XCircle className="w-4 h-4 mr-1" />Reject
                     </Button>
                     <Button size="sm" onClick={() => { setDialog({ center: c, action: 'approve' }); setRemarks(''); }}>
-                      <CheckCircle className="w-4 h-4 mr-1" />Approve
+                      <CheckCircle className="w-4 h-4 mr-1" />{c.status === 'rejected_from_finance' ? 'Resubmit' : 'Approve'}
                     </Button>
                   </div>
                 </div>
@@ -284,7 +297,9 @@ export function OpsCenterVerificationPanel() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialog?.action === 'approve' ? 'Approve' : 'Reject'} — {dialog?.center.name}
+              {dialog?.action === 'approve'
+                ? dialog.center.status === 'rejected_from_finance' ? 'Resubmit to Finance' : 'Approve'
+                : 'Reject'} — {dialog?.center.name}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -303,7 +318,11 @@ export function OpsCenterVerificationPanel() {
               disabled={submitting}
               variant={dialog?.action === 'reject' ? 'destructive' : 'default'}
             >
-              {submitting ? 'Processing...' : dialog?.action === 'approve' ? 'Approve' : 'Reject'}
+              {submitting
+                ? 'Processing...'
+                : dialog?.action === 'approve'
+                  ? dialog.center.status === 'rejected_from_finance' ? 'Resubmit' : 'Approve'
+                  : 'Reject'}
             </Button>
           </DialogFooter>
         </DialogContent>

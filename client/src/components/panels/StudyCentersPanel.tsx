@@ -62,7 +62,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
   }, [salesMode, user?.id, editingId, formData.referredById]);
   const [universities, setUniversities] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [operationsCenterView, setOperationsCenterView] = useState<'progress' | 'rejected'>('progress');
+  const [operationsCenterView, setOperationsCenterView] = useState<'all' | 'progress' | 'rejected'>('all');
   const [financeCenterView, setFinanceCenterView] = useState<'active' | 'rejected'>('active');
   const [universityFilter, setUniversityFilter] = useState('');
   // Branch-level settings state
@@ -794,6 +794,12 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
             {canViewOperationsCenters && (
               <>
                 <Button
+                  variant={operationsCenterView === 'all' ? 'default' : 'outline'}
+                  onClick={() => setOperationsCenterView('all')}
+                >
+                  All Centers
+                </Button>
+                <Button
                   variant={operationsCenterView === 'progress' ? 'default' : 'outline'}
                   onClick={() => setOperationsCenterView('progress')}
                 >
@@ -1088,7 +1094,11 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap justify-end">
-                                <Badge className="text-xs">{c.status}</Badge>
+                                <Badge className="text-xs">
+                                  {c.status === 'rejected_from_finance'
+                                    ? 'Rejected from Finance'
+                                    : c.status.replace(/_/g, ' ')}
+                                </Badge>
                                 {c.allowInternalMarks && (
                                   <Badge variant="outline" className="text-xs border-violet-400 text-violet-600 bg-violet-50">Marks ✓</Badge>
                                 )}

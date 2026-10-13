@@ -722,19 +722,31 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
   } else if (isAssignedOperationsUser) {
     where.assignedOperationsUserId = req.user.id;
     if (req.query.status === 'rejected') {
-      where.status = 'rejected';
+      where.OR = [
+        { status: 'rejected', paymentRemarks: null },
+        { status: 'rejected_from_finance' },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ];
     } else if (req.query.status === 'progress') {
-      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
+      where.OR = [
+        { status: { notIn: ['pending', 'pending_verification', 'rejected'] } },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ];
     } else if (req.query.status && req.query.status !== 'all') {
       where.status = req.query.status as string;
     }
   } else if (req.user.role === 'ops_admin') {
     if (req.query.status === 'rejected') {
-      where.status = 'rejected';
+      where.OR = [
+        { status: 'rejected', paymentRemarks: null },
+        { status: 'rejected_from_finance' },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ];
     } else if (req.query.status === 'progress') {
-      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
-    } else {
-      where.status = { notIn: ['pending', 'pending_verification', 'rejected'] };
+      where.OR = [
+        { status: { notIn: ['pending', 'pending_verification', 'rejected'] } },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ];
     }
   } else if (req.query.status && req.query.status !== 'all') {
     where.status = req.query.status as string;
@@ -763,6 +775,9 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
   });
   const mapped = centers.map(c => ({
     ...c,
+    status: c.status === 'rejected' && c.verifiedBy && c.paymentRemarks
+      ? 'rejected_from_finance'
+      : c.status,
     _id: c.id
   }));
   res.json({ success: true, count: mapped.length, data: mapped });
@@ -1149,12 +1164,31 @@ export const getPendingVerificationCenters = asyncHandler(async (req: AuthReques
   const centers = await prisma.studyCenter.findMany({
     where: {
       organizationId: req.user.organizationId,
-      status: { in: ['pending', 'pending_verification'] } as any,
+      OR: [
+        { status: { in: ['pending', 'pending_verification'] } as any },
+        { status: 'rejected_from_finance' },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ],
       ...(isAssignedOperationsUser ? { assignedOperationsUserId: req.user.id } : {}),
     },
+    include: { referrer: { select: { name: true, email: true } } },
+    orderBy: { updatedAt: 'desc' },
   });
-  res.json({ success: true, data: centers });
+  const data = await Promise.all(centers.map(async center => ({
+    ...center,
+    status: center.status === 'rejected' ? 'rejected_from_finance' : center.status,
+    associatedUniversityIds: await prisma.university.findMany({
+      where: {
+        id: { in: center.universityIds || [] },
+        organizationId: req.user.organizationId,
+        singletonKey: 'primary',
+      },
+      select: { id: true, name: true, code: true },
+    }),
+  })));
+  res.json({ success: true, data });
 });
+
 export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
   if (!['approve', 'reject'].includes(action)) {
@@ -1184,13 +1218,40 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
     }
   }
 
+  const existingCenter = await prisma.studyCenter.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      OR: [
+        { status: { in: ['pending', 'pending_verification'] } as any },
+        { status: 'rejected_from_finance' },
+        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      ],
+    },
+  });
+  if (!existingCenter) {
+    res.status(404).json({ success: false, message: 'Study center pending Operations verification not found' });
+    return;
+  }
+
   const center = await prisma.studyCenter.update({
-    where: { id: req.params.id },
+    where: { id: existingCenter.id },
     data: {
       status: action === 'approve' ? 'pending_payment' as any : 'rejected' as any,
       opsRemarks: remarks?.trim() || null,
       verifiedBy: req.user.id,
-      verifiedAt: new Date()
+      verifiedAt: new Date(),
+      paymentRemarks: null,
+      statusHistory: [
+        ...((existingCenter.statusHistory as any[]) || []),
+        {
+          status: action === 'approve' ? 'pending_payment' : 'rejected',
+          actorId: req.user.id,
+          actorName: req.user.name,
+          remarks: remarks?.trim() || '',
+          timestamp: new Date().toISOString(),
+        },
+      ],
     }
   });
   res.json({ success: true, data: center });

@@ -148,7 +148,95 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
       }
     }
   });
-  res.json({ success: true, data: centers });
+  res.json({
+    success: true,
+    data: centers.map(center => ({
+      ...center,
+      status: center.status === 'rejected' && center.verifiedBy && center.paymentRemarks
+        ? 'rejected_from_finance'
+        : center.status,
+    })),
+  });
+});
+
+export const resubmitFinanceRejectedCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const center = await prisma.studyCenter.findFirst({
+    where: {
+      id: req.params.studyCenterId,
+      organizationId: req.user.organizationId,
+      status: 'rejected',
+      verifiedBy: { not: null },
+      paymentRemarks: null,
+    },
+    select: {
+      id: true,
+      referredBy: true,
+      status: true,
+      verifiedBy: true,
+      paymentRemarks: true,
+      statusHistory: true,
+    },
+  });
+  if (!center) {
+    res.status(404).json({ success: false, message: 'Rejected study center not found' });
+    return;
+  }
+  const isAdmin = ['superadmin', 'org_admin', 'ceo'].includes(req.user.role);
+  let visibleUserIds = [req.user.id];
+  if (req.user.role === 'sales_admin') {
+    visibleUserIds = [...visibleUserIds, ...await getAllSubordinateIds(req.user.id, req.user.organizationId)];
+  }
+  if (!isAdmin && (!center.referredBy || !visibleUserIds.includes(center.referredBy))) {
+    res.status(403).json({ success: false, message: 'You can only update study centers referred by you or your team' });
+    return;
+  }
+
+  const fields = ['name', 'code', 'email', 'contact', 'address', 'city', 'state', 'coordinatorName', 'branchName'];
+  const data: Record<string, string> = {};
+  for (const field of fields) {
+    if (typeof req.body[field] === 'string') data[field] = req.body[field].trim();
+  }
+  if (!data.name || !data.code) {
+    res.status(400).json({ success: false, message: 'Center name and code are required' });
+    return;
+  }
+  data.code = data.code.toUpperCase();
+  if (data.email) data.email = data.email.toLowerCase();
+
+  const duplicateCode = await prisma.studyCenter.findFirst({
+    where: {
+      organizationId: req.user.organizationId,
+      code: data.code,
+      id: { not: center.id },
+    },
+    select: { id: true },
+  });
+  if (duplicateCode) {
+    res.status(400).json({ success: false, message: 'A study center with this code already exists' });
+    return;
+  }
+
+  const updatedCenter = await prisma.studyCenter.update({
+    where: { id: center.id },
+    data: {
+      ...data,
+      status: 'pending_verification',
+      verifiedBy: null,
+      verifiedAt: null,
+      opsRemarks: null,
+      statusHistory: [
+        ...((center.statusHistory as any[]) || []),
+        {
+          status: 'pending_verification',
+          actorId: req.user.id,
+          actorName: req.user.name,
+          remarks: 'Updated and resubmitted to Operations for verification',
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    },
+  });
+  res.json({ success: true, data: updatedCenter });
 });
 
 export const getMyCenterAdmissions = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -337,4 +425,3 @@ export const getProgramsByUniversity = asyncHandler(async (req: AuthRequest, res
   }));
   res.json({ success: true, data: mapped });
 });
-

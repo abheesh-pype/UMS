@@ -16,6 +16,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
@@ -36,6 +39,12 @@ interface CenterData {
   name: string;
   code: string;
   email?: string;
+  contact?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  coordinatorName?: string;
+  branchName?: string;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -46,7 +55,7 @@ interface CenterData {
   financeApprovedAt?: string;
   paymentRemarks?: string;
   associatedUniversityIds: { name: string; code: string }[];
-  statusHistory: { status: string; actorId?: { name: string }; remarks?: string; timestamp: string }[];
+  statusHistory: { status: string; actorId?: string | { name: string }; actorName?: string; remarks?: string; timestamp: string }[];
   slaBreached?: boolean;
   hoursAtCurrentStage?: number;
   studentStats?: { total: number; enrolled: number; pending: number; rejected: number };
@@ -75,7 +84,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   ops_verified:         { label: 'Ops Approved', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 2 },
   pending_payment:      { label: 'Pending Finance', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 3 },
   active:               { label: 'Active', color: 'bg-success/10 text-success border-success/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 4 },
-  rejected:             { label: 'Rejected', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
+  rejected:             { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
+  rejected_from_finance: { label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
 };
 
 const ENROLLMENT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -114,6 +124,8 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
   const [expanded, setExpanded] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('centers');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [editingCenter, setEditingCenter] = useState<CenterData | null>(null);
+  const [resubmitting, setResubmitting] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -144,7 +156,7 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
           ops_verified: enriched.filter(c => c.status === 'ops_verified').length,
           pending_payment: enriched.filter(c => c.status === 'pending_payment').length,
           active: enriched.filter(c => c.status === 'active').length,
-          rejected: enriched.filter(c => c.status === 'rejected').length,
+          rejected: enriched.filter(c => ['rejected', 'rejected_from_finance'].includes(c.status)).length,
           slaBreached: enriched.filter(c => c.slaBreached).length,
         });
       }
@@ -158,9 +170,28 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); }, [mode]);
 
+  const handleResubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingCenter) return;
+    const formData = new FormData(event.currentTarget);
+    setResubmitting(true);
+    try {
+      await api.put(`/sales/my-centers/${editingCenter.id}/resubmit`, Object.fromEntries(formData.entries()));
+      toast.success('Study center updated and resubmitted to Finance');
+      setEditingCenter(null);
+      await fetchData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to resubmit study center');
+    } finally {
+      setResubmitting(false);
+    }
+  };
+
   const filteredCenters = statusFilter === 'all'
     ? centers
-    : centers.filter(c => c.status === statusFilter);
+    : statusFilter === 'rejected'
+      ? centers.filter(c => ['rejected', 'rejected_from_finance'].includes(c.status))
+      : centers.filter(c => c.status === statusFilter);
 
   return (
     <div className="space-y-6">
@@ -253,6 +284,7 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
               expanded={expanded}
               setExpanded={setExpanded}
               showReferrer={mode === 'ceo'}
+              onResubmit={mode === 'sales' ? setEditingCenter : undefined}
             />
           </TabsContent>
 
@@ -267,8 +299,40 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
           expanded={expanded}
           setExpanded={setExpanded}
           showReferrer={false}
+          onResubmit={setEditingCenter}
         />
       )}
+      <Dialog open={!!editingCenter} onOpenChange={open => !open && setEditingCenter(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Update and Resubmit Study Center</DialogTitle></DialogHeader>
+          {editingCenter && (
+            <form onSubmit={handleResubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  ['name', 'Center Name', editingCenter.name, true],
+                  ['code', 'Center Code', editingCenter.code, true],
+                  ['email', 'Email', editingCenter.email || '', false],
+                  ['contact', 'Contact', editingCenter.contact || '', false],
+                  ['address', 'Address', editingCenter.address || '', false],
+                  ['city', 'City', editingCenter.city || '', false],
+                  ['state', 'State', editingCenter.state || '', false],
+                  ['coordinatorName', 'Coordinator Name', editingCenter.coordinatorName || '', false],
+                  ['branchName', 'Branch Name', editingCenter.branchName || '', false],
+                ] as const).map(([name, label, value, required]) => (
+                  <div key={name} className="space-y-1.5">
+                    <Label htmlFor={`resubmit-${name}`}>{label}</Label>
+                    <Input id={`resubmit-${name}`} name={name} defaultValue={value} required={required} />
+                  </div>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditingCenter(null)}>Cancel</Button>
+                <Button type="submit" disabled={resubmitting}>{resubmitting ? 'Resubmitting...' : 'Resubmit'}</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -280,12 +344,14 @@ function CenterList({
   expanded,
   setExpanded,
   showReferrer,
+  onResubmit,
 }: {
   centers: CenterData[];
   loading: boolean;
   expanded: string | null;
   setExpanded: (id: string | null) => void;
   showReferrer: boolean;
+  onResubmit?: (center: CenterData) => void;
 }) {
   if (loading) {
     return (
@@ -401,6 +467,11 @@ function CenterList({
                     {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     {isExpanded ? 'Hide' : 'Details'}
                   </button>
+                  {center.status === 'rejected' && onResubmit && (
+                    <Button size="sm" onClick={() => onResubmit(center)}>
+                      Update and Resubmit
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -476,7 +547,11 @@ function CenterList({
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-semibold">{hcfg?.label || h.status}</span>
-                                  {h.actorId && <span className="text-muted-foreground">by {h.actorId.name}</span>}
+                                  {(h.actorName || (typeof h.actorId === 'object' && h.actorId?.name)) && (
+                                    <span className="text-muted-foreground">
+                                      by {h.actorName || (typeof h.actorId === 'object' ? h.actorId.name : '')}
+                                    </span>
+                                  )}
                                   <span className="text-muted-foreground/60">{new Date(h.timestamp).toLocaleString()}</span>
                                 </div>
                                 {h.remarks && <p className="text-muted-foreground mt-0.5 italic">"{h.remarks}"</p>}

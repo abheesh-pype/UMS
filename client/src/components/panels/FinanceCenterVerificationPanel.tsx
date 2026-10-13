@@ -356,8 +356,8 @@ export function FinanceCenterVerificationPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Pending Payment Verification</h2>
-          <p className="text-muted-foreground text-sm mt-1">Verify authorisation fee payment for study centers.</p>
+          <h2 className="text-2xl font-bold">Pending Finance Review — Payment Approval</h2>
+          <p className="text-muted-foreground text-sm mt-1">Resubmitted study centers appear here for payment review and approval.</p>
         </div>
         <Button variant="outline" size="sm" onClick={loadCenters} disabled={loading}>
           <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
@@ -381,6 +381,7 @@ export function FinanceCenterVerificationPanel() {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold">{c.name}</h4>
                       <Badge variant="outline" className="text-[10px]">{c.code}</Badge>
+                      <Badge className="bg-purple-500/10 text-purple-700">Pending Payment Approval</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">{c.email} · {c.contact}</p>
                     {c.verifiedBy && (

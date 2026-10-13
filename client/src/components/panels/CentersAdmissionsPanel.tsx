@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { FinanceCenterVerificationPanel } from '@/components/panels/FinanceCenterVerificationPanel';
 
 interface Enrollment {
   id: string;
@@ -45,6 +46,8 @@ export function CentersAdmissionsPanel() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
+  const isFinanceDepartment = ['finance_admin', 'finance_sub_admin'].includes(user?.role || '') || departmentType === 'finance';
 
   const fetch = async () => {
     setLoading(true);
@@ -89,6 +92,8 @@ export function CentersAdmissionsPanel() {
           <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} /> Refresh
         </Button>
       </div>
+
+      {isFinanceDepartment && <FinanceCenterVerificationPanel />}
 
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">

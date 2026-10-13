@@ -641,10 +641,20 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
   const center = await prisma.studyCenter.update({
     where: { id: req.params.id },
     data: {
-      status: action === 'approve' ? 'active' as any : 'rejected' as any,
+      status: action === 'approve' ? 'active' as any : 'rejected_from_finance',
       financeApprovedBy: action === 'approve' ? req.user.id : undefined,
       financeApprovedAt: action === 'approve' ? new Date() : undefined,
-      paymentRemarks: remarks?.trim() || null
+      paymentRemarks: remarks?.trim() || null,
+      statusHistory: [
+        ...((existingCenter.statusHistory as any[]) || []),
+        {
+          status: action === 'approve' ? 'active' : 'rejected_from_finance',
+          actorId: req.user.id,
+          actorName: req.user.name,
+          remarks: remarks?.trim() || '',
+          timestamp: new Date().toISOString(),
+        },
+      ],
     }
   });
   res.json({ success: true, data: center });
