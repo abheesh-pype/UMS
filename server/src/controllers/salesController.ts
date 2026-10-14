@@ -134,7 +134,10 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
     if (req.user.role === 'sales_admin') {
       const subordinateIds = await getAllSubordinateIds(req.user.id, req.user.organizationId);
       const visibleUserIds = [req.user.id, ...subordinateIds];
-      whereClause.referredBy = { in: visibleUserIds };
+      whereClause.OR = [
+        { referredBy: { in: visibleUserIds } },
+        { referredBy: null }
+      ];
     } else {
       // Sales staff: view ONLY staff-created study centers
       whereClause.referredBy = req.user.id;
@@ -148,14 +151,32 @@ export const getMyCenters = asyncHandler(async (req: AuthRequest, res: Response)
       referrer: {
         select: { id: true, name: true, email: true, role: true }
       }
-    }
+    },
+    orderBy: { updatedAt: 'desc' }
   });
   res.json({
     success: true,
-    data: centers.map(center => ({
-      ...center,
-      status: center.onboardingStatus?.code || center.status,
-    })),
+    data: centers.map(center => {
+      const isFinanceRejected = center.status === 'finance_rejected'
+        || center.status === 'rejected_from_finance'
+        || center.onboardingStatus?.code === 'finance_rejected'
+        || (center.status === 'rejected' && center.verifiedBy && center.paymentRemarks);
+      const isOpsRejected = center.status === 'ops_rejected'
+        || (center.status === 'rejected' && !isFinanceRejected)
+        || center.onboardingStatus?.code === 'ops_rejected'
+        || (center.onboardingStatus?.stage === 'operations' && center.onboardingStatus?.state === 'rejected');
+
+      const resolvedStatus = isFinanceRejected
+        ? 'finance_rejected'
+        : isOpsRejected
+        ? 'ops_rejected'
+        : (center.onboardingStatus?.code || center.status);
+
+      return {
+        ...center,
+        status: resolvedStatus,
+      };
+    }),
   });
 });
 

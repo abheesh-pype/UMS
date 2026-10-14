@@ -687,28 +687,46 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
         ...salesDeptEmployees.map(u => u.id)
       ]));
 
-      where.referredBy = { in: [req.user.id, ...allSubordinateIds] };
+      where.OR = [
+        { referredBy: { in: [req.user.id, ...allSubordinateIds] } },
+        { referredBy: null }
+      ];
       if (req.query.status && req.query.status !== 'all') {
         const queryStatus = req.query.status as string;
         if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
-          where.OR = [
-            { status: 'ops_rejected' },
-            { status: 'rejected', paymentRemarks: null },
-            { onboardingStatus: { code: 'ops_rejected' } },
-            { onboardingStatus: { stage: 'operations', state: 'rejected' } }
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'ops_rejected' },
+                { status: 'rejected', paymentRemarks: null },
+                { onboardingStatus: { code: 'ops_rejected' } },
+                { onboardingStatus: { stage: 'operations', state: 'rejected' } }
+              ]
+            }
           ];
         } else if (queryStatus === 'rejected_from_finance' || queryStatus === 'finance_rejected') {
-          where.OR = [
-            { status: 'rejected_from_finance' },
-            { status: 'finance_rejected' },
-            { status: 'rejected', paymentRemarks: { not: null } },
-            { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
-            { onboardingStatus: { stage: 'finance', state: 'rejected' } }
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'rejected_from_finance' },
+                { status: 'finance_rejected' },
+                { status: 'rejected', paymentRemarks: { not: null } },
+                { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
+                { onboardingStatus: { stage: 'finance', state: 'rejected' } }
+              ]
+            }
           ];
         } else if (queryStatus === 'ops_resubmitted') {
-          where.OR = [
-            { status: 'ops_resubmitted' },
-            { onboardingStatus: { code: 'ops_resubmitted' } }
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'ops_resubmitted' },
+                { onboardingStatus: { code: 'ops_resubmitted' } }
+              ]
+            }
           ];
         } else {
           where.status = queryStatus;
@@ -1220,10 +1238,29 @@ export const getPendingVerificationCenters = asyncHandler(async (req: AuthReques
   const centers = await prisma.studyCenter.findMany({
     where: {
       organizationId: req.user.organizationId,
-      OR: [
-        { onboardingStatus: { stage: 'operations' } },
-        { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
-        { status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'ops_rejected', 'rejected', 'finance_rejected', 'rejected_from_finance'] } },
+      AND: [
+        {
+          OR: [
+            { onboardingStatus: { code: { in: ['pending_verification', 'ops_resubmitted', 'finance_rejected', 'rejected_from_finance'] } } },
+            {
+              onboardingStatus: {
+                stage: 'operations',
+                state: { notIn: ['rejected'] },
+              },
+            },
+            {
+              status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'finance_rejected', 'rejected_from_finance'] },
+            },
+          ],
+        },
+        {
+          NOT: [
+            { status: 'ops_rejected' },
+            { status: 'rejected', paymentRemarks: null },
+            { onboardingStatus: { code: { in: ['ops_rejected', 'rejected'] } } },
+            { onboardingStatus: { stage: 'operations', state: 'rejected' } },
+          ],
+        },
       ],
       ...(isAssignedOperationsUser ? { assignedOperationsUserId: req.user.id } : {}),
     },

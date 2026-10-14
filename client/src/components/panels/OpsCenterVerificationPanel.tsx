@@ -199,6 +199,12 @@ export function OpsCenterVerificationPanel() {
     }
   };
 
+  const visibleCenters = centers.filter(c => {
+    const isFinanceRejected = ['finance_rejected', 'rejected_from_finance'].includes(c.status);
+    const isOpsRejected = c.status === 'ops_rejected' || (c.status === 'rejected' && !isFinanceRejected && !c.paymentRemarks);
+    return !isOpsRejected;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -213,14 +219,14 @@ export function OpsCenterVerificationPanel() {
 
       {loading ? (
         <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-muted rounded-xl animate-pulse" />)}</div>
-      ) : centers.length === 0 ? (
+      ) : visibleCenters.length === 0 ? (
         <Card><CardContent className="py-16 text-center text-muted-foreground">
           <CheckCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p>No centers pending verification.</p>
         </CardContent></Card>
       ) : (
         <div className="space-y-4">
-          {centers.map(c => {
+          {visibleCenters.map(c => {
             const isFinanceRejected = ['finance_rejected', 'rejected_from_finance'].includes(c.status);
             const rawProofUrl = typeof c.paymentProof === 'string'
               ? c.paymentProof
@@ -241,9 +247,6 @@ export function OpsCenterVerificationPanel() {
                         )}
                         {c.status === 'ops_resubmitted' && (
                           <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/30">Resubmitted to Ops</Badge>
-                        )}
-                        {(c.status === 'ops_rejected' || c.status === 'rejected') && (
-                          <Badge className="bg-destructive/10 text-destructive">Rejected from Ops</Badge>
                         )}
                         {c.status === 'pending_verification' && (
                           <Badge className="bg-warning/10 text-warning border-warning/30">Pending Ops Review</Badge>

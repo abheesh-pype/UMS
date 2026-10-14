@@ -167,7 +167,7 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
               <h2 className="text-xl font-bold">{center.name}</h2>
               <span className="text-sm text-muted-foreground">({center.code})</span>
               <Badge variant="outline" className={cn('text-[10px] uppercase', statusColor[center.status] || '')}>
-                {center.status?.replace(/_/g, ' ')}
+                {isOpsRejected ? 'Rejected from Operation' : center.status?.replace(/_/g, ' ')}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -239,7 +239,7 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-semibold text-destructive text-sm">Study Center Rejected by Operations</h4>
+              <h4 className="font-semibold text-destructive text-sm">Study Center Rejected from Operation</h4>
               <p className="text-sm text-foreground/90 mt-0.5">
                 {center.opsRemarks ? (
                   <><strong>Operations Rejection Reason:</strong> {center.opsRemarks}</>
@@ -652,7 +652,7 @@ export function SalesCentersPanel() {
                           <span className="text-xs text-muted-foreground">({c.code})</span>
                           {(c.status === 'ops_rejected' || c.status === 'rejected') && (
                             <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40 bg-destructive/10">
-                              Ops Rejected
+                              Rejected from Operation
                             </Badge>
                           )}
                         </div>
@@ -672,7 +672,7 @@ export function SalesCentersPanel() {
                       </div>
                       <div className="shrink-0 text-right space-y-1">
                         <Badge variant="outline" className={cn('text-[10px] uppercase', statusColor[c.status] || '')}>
-                          {c.status?.replace(/_/g, ' ')}
+                          {c.status === 'ops_rejected' || c.status === 'rejected' ? 'Rejected from Operation' : (c.status === 'finance_rejected' || c.status === 'rejected_from_finance' ? 'Rejected from Finance' : c.status?.replace(/_/g, ' '))}
                         </Badge>
                         <p className="text-[10px] text-muted-foreground">
                           {new Date(c.createdAt).toLocaleDateString()}

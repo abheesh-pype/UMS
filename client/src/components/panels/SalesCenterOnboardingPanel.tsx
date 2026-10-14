@@ -29,10 +29,15 @@ interface OnboardingCenter {
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; step: number }> = {
   pending_verification: { label: 'Pending Ops Review', color: 'bg-warning/10 text-warning border-warning/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
+  ops_resubmitted:      { label: 'Ops Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
+  ops_rejected:         { label: 'Rejected from Operation', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
+  rejected:             { label: 'Rejected from Operation', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
   ops_verified:         { label: 'Ops Approved', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 2 },
   pending_payment:      { label: 'Pending Finance', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 3 },
+  finance_resubmitted:  { label: 'Finance Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 3 },
+  finance_rejected:     { label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
+  rejected_from_finance:{ label: 'Rejected from Finance', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
   active:               { label: 'Active', color: 'bg-success/10 text-success border-success/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 4 },
-  rejected:             { label: 'Rejected', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 0 },
 };
 
 const STEPS = [

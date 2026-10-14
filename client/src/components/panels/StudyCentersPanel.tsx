@@ -695,7 +695,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
-                  <SelectItem value="ops_rejected">Rejected from Ops</SelectItem>
+                  <SelectItem value="ops_rejected">Rejected from Operation</SelectItem>
                   <SelectItem value="rejected_from_finance">Rejected from Finance</SelectItem>
                 </SelectContent>
               </Select>
@@ -1088,7 +1088,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
-                  <SelectItem value="ops_rejected">Rejected from Ops</SelectItem>
+                  <SelectItem value="ops_rejected">Rejected from Operation</SelectItem>
                   <SelectItem value="rejected_from_finance">Rejected from Finance</SelectItem>
                 </SelectContent>
               </Select>
@@ -1192,7 +1192,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                     <span>{c.name}</span>
                                     {isOpsRejected && (
                                       <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40 bg-destructive/10">
-                                        Ops Rejected
+                                        Rejected from Operation
                                       </Badge>
                                     )}
                                   </div>
@@ -1231,7 +1231,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                     isFinanceRejected
                                       ? 'Rejected from Finance'
                                       : isOpsRejected
-                                      ? 'Rejected from Operations'
+                                      ? 'Rejected from Operation'
                                       : c.status === 'ops_resubmitted'
                                       ? 'Resubmitted to Ops'
                                       : c.status.replace(/_/g, ' ')

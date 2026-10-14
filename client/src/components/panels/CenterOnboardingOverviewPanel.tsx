@@ -84,8 +84,8 @@ const isRejected = (s: string) => ['rejected', 'ops_rejected', 'finance_rejected
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; step: number }> = {
   pending_verification: { label: 'Pending Ops Review', color: 'bg-warning/10 text-warning border-warning/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
   ops_resubmitted:      { label: 'Ops Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 1 },
-  ops_rejected:         { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
-  rejected:             { label: 'Rejected from Operations', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
+  ops_rejected:         { label: 'Rejected from Operation', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
+  rejected:             { label: 'Rejected from Operation', color: 'bg-error/10 text-error border-error/30', icon: <XCircle className="w-3.5 h-3.5" />, step: 1 },
   ops_verified:         { label: 'Ops Approved', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <CheckCircle className="w-3.5 h-3.5" />, step: 2 },
   pending_payment:      { label: 'Pending Finance Review', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 2 },
   finance_resubmitted:  { label: 'Finance Resubmitted', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: <Clock className="w-3.5 h-3.5" />, step: 2 },
