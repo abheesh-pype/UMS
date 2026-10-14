@@ -351,10 +351,10 @@ function App() {
             case 'operations': return getOpsNavItems(true);
             case 'hr': return getHRNavItems();
             case 'finance': return getFinanceNavItems();
-            case 'sales': return getSalesNavItems();
+            case 'sales': return getSalesNavItems(user.role !== 'sales_admin');
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems();
+          return getSalesNavItems(user.role !== 'sales_admin');
         } else if (deptType === 'operations') {
           return getOpsNavItems(false);
         } else if (deptType === 'hr') {

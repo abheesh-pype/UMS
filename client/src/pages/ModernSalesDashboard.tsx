@@ -13,6 +13,7 @@ import { LeavesPanel } from '@/components/panels/LeavesPanel';
 import { AttendancePanel } from '@/components/panels/AttendancePanel';
 import { TasksPanel } from '@/components/panels/TasksPanel';
 import { SalesInvitePanel } from '@/components/panels/SalesInvitePanel';
+import { SalesStudentEnrollmentPanel } from '@/components/panels/SalesStudentEnrollmentPanel';
 import { AnnouncementsPanel } from '@/components/panels/AnnouncementsPanel';
 import { HolidaysPanel } from '@/components/panels/HolidaysPanel';
 import { NoticeBoardPanel } from '@/components/panels/NoticeBoardPanel';
@@ -106,6 +107,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
       case 'pending_center_verification': return <PendingCenterVerificationPanel mode="sales" />;
       case 'center_admissions': return <CentersAdmissionsPanel />;
       case 'center_onboarding': return <CenterOnboardingOverviewPanel mode="sales" />;
+      case 'student_enrollment': return <SalesStudentEnrollmentPanel />;
       case 'tasks': return <TasksPanel />;
       case 'my_leaves': return <LeavesPanel isPersonalView />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
@@ -132,7 +134,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   );
 }
 
-export function getSalesNavItems() {
+export function getSalesNavItems(includeStudentEnrollment = false) {
   return [
     { id: '__sales_section', label: 'Sales Management', isSection: true },
     { id: 'overview', label: 'Overview' },
@@ -143,6 +145,7 @@ export function getSalesNavItems() {
     { id: 'pending_center_verification', label: 'Pending Verification' },
     { id: 'center_admissions', label: 'Centers Admissions' },
     { id: 'center_onboarding', label: 'Center Onboarding Status' },
+    ...(includeStudentEnrollment ? [{ id: 'student_enrollment', label: 'Student Enrollment' }] : []),
     { id: 'tasks', label: 'Tasks' },
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
@@ -503,6 +506,7 @@ function SalesEmployeePortal({ initialTab, user }: { initialTab?: string; user: 
       {/* Content rendered by active tab — tabs are in the sidebar */}
       {(() => {
         switch (activeTab) {
+          case 'student_enrollment': return <SalesStudentEnrollmentPanel />;
           case 'overview': return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card className="hidden">

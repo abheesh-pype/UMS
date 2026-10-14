@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, User, Building2, Shield, Upload, Download, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, User, Shield, Upload, Download, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +35,11 @@ interface User {
   status: string;
   organizationId?: any;
   departmentId?: any;
+  department?: { name?: string | null } | null;
+  subDepartmentId?: any;
+  subDepartment?: {
+    parentDept?: { name?: string | null } | null;
+  } | null;
   canAddPrograms?: boolean;
   createdAt: string;
 }
@@ -297,6 +302,19 @@ export function UsersPanel() {
     return colors[role] || 'bg-gray-500';
   };
 
+  const getDepartmentName = (user: User) => {
+    if (user.department?.name) return user.department.name;
+    if (typeof user.departmentId === 'object' && user.departmentId?.name) {
+      return user.departmentId.name;
+    }
+
+    const departmentId = typeof user.departmentId === 'string'
+      ? user.departmentId
+      : user.departmentId?.id;
+    const departmentName = departments.find(department => department.id === departmentId)?.name;
+    return departmentName || user.subDepartment?.parentDept?.name || null;
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -381,19 +399,11 @@ export function UsersPanel() {
                   <span className="font-medium">Email:</span>
                   <span className="truncate">{user.email}</span>
                 </div>
-                {user.organizationId && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Building2 className="w-3 h-3" />
-                    <span className="text-xs truncate">
-                      {user.organizationId.name || 'University'}
-                    </span>
-                  </div>
-                )}
-                {user.departmentId && (
+                {getDepartmentName(user) && (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Shield className="w-3 h-3" />
                     <span className="text-xs truncate">
-                      {user.departmentId.name || 'Department'}
+                      {getDepartmentName(user)}
                     </span>
                   </div>
                 )}
@@ -498,7 +508,7 @@ export function UsersPanel() {
                   onChange={(e) =>
                     setFormData({ ...formData, password: e.target.value })
                   }
-                  placeholder="••••••••"
+                  placeholder={editingUser ? 'Enter new password' : '••••••••'}
                   required={!editingUser}
                 />
               </div>

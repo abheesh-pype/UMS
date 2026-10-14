@@ -5,6 +5,272 @@ import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 
+const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
+  if (!req.user.organizationId || req.user.role === 'sales_admin') {
+    res.status(403).json({ success: false, message: 'Sales department employee access is required' });
+    return false;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: {
+      department: { select: { type: true } },
+      subDepartment: { select: { parentDept: { select: { type: true } } } },
+    },
+  });
+  const departmentType = user?.department?.type || user?.subDepartment?.parentDept?.type;
+  if (departmentType?.toLowerCase() !== 'sales') {
+    res.status(403).json({ success: false, message: 'Sales department employee access is required' });
+    return false;
+  }
+  return true;
+};
+
+export const getSalesEnrollmentPrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!await requireSalesDepartmentStaff(req, res)) return;
+  const programs = await prisma.program.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      status: 'active',
+      isDeleted: false,
+    },
+    include: {
+      university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
+      programFeeStructure: { where: { organizationId: req.user.organizationId } },
+    },
+    orderBy: { name: 'asc' },
+  });
+  res.json({ success: true, count: programs.length, data: programs });
+});
+
+export const getSalesEnrollmentSessions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!await requireSalesDepartmentStaff(req, res)) return;
+  const programId = String(req.query.programId || '');
+  const program = await prisma.program.findFirst({
+    where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
+    select: { universityId: true },
+  });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Active program not found' });
+    return;
+  }
+
+  const sessions = await prisma.admissionSession.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      status: 'active',
+      AND: [
+        { OR: [{ programId }, { programId: null }] },
+        { OR: [{ universityId: program.universityId }, { universityId: null }] },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, programId: true },
+  });
+  res.json({ success: true, count: sessions.length, data: sessions });
+});
+
+export const checkSalesEnrollmentEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!await requireSalesDepartmentStaff(req, res)) return;
+  const { studentEmail, programId, sessionId } = req.body;
+  if (!studentEmail || !programId || !sessionId) {
+    res.status(400).json({ success: false, isUnique: false, message: 'Email, program, and admission session are required' });
+    return;
+  }
+
+  const existing = await prisma.enrollment.findFirst({
+    where: {
+      studentEmail,
+      programId,
+      sessionId,
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true },
+  });
+  res.json({
+    success: true,
+    isUnique: !existing,
+    ...(existing ? { message: 'An application with this email already exists for this program and session' } : {}),
+  });
+});
+
+export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!await requireSalesDepartmentStaff(req, res)) return;
+  const {
+    studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
+    specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee,
+  } = req.body;
+
+  if (!studentName?.trim() || !studentEmail?.trim() || !studentPhone?.trim() || !studentAddress?.trim() || !programId || !sessionId) {
+    res.status(400).json({ success: false, message: 'Name, email, phone, address, program, and admission session are required' });
+    return;
+  }
+  if ((abcId && !/^\d{12}$/.test(abcId)) || (debId && !/^\d{12}$/.test(debId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must be exactly 12 digits' });
+    return;
+  }
+
+  const [program, session] = await Promise.all([
+    prisma.program.findFirst({
+      where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
+      select: { id: true, universityId: true },
+    }),
+    prisma.admissionSession.findFirst({
+      where: { id: sessionId, organizationId: req.user.organizationId, status: 'active' },
+      select: { id: true, programId: true, universityId: true },
+    }),
+  ]);
+  if (!program) {
+    res.status(400).json({ success: false, message: 'Selected program is invalid or inactive' });
+    return;
+  }
+  if (!session || (session.programId && session.programId !== programId) || (session.universityId && session.universityId !== program.universityId)) {
+    res.status(400).json({ success: false, message: 'Selected admission session is invalid for this program' });
+    return;
+  }
+
+  const duplicate = await prisma.enrollment.findFirst({
+    where: {
+      studentEmail: studentEmail.trim(),
+      programId,
+      sessionId,
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    res.status(409).json({ success: false, message: 'An application with this email already exists for this program and session' });
+    return;
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email: studentEmail.trim() },
+    select: { id: true, organizationId: true, role: true },
+  });
+  if (existingUser && (existingUser.organizationId !== req.user.organizationId || existingUser.role !== 'student')) {
+    res.status(409).json({ success: false, message: 'This email is already associated with another account' });
+    return;
+  }
+  const existingStudent = await prisma.student.findUnique({
+    where: { email: studentEmail.trim() },
+    select: { id: true, organizationId: true },
+  });
+  if (existingStudent && existingStudent.organizationId !== req.user.organizationId) {
+    res.status(409).json({ success: false, message: 'This email is already associated with a student in another organization' });
+    return;
+  }
+
+  const defaultStudentPasswordHash = existingUser ? null : await bcrypt.hash('password123', 10);
+  const now = new Date();
+  const enrollment = await prisma.$transaction(async (tx) => {
+    let user = existingUser;
+    if (!user) {
+      user = await tx.user.create({
+        data: {
+          userId: `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          email: studentEmail.trim(),
+          password: defaultStudentPasswordHash!,
+          name: studentName.trim(),
+          role: 'student',
+          organizationId: req.user.organizationId,
+          status: 'active',
+        },
+        select: { id: true },
+      });
+    }
+
+    let student = existingStudent;
+    if (!student) {
+      student = await tx.student.create({
+        data: {
+          enrollmentNo: `ENR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          name: studentName.trim(),
+          email: studentEmail.trim(),
+          phone: studentPhone.trim(),
+          address: studentAddress.trim(),
+          programId,
+          sessionId,
+          specialisation: specialisation || null,
+          abcId: abcId || null,
+          debId: debId || null,
+          dob: dob || null,
+          religion: religion || null,
+          caste: caste || null,
+          fatherName: fatherName || null,
+          motherName: motherName || null,
+          parentMobile: parentMobile || null,
+          studentPhoto: studentPhoto || null,
+          pincode: pincode || null,
+          alternativePhone: alternativePhone || null,
+          maritalStatus: maritalStatus || null,
+          currentlyWorking: currentlyWorking || null,
+          status: 'pending',
+          organizationId: req.user.organizationId,
+        },
+        select: { id: true },
+      });
+    }
+
+    return tx.enrollment.create({
+      data: {
+        organizationId: req.user.organizationId,
+        studentId: student.id,
+        programId,
+        studyCenterId: null,
+        sessionId,
+        studentName: studentName.trim(),
+        studentEmail: studentEmail.trim(),
+        studentPhone: studentPhone.trim(),
+        studentAddress: studentAddress.trim(),
+        specialisation: specialisation || null,
+        abcId: abcId || null,
+        debId: debId || null,
+        dob: dob || null,
+        religion: religion || null,
+        caste: caste || null,
+        fatherName: fatherName || null,
+        motherName: motherName || null,
+        parentMobile: parentMobile || null,
+        studentPhoto: studentPhoto || null,
+        pincode: pincode || null,
+        alternativePhone: alternativePhone || null,
+        maritalStatus: maritalStatus || null,
+        currentlyWorking: currentlyWorking || null,
+        admissionDate: admissionDate ? new Date(admissionDate) : now,
+        documents: documents || [],
+        educationalDetails: educationalDetails || [],
+        paymentMethod: paymentMethod || 'installment',
+        totalFee: totalFee ? Number(totalFee) : null,
+        status: 'document_review',
+        salesUserId: req.user.id,
+        statusHistory: [
+          {
+            status: 'submitted',
+            actorId: req.user.id,
+            actorName: req.user.name,
+            actorRole: req.user.role,
+            timestamp: now.toISOString(),
+            note: 'Application entered by Sales department',
+          },
+          {
+            status: 'document_review',
+            actorId: 'system',
+            timestamp: now.toISOString(),
+            note: 'Forwarded to Operations for document verification',
+          },
+        ],
+      },
+      include: {
+        program: { select: { id: true, name: true, code: true } },
+        session: { select: { id: true, name: true } },
+      },
+    });
+  });
+
+  res.status(201).json({ success: true, data: enrollment });
+});
+
 // ─── Public: Validate invite token and get form data ─────────────────────────
 
 export const validateStudentInviteToken = asyncHandler(async (req: Request, res: Response) => {

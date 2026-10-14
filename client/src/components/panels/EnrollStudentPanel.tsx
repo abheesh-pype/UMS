@@ -51,7 +51,13 @@ interface Session {
   programId?: string | null;
 }
 
-export function EnrollStudentPanel() {
+interface EnrollStudentPanelProps {
+  mode?: 'center' | 'sales';
+  onSubmitted?: () => void;
+  onBack?: () => void;
+}
+
+export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: EnrollStudentPanelProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,6 +117,13 @@ export function EnrollStudentPanel() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      if (mode === 'sales') {
+        const programsResponse = await api.get('/sales/enrollment-programs');
+        setPrograms(programsResponse.data.data || []);
+        setWallet(null);
+        setCenterConfig(null);
+        return;
+      }
       const [progsRes, walletRes, centerRes] = await Promise.all([
         api.get('/enrollment/programs'),
         api.get('/enrollment/wallet'),
@@ -126,11 +139,13 @@ export function EnrollStudentPanel() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [mode]);
 
   const fetchSessions = async (programId: string) => {
     try {
-      const res = await api.get(`/enrollment/sessions?programId=${programId}`);
+      const res = await api.get(mode === 'sales'
+        ? `/sales/enrollment-sessions?programId=${programId}`
+        : `/enrollment/sessions?programId=${programId}`);
       setSessions(res.data.data || []);
     } catch (e) {
       toast.error('Failed to load admission sessions for this program');
@@ -143,7 +158,7 @@ export function EnrollStudentPanel() {
     } else {
       setSessions([]);
     }
-  }, [selectedProgram?.id]);
+  }, [selectedProgram?.id, mode]);
 
   useEffect(() => {
     setSelectedSessionId('');
@@ -157,7 +172,7 @@ export function EnrollStudentPanel() {
     if (!form.studentEmail || !selectedProgram || !selectedSessionId) return;
     setCheckingEmail(true);
     try {
-      const res = await api.post('/enrollment/check-email', {
+      const res = await api.post(mode === 'sales' ? '/sales/enrollment-check-email' : '/enrollment/check-email', {
         studentEmail: form.studentEmail,
         programId: selectedProgram.id,
         sessionId: selectedSessionId
@@ -166,7 +181,9 @@ export function EnrollStudentPanel() {
       if (!res.data.isUnique) {
         toast.error(res.data.message || 'Email already in use for this intake');
       }
-    } catch (e) {}
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Unable to verify this email');
+    }
     setCheckingEmail(false);
   };
 
@@ -471,7 +488,7 @@ export function EnrollStudentPanel() {
     setConfirmOpen(false);
     setSubmitting(true);
     try {
-      await api.post('/enrollment/enroll', { 
+      await api.post(mode === 'sales' ? '/sales/enroll-student' : '/enrollment/enroll', {
         ...form, 
         programId: selectedProgram.id,
         sessionId: selectedSessionId,
@@ -481,6 +498,10 @@ export function EnrollStudentPanel() {
         totalFee: getTotalFee(selectedProgram)
       });
       toast.success('Enrollment submitted successfully');
+      if (onSubmitted) {
+        onSubmitted();
+        return;
+      }
       setForm({ 
         studentName: '', 
         studentEmail: '', 
@@ -633,10 +654,11 @@ export function EnrollStudentPanel() {
             <p className="text-xs text-muted-foreground mt-0.5">Please fill all required student documents and info step-by-step.</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="text-right">
+            {mode !== 'sales' && <div className="text-right">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Wallet Balance</p>
               <p className="text-lg font-extrabold text-primary">₹{balance.toLocaleString()}</p>
-            </div>
+            </div>}
+            {onBack && <Button variant="outline" size="sm" onClick={onBack}>Back to enrollments</Button>}
             <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
             </Button>
@@ -1088,7 +1110,7 @@ export function EnrollStudentPanel() {
               <Button
                 type="button"
                 onClick={triggerConfirm}
-                disabled={!selectedProgram || submitting || (selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram))}
+                disabled={!selectedProgram || submitting || (mode !== 'sales' && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram))}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 font-semibold"
               >
                 <GraduationCap className="w-4.5 h-4.5" />
@@ -1096,7 +1118,7 @@ export function EnrollStudentPanel() {
               </Button>
             )}
           </div>
-          {activeStep === 4 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
+          {mode !== 'sales' && activeStep === 4 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
             <p className="text-xs text-destructive text-center mt-3">Insufficient wallet balance. Please top up first.</p>
           )}
         </CardContent>
