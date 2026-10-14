@@ -42,6 +42,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -134,18 +135,19 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   );
 }
 
-export function getSalesNavItems(includeStudentEnrollment = false) {
+export function getSalesNavItems(includeStudentEnrollment = true) {
   return [
     { id: '__sales_section', label: 'Sales Management', isSection: true },
     { id: 'overview', label: 'Overview' },
     { id: 'targets', label: 'Targets' },
     { id: 'invite_links', label: 'Invite Links' },
     { id: 'my_team', label: 'My Team' },
+    { id: 'student_enrollment', label: 'Student Enrollment' },
     { id: 'study_centre', label: 'Study Centre' },
     { id: 'pending_center_verification', label: 'Pending Verification' },
     { id: 'center_admissions', label: 'Centers Admissions' },
     { id: 'center_onboarding', label: 'Center Onboarding Status' },
-    ...(includeStudentEnrollment ? [{ id: 'student_enrollment', label: 'Student Enrollment' }] : []),
+    ...(includeStudentEnrollment ? [] : []),
     { id: 'tasks', label: 'Tasks' },
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
@@ -503,7 +505,30 @@ function SalesEmployeePortal({ initialTab, user }: { initialTab?: string; user: 
         </CardContent></Card>
       </div>
 
-      {/* Content rendered by active tab — tabs are in the sidebar */}
+      {/* Tabs navigation for Sales Staff portal */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="student_enrollment">Student Enrollment</TabsTrigger>
+          <TabsTrigger value="my_team">My Team</TabsTrigger>
+          <TabsTrigger value="targets">My Targets</TabsTrigger>
+          <TabsTrigger value="invite_links">Invite Links</TabsTrigger>
+          <TabsTrigger value="study_centre">Study Centre</TabsTrigger>
+          <TabsTrigger value="pending_center_verification">Pending Verification</TabsTrigger>
+          <TabsTrigger value="center_onboarding">Center Onboarding</TabsTrigger>
+          {isSubDeptManager && <TabsTrigger value="my_subdept">My Sub-Dept</TabsTrigger>}
+          <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="my_leaves">My Leaves</TabsTrigger>
+          <TabsTrigger value="my_attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="my_payslips">Pay Slips</TabsTrigger>
+          <TabsTrigger value="my_documents">My Documents</TabsTrigger>
+          <TabsTrigger value="holidays">Holidays</TabsTrigger>
+          <TabsTrigger value="announcements">Announcements</TabsTrigger>
+          <TabsTrigger value="notice-board">Notice Board</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Content rendered by active tab */}
       {(() => {
         switch (activeTab) {
           case 'student_enrollment': return <SalesStudentEnrollmentPanel />;

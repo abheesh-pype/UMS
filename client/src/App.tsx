@@ -24,7 +24,7 @@ const EMPLOYEE_NAV_ITEMS = [
   { id: 'holidays', label: 'Holiday List' },
   { id: 'announcements', label: 'Announcements' },
   { id: 'notice-board', label: 'Notice Board' },
-  { id: 'team', label: 'My Team' },
+  { id: 'my_team', label: 'My Team' },
   { id: 'ld-portal', label: 'L&D Portal' },
 ];
 
@@ -125,11 +125,24 @@ function App() {
     }
   };
   
+  const getInitialDeptType = (u: any) => {
+    if (!u) return null;
+    const dept = u.department || u.departmentId;
+    if (dept && typeof dept === 'object' && dept.type) return dept.type;
+    const subDept = u.subDepartment || u.subDepartmentId;
+    if (subDept && typeof subDept === 'object') {
+      if (subDept.parentDeptId?.type) return subDept.parentDeptId.type;
+      if (subDept.parentDept?.type) return subDept.parentDept.type;
+      if (subDept.type) return subDept.type;
+    }
+    return null;
+  };
+
   const [activeTable, setActiveTable] = useState(() => getDefaultTable(user?.role));
   const [tableData, setTableData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  // For employee sub-dept managers: track their department type to show correct nav
-  const [deptType, setDeptType] = useState<string | null>(null);
+  // For employee / staff: track their department type to show correct nav
+  const [deptType, setDeptType] = useState<string | null>(() => getInitialDeptType(user));
 
   // When user loads/changes, reset activeTable to the correct default
   useEffect(() => {
@@ -137,13 +150,13 @@ function App() {
       setActiveTable(getDefaultTable(user.role));
       setActiveTab(undefined);
       setViewMode('dashboard');
-      setDeptType(null);
+      setDeptType(getInitialDeptType(user));
     }
-  }, [user?.role]);
+  }, [user?.role, user?.department, (user as any)?.departmentId, user?.subDepartment, (user as any)?.subDepartmentId]);
 
   // Fetch department type for employee sub-dept managers (mirrors Dashboard.tsx logic)
   useEffect(() => {
-    if (user?.role !== 'employee') return;
+    if (user?.role !== 'employee' && user?.role !== 'staff') return;
     const subDeptId = (user as any)?.subDepartmentId;
     if (!(user as any)?.departmentId && !subDeptId) return;
 
@@ -286,8 +299,7 @@ function App() {
     }
 
     if (user.role === 'sales_admin') {
-      const items = getSalesNavItems();
-      return [...items, { id: 'center_admissions', label: 'Centers Admissions' }];
+      return getSalesNavItems();
     }
 
     if (user.role === 'center_admin') {
@@ -343,7 +355,7 @@ function App() {
       ];
     }
 
-    if (user.role === 'employee') {
+    if (user.role === 'employee' || user.role === 'staff') {
       const isSubDeptManager = Boolean((user as any)?.subDepartmentId);
       if (deptType) {
         if (isSubDeptManager) {
@@ -351,10 +363,10 @@ function App() {
             case 'operations': return getOpsNavItems(true);
             case 'hr': return getHRNavItems();
             case 'finance': return getFinanceNavItems();
-            case 'sales': return getSalesNavItems(user.role !== 'sales_admin');
+            case 'sales': return getSalesNavItems();
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems(user.role !== 'sales_admin');
+          return getSalesNavItems();
         } else if (deptType === 'operations') {
           return getOpsNavItems(false);
         } else if (deptType === 'hr') {
@@ -413,8 +425,8 @@ function App() {
     }
 
     const roleDashboardRoles = ['org_admin', 'ops_admin', 'ops_sub_admin', 'finance_admin', 'hr_admin', 'sales_admin', 'university_admin', 'academic_admin'];
-    const isEmployeeSubDeptManager = user?.role === 'employee' && Boolean((user as any)?.subDepartmentId) && Boolean(deptType);
-    const isEmployeeRole = user?.role === 'employee';
+    const isEmployeeSubDeptManager = (user?.role === 'employee' || user?.role === 'staff') && Boolean((user as any)?.subDepartmentId) && Boolean(deptType);
+    const isEmployeeRole = user?.role === 'employee' || user?.role === 'staff';
     const isBranchManager = Boolean((user as any)?.branchId);
     if (user && (roleDashboardRoles.includes(user.role) || isEmployeeSubDeptManager || isEmployeeRole || isBranchManager)) {
       setViewMode('dashboard');
@@ -828,7 +840,7 @@ function App() {
   // For employees with department or sub-department assignments, route to department dashboard
   // Branch managers are excluded — they always get the branch dashboard
   const shouldUseDepartmentDashboard = Boolean(
-    user.role === 'employee' &&
+    (user.role === 'employee' || user.role === 'staff') &&
     !(user as any)?.branchId &&
     ((user as any)?.departmentId || (user as any)?.subDepartmentId) &&
     viewMode === 'dashboard'

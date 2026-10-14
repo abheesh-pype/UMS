@@ -6,21 +6,29 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
-  if (!req.user.organizationId || req.user.role === 'sales_admin') {
-    res.status(403).json({ success: false, message: 'Sales department employee access is required' });
+  if (!req.user.organizationId) {
+    res.status(403).json({ success: false, message: 'Sales department access is required' });
     return false;
+  }
+
+  if (req.user.role === 'sales_admin') {
+    return true;
   }
 
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: {
-      department: { select: { type: true } },
-      subDepartment: { select: { parentDept: { select: { type: true } } } },
+      department: { select: { type: true, name: true } },
+      subDepartment: { select: { parentDept: { select: { type: true, name: true } } } },
     },
   });
   const departmentType = user?.department?.type || user?.subDepartment?.parentDept?.type;
-  if (departmentType?.toLowerCase() !== 'sales') {
-    res.status(403).json({ success: false, message: 'Sales department employee access is required' });
+  const departmentName = user?.department?.name || user?.subDepartment?.parentDept?.name;
+  if (
+    departmentType?.toLowerCase() !== 'sales' &&
+    !departmentName?.toLowerCase().includes('sales')
+  ) {
+    res.status(403).json({ success: false, message: 'Sales department access is required' });
     return false;
   }
   return true;
@@ -543,6 +551,22 @@ export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, 
       newReports.forEach(id => salesUserIds.add(id));
       managers = newReports;
     }
+
+    const deptEmployees = await prisma.user.findMany({
+      where: {
+        organizationId,
+        id: { not: req.user.id },
+        role: { in: ['employee', 'staff', 'bde', 'sales_sub_admin', 'sales subadmin'] as any },
+        OR: [
+          { department: { type: { equals: 'sales', mode: 'insensitive' } } },
+          { department: { name: { contains: 'sales', mode: 'insensitive' } } },
+          { subDepartment: { parentDept: { type: { equals: 'sales', mode: 'insensitive' } } } },
+          { subDepartment: { parentDept: { name: { contains: 'sales', mode: 'insensitive' } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    deptEmployees.forEach(u => salesUserIds.add(u.id));
   }
 
   const enrollments = await prisma.enrollment.findMany({
@@ -557,6 +581,7 @@ export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, 
       session: { select: { id: true, name: true } },
       departmentReviewer: { select: { id: true, name: true, email: true } },
       financeReviewer: { select: { id: true, name: true, email: true } },
+      salesUser: { select: { id: true, name: true, email: true } },
     } as any,
     orderBy: { createdAt: 'desc' },
   });

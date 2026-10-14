@@ -267,8 +267,9 @@ function OverviewContent({ metrics, invoices, expenses, payrollBatches, loading,
       </div>
 
       {/* Secondary quick-nav row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
         {[
+          { label: 'My Team', value: 'Team', sub: 'Department Members', icon: <Users className="w-4 h-4" />, tab: 'my_team', urgent: false },
           { label: 'Payroll Batches', value: pendingBatches.length, sub: 'Pending approval', icon: <Users className="w-4 h-4" />, tab: 'payroll-batches', urgent: pendingBatches.length > 0 },
           { label: 'Wallet Top-Ups', value: metrics.pendingWalletTopUps || 0, sub: 'Awaiting review', icon: <Wallet className="w-4 h-4" />, tab: 'wallet_topups', urgent: (metrics.pendingWalletTopUps || 0) > 0 },
           { label: 'Enrollments', value: metrics.pendingEnrollments || 0, sub: 'Finance review', icon: <FileText className="w-4 h-4" />, tab: 'enrollments_finance', urgent: (metrics.pendingEnrollments || 0) > 0 },

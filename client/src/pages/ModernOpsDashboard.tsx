@@ -149,6 +149,10 @@ function OverviewContent({ metrics, onNavigate }: { metrics: any; onNavigate: (t
           <Users className="w-4 h-4 mr-2" />
           View Students
         </Button>
+        <Button variant="outline" onClick={() => onNavigate('my_team')}>
+          <Users className="w-4 h-4 mr-2" />
+          My Team
+        </Button>
       </div>
 
       {/* Operations Quick Metrics */}

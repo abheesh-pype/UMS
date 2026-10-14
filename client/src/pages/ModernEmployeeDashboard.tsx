@@ -31,6 +31,7 @@ import { SubOpsPortalPanel } from '@/components/panels/SubOpsPortalPanel';
 import { SubSalesPortalPanel } from '@/components/panels/SubSalesPortalPanel';
 import { EmployeeEscalationsPanel } from '@/components/panels/EmployeeEscalationsPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 
 export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab?: string; onNavigate?: (tab: string) => void }) {
@@ -47,7 +48,8 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
   const mappedInitialTab = initialTab === 'my-tasks' ? 'tasks' : 
     initialTab === 'my-leaves' ? 'leaves' : 
     initialTab === 'my-attendance' ? 'attendance' : 
-    initialTab === 'my-complaints' ? 'escalations' : initialTab;
+    initialTab === 'my-complaints' ? 'escalations' : 
+    (initialTab === 'team' || initialTab === 'my_team') ? 'my_team' : initialTab;
 
   const [activeTab, setActiveTab] = useState(mappedInitialTab || (isSubDeptManager ? 'my_subdept' : 'overview'));
 
@@ -62,7 +64,8 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
     const mapped = initialTab === 'my-tasks' ? 'tasks' : 
       initialTab === 'my-leaves' ? 'leaves' : 
       initialTab === 'my-attendance' ? 'attendance' : 
-      initialTab === 'my-complaints' ? 'escalations' : initialTab;
+      initialTab === 'my-complaints' ? 'escalations' : 
+      (initialTab === 'team' || initialTab === 'my_team') ? 'my_team' : initialTab;
     setActiveTab(mapped || (isSubDeptManager ? 'my_subdept' : 'overview'));
   }, [initialTab, isSubDeptManager]);
 
@@ -149,7 +152,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
           <TabsTrigger value="notice-board">Notice Board</TabsTrigger>
           <TabsTrigger value="announcements">Announcements</TabsTrigger>
           <TabsTrigger value="holidays">Holiday List</TabsTrigger>
-          <TabsTrigger value="team">My Team</TabsTrigger>
+          <TabsTrigger value="my_team">My Team</TabsTrigger>
           {isSubDeptManager && <TabsTrigger value="my_subdept">My Sub-Dept</TabsTrigger>}
           <TabsTrigger value="ld-portal">L&amp;D Portal</TabsTrigger>
           <TabsTrigger value="escalations">Escalations</TabsTrigger>
@@ -330,8 +333,18 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
           <HolidaysPanel />
         </TabsContent>
 
+        <TabsContent value="my_team">
+          <MyTeamPanel
+            departmentType={(parentDeptType || (typeof (user as any)?.department === 'object' ? (user as any)?.department?.type : null) || 'operations') as any}
+            title="My Team"
+          />
+        </TabsContent>
+
         <TabsContent value="team">
-          <TeamPerformancePanel />
+          <MyTeamPanel
+            departmentType={(parentDeptType || (typeof (user as any)?.department === 'object' ? (user as any)?.department?.type : null) || 'operations') as any}
+            title="My Team"
+          />
         </TabsContent>
 
         {isSubDeptManager && (
