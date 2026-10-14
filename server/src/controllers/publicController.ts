@@ -2,6 +2,7 @@
 import { Response, Request } from 'express';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 
 export const validateInviteToken = asyncHandler(async (req: Request, res: Response) => {
   const invite = await prisma.studyCenterInvite.findUnique({ where: { token: req.params.token } });
@@ -9,16 +10,42 @@ export const validateInviteToken = asyncHandler(async (req: Request, res: Respon
 });
 
 export const publicRegister = asyncHandler(async (req: Request, res: Response) => {
-  const { referredById, ...restBody } = req.body;
+  const { referredById, token, ...restBody } = req.body;
+  let resolvedReferredBy = referredById || null;
+  let resolvedOrgId = restBody.organizationId || null;
+
+  if (token) {
+    const invite = await prisma.studyCenterInvite.findUnique({ where: { token } });
+    if (invite) {
+      resolvedReferredBy = resolvedReferredBy || invite.createdBy;
+      resolvedOrgId = resolvedOrgId || invite.organizationId;
+    }
+  }
+
+  const pendingStatus = await getOnboardingStatusByCode('pending_verification');
   const center = await prisma.studyCenter.create({
     data: {
       ...restBody,
+      organizationId: resolvedOrgId,
+      onboardingStatusId: pendingStatus?.id || null,
       status: 'pending_verification' as any,
-      referredBy: referredById || null
+      referredBy: resolvedReferredBy || null,
+      statusHistory: [
+        {
+          status: 'pending_verification',
+          statusName: 'Pending Operations Verification',
+          stage: 'operations',
+          state: 'pending',
+          actorName: 'Center Applicant',
+          remarks: 'Registered via public invite link',
+          timestamp: new Date().toISOString(),
+        }
+      ]
     }
   });
   res.status(201).json({ success: true, data: center });
 });
+
 
 export const getPaymentStatus = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { status: 'pending' as any } });

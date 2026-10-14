@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Building2, GraduationCap, RefreshCw, ChevronRight, ArrowLeft, BookOpen, Users } from 'lucide-react';
+import { Building2, GraduationCap, RefreshCw, ChevronRight, ArrowLeft, BookOpen, Users, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
@@ -12,12 +14,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const statusColor: Record<string, string> = {
   pending_verification: 'bg-yellow-500/10 text-yellow-600 border-yellow-400/30',
-  ops_verified: 'bg-blue-500/10 text-blue-600 border-blue-400/30',
-  pending_payment: 'bg-orange-500/10 text-orange-600 border-orange-400/30',
-  active: 'bg-green-500/10 text-green-600 border-green-400/30',
+  ops_resubmitted: 'bg-blue-500/10 text-blue-600 border-blue-400/30',
+  ops_rejected: 'bg-red-500/10 text-red-600 border-red-400/30',
   rejected: 'bg-red-500/10 text-red-600 border-red-400/30',
+  ops_verified: 'bg-blue-500/10 text-blue-600 border-blue-400/30',
+  pending_payment: 'bg-purple-500/10 text-purple-600 border-purple-400/30',
+  finance_resubmitted: 'bg-blue-500/10 text-blue-600 border-blue-400/30',
+  finance_rejected: 'bg-red-500/10 text-red-600 border-red-400/30',
+  rejected_from_finance: 'bg-red-500/10 text-red-600 border-red-400/30',
+  active: 'bg-green-500/10 text-green-600 border-green-400/30',
+  suspended: 'bg-muted text-muted-foreground',
   inactive: 'bg-muted text-muted-foreground',
 };
+
 
 const enrollStatusColor: Record<string, string> = {
   payment_pending: 'bg-yellow-500/10 text-yellow-600 border-yellow-400/30',
@@ -36,6 +45,19 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
   const [reassigning, setReassigning] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [resubmitOpen, setResubmitOpen] = useState(false);
+  const [resubmitting, setResubmitting] = useState(false);
+  const [resubmitForm, setResubmitForm] = useState({
+    name: '',
+    code: '',
+    email: '',
+    contact: '',
+    address: '',
+    city: '',
+    state: '',
+    coordinatorName: '',
+    remarks: '',
+  });
 
   useEffect(() => {
     api.get(`/sales/my-centers/${centerId}`)
@@ -47,6 +69,40 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
       .then(r => setTeam(r.data.data || []))
       .catch(() => setTeam([]));
   }, [centerId]);
+
+  const handleOpenResubmit = () => {
+    if (!data?.center) return;
+    const c = data.center;
+    setResubmitForm({
+      name: c.name || '',
+      code: c.code || '',
+      email: c.email || '',
+      contact: c.contact || '',
+      address: c.address || '',
+      city: c.city || '',
+      state: c.state || '',
+      coordinatorName: c.coordinatorName || '',
+      remarks: '',
+    });
+    setResubmitOpen(true);
+  };
+
+  const handleResubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResubmitting(true);
+    try {
+      await api.put(`/sales/my-centers/${centerId}/resubmit`, resubmitForm);
+      toast.success('Study center successfully resubmitted to Operations!');
+      setResubmitOpen(false);
+      setLoading(true);
+      const r = await api.get(`/sales/my-centers/${centerId}`);
+      setData(r.data.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to resubmit center');
+    } finally {
+      setResubmitting(false);
+    }
+  };
 
   const handleReassign = async () => {
     if (!selectedUserId) {
@@ -94,6 +150,10 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
   }
 
   const { center, enrollments, byProgram, stats } = data;
+  const isOpsRejected = center.status === 'ops_rejected'
+    || center.status === 'rejected'
+    || center.onboardingStatus?.code === 'ops_rejected'
+    || (center.onboardingStatus?.state === 'rejected' && center.onboardingStatus?.stage === 'operations');
 
   return (
     <div className="space-y-5">
@@ -107,7 +167,7 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
               <h2 className="text-xl font-bold">{center.name}</h2>
               <span className="text-sm text-muted-foreground">({center.code})</span>
               <Badge variant="outline" className={cn('text-[10px] uppercase', statusColor[center.status] || '')}>
-                {center.status?.replace(/_/g, ' ')}
+                {isOpsRejected ? 'Rejected from Operation' : center.status?.replace(/_/g, ' ')}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -121,49 +181,192 @@ function CenterDetailView({ centerId, onBack }: { centerId: string; onBack: () =
           </div>
         </div>
 
-        {team.length > 0 && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="bg-primary/90 hover:bg-primary text-primary-foreground">
-                <Users className="w-4 h-4 mr-2" /> Reassign Center
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Reassign Study Center</DialogTitle>
-                <DialogDescription>
-                  Assign this study center to a different sales representative on your team.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Select Team Member</label>
-                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a sales representative..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {team.map((t: any) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} ({t.role?.replace(/_/g, ' ')})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isOpsRejected && (
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleOpenResubmit}>
+              <RefreshCw className="w-4 h-4 mr-2" /> Resubmit Center
+            </Button>
+          )}
+
+          {team.length > 0 && (
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="bg-primary/90 hover:bg-primary text-primary-foreground">
+                  <Users className="w-4 h-4 mr-2" /> Reassign Center
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Reassign Study Center</DialogTitle>
+                  <DialogDescription>
+                    Assign this study center to a different sales representative on your team.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Select Team Member</label>
+                    <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select a sales representative..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {team.map((t: any) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name} ({t.role?.replace(/_/g, ' ')})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={reassigning}>
-                  Cancel
-                </Button>
-                <Button onClick={handleReassign} disabled={reassigning || !selectedUserId}>
-                  {reassigning ? 'Reassigning...' : 'Confirm Reassign'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={reassigning}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleReassign} disabled={reassigning || !selectedUserId}>
+                    {reassigning ? 'Reassigning...' : 'Confirm Reassign'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </div>
+
+      {/* Prominent Operations Rejection Callout */}
+      {isOpsRejected && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-destructive text-sm">Study Center Rejected from Operation</h4>
+              <p className="text-sm text-foreground/90 mt-0.5">
+                {center.opsRemarks ? (
+                  <><strong>Operations Rejection Reason:</strong> {center.opsRemarks}</>
+                ) : (
+                  'Operations requested corrections before verifying this center.'
+                )}
+              </p>
+            </div>
+          </div>
+          <Button
+            className="bg-amber-600 hover:bg-amber-700 text-white font-medium shrink-0 shadow-sm"
+            onClick={handleOpenResubmit}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Resubmit Center
+          </Button>
+        </div>
+      )}
+
+      {/* Resubmit Center Dialog */}
+      <Dialog open={resubmitOpen} onOpenChange={setResubmitOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-amber-600" />
+              Resubmit Study Center to Operations
+            </DialogTitle>
+            <DialogDescription>
+              Correct center information and submit it back to Operations for verification.
+            </DialogDescription>
+          </DialogHeader>
+
+          {center.opsRemarks && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-destructive" />
+              <div>
+                <span className="font-semibold text-destructive">Operations Feedback:</span>
+                <p className="mt-0.5 text-foreground/90 leading-relaxed">{center.opsRemarks}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleResubmit} className="space-y-4 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-name">Center Name *</Label>
+                <Input
+                  id="sc-name"
+                  required
+                  value={resubmitForm.name}
+                  onChange={e => setResubmitForm({ ...resubmitForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-code">Center Code *</Label>
+                <Input
+                  id="sc-code"
+                  required
+                  value={resubmitForm.code}
+                  onChange={e => setResubmitForm({ ...resubmitForm, code: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-email">Email Address *</Label>
+                <Input
+                  id="sc-email"
+                  type="email"
+                  required
+                  value={resubmitForm.email}
+                  onChange={e => setResubmitForm({ ...resubmitForm, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-contact">Contact Phone *</Label>
+                <Input
+                  id="sc-contact"
+                  required
+                  value={resubmitForm.contact}
+                  onChange={e => setResubmitForm({ ...resubmitForm, contact: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-coordinator">Coordinator Name</Label>
+                <Input
+                  id="sc-coordinator"
+                  value={resubmitForm.coordinatorName}
+                  onChange={e => setResubmitForm({ ...resubmitForm, coordinatorName: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sc-city">City</Label>
+                <Input
+                  id="sc-city"
+                  value={resubmitForm.city}
+                  onChange={e => setResubmitForm({ ...resubmitForm, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="sc-address">Address</Label>
+                <Input
+                  id="sc-address"
+                  value={resubmitForm.address}
+                  onChange={e => setResubmitForm({ ...resubmitForm, address: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="sc-remarks">Correction Notes / Remarks</Label>
+                <Input
+                  id="sc-remarks"
+                  placeholder="Details of updates made for Operations..."
+                  value={resubmitForm.remarks}
+                  onChange={e => setResubmitForm({ ...resubmitForm, remarks: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2 border-t gap-2">
+              <Button type="button" variant="outline" onClick={() => setResubmitOpen(false)} disabled={resubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={resubmitting}>
+                {resubmitting ? 'Resubmitting...' : 'Confirm & Resubmit to Operations'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         {[
@@ -447,10 +650,20 @@ export function SalesCentersPanel() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-sm">{c.name}</p>
                           <span className="text-xs text-muted-foreground">({c.code})</span>
+                          {(c.status === 'ops_rejected' || c.status === 'rejected') && (
+                            <Badge variant="outline" className="text-[10px] text-destructive border-destructive/40 bg-destructive/10">
+                              Rejected from Operation
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-[11px] text-muted-foreground truncate">
                           {c.email}{c.city ? ` · ${c.city}` : ''}
                         </p>
+                        {c.opsRemarks && (c.status === 'ops_rejected' || c.status === 'rejected') && (
+                          <p className="text-[10px] text-destructive truncate mt-0.5">
+                            Rejection: {c.opsRemarks}
+                          </p>
+                        )}
                         {c.associatedUniversityIds?.length > 0 && (
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             {c.associatedUniversityIds.map((u: any) => u.name || u).join(', ')}
@@ -459,7 +672,7 @@ export function SalesCentersPanel() {
                       </div>
                       <div className="shrink-0 text-right space-y-1">
                         <Badge variant="outline" className={cn('text-[10px] uppercase', statusColor[c.status] || '')}>
-                          {c.status?.replace(/_/g, ' ')}
+                          {c.status === 'ops_rejected' || c.status === 'rejected' ? 'Rejected from Operation' : (c.status === 'finance_rejected' || c.status === 'rejected_from_finance' ? 'Rejected from Finance' : c.status?.replace(/_/g, ' '))}
                         </Badge>
                         <p className="text-[10px] text-muted-foreground">
                           {new Date(c.createdAt).toLocaleDateString()}

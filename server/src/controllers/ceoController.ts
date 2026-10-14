@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getAllOnboardingStatuses } from '../services/onboardingStatusService.js';
 
 export const getPerformanceMetrics = asyncHandler(async (req: AuthRequest, res: Response) => {
   const [total, completed] = await Promise.all([
@@ -117,8 +118,55 @@ export const getKPIKRAReport = asyncHandler(async (req: AuthRequest, res: Respon
 });
 
 export const getCenterOnboardingOverview = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const centers = await prisma.studyCenter.findMany({ where: { organizationId: req.user.organizationId } });
-  res.json({ success: true, data: centers });
+  const centers = await prisma.studyCenter.findMany({
+    where: { organizationId: req.user.organizationId },
+    include: {
+      onboardingStatus: true,
+      referrer: { select: { id: true, name: true, email: true } },
+      verifier: { select: { id: true, name: true, email: true } },
+      assignedOperationsUser: { select: { id: true, name: true, email: true } },
+      assignedFinanceUser: { select: { id: true, name: true, email: true } },
+      approver: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { updatedAt: 'desc' }
+  });
+
+  const allStatuses = await getAllOnboardingStatuses();
+  const SLA_HOURS = 48;
+  const enrichedCenters = await Promise.all(centers.map(async c => {
+    const hrs = Math.round((Date.now() - new Date(c.updatedAt).getTime()) / 3600000);
+    const slaBreached = (c.onboardingStatus?.stage === 'operations' && c.onboardingStatus?.state === 'pending') && hrs > SLA_HOURS;
+    const universities = await prisma.university.findMany({
+      where: { id: { in: c.universityIds || [] }, organizationId: req.user.organizationId, singletonKey: 'primary' },
+      select: { id: true, name: true, code: true }
+    });
+    return {
+      ...c,
+      status: c.onboardingStatus?.code || c.status,
+      hoursAtCurrentStage: hrs,
+      slaBreached,
+      associatedUniversityIds: universities,
+    };
+  }));
+
+  const summary = {
+    total: enrichedCenters.length,
+    pending_verification: enrichedCenters.filter(c => c.onboardingStatus?.stage === 'operations' && c.onboardingStatus?.state === 'pending').length,
+    ops_verified: enrichedCenters.filter(c => c.onboardingStatus?.stage === 'finance' && c.onboardingStatus?.state === 'pending').length,
+    pending_payment: enrichedCenters.filter(c => c.onboardingStatus?.stage === 'finance' && ['pending', 'resubmitted'].includes(c.onboardingStatus?.state)).length,
+    active: enrichedCenters.filter(c => c.status === 'active' || c.onboardingStatus?.state === 'active').length,
+    rejected: enrichedCenters.filter(c => c.onboardingStatus?.state === 'rejected' || ['rejected', 'ops_rejected', 'finance_rejected', 'rejected_from_finance'].includes(c.status)).length,
+    slaBreached: enrichedCenters.filter(c => c.slaBreached).length,
+  };
+
+  res.json({
+    success: true,
+    data: {
+      centers: enrichedCenters,
+      summary,
+      statuses: allStatuses,
+    }
+  });
 });
 
 export const getStudentEnrollmentOverview = asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -63,6 +63,7 @@ import {
   bulkImportStudyCenters,
   updateBranchSettings,
 } from '../controllers/operationsController.js';
+import { resubmitStudyCenter } from '../controllers/salesController.js';
 import { updateEnrollmentUniNumber } from '../controllers/universityStudentsController.js';
 import {
   getProgramDetail,
@@ -134,6 +135,7 @@ router.route('/centers/:id')
   .get(getStudyCenter)
   .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), updateStudyCenter)
   .delete(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), deleteStudyCenter);
+router.put('/centers/:id/resubmit', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'sales_admin', 'bde', 'employee'), resubmitStudyCenter);
 router.put('/centers/:id/approve', authorize('ops_admin', 'finance_admin'), approveStudyCenter);
 router.put('/centers/:id/suspend', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), suspendStudyCenter);
 

@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateUserId, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '../utils/courseTypeHelper.js';
+import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 
 // Universities
 export const getUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -686,15 +687,79 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
         ...salesDeptEmployees.map(u => u.id)
       ]));
 
-      where.referredBy = { in: [req.user.id, ...allSubordinateIds] };
+      where.OR = [
+        { referredBy: { in: [req.user.id, ...allSubordinateIds] } },
+        { referredBy: null }
+      ];
       if (req.query.status && req.query.status !== 'all') {
-        where.status = req.query.status as string;
+        const queryStatus = req.query.status as string;
+        if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'ops_rejected' },
+                { status: 'rejected', paymentRemarks: null },
+                { onboardingStatus: { code: 'ops_rejected' } },
+                { onboardingStatus: { stage: 'operations', state: 'rejected' } }
+              ]
+            }
+          ];
+        } else if (queryStatus === 'rejected_from_finance' || queryStatus === 'finance_rejected') {
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'rejected_from_finance' },
+                { status: 'finance_rejected' },
+                { status: 'rejected', paymentRemarks: { not: null } },
+                { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
+                { onboardingStatus: { stage: 'finance', state: 'rejected' } }
+              ]
+            }
+          ];
+        } else if (queryStatus === 'ops_resubmitted') {
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { status: 'ops_resubmitted' },
+                { onboardingStatus: { code: 'ops_resubmitted' } }
+              ]
+            }
+          ];
+        } else {
+          where.status = queryStatus;
+        }
       }
     } else {
       // Sales staff: view ONLY staff-created study centers
       where.referredBy = req.user.id;
       if (req.query.status && req.query.status !== 'all') {
-        where.status = req.query.status as string;
+        const queryStatus = req.query.status as string;
+        if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
+          where.OR = [
+            { status: 'ops_rejected' },
+            { status: 'rejected', paymentRemarks: null },
+            { onboardingStatus: { code: 'ops_rejected' } },
+            { onboardingStatus: { stage: 'operations', state: 'rejected' } }
+          ];
+        } else if (queryStatus === 'rejected_from_finance' || queryStatus === 'finance_rejected') {
+          where.OR = [
+            { status: 'rejected_from_finance' },
+            { status: 'finance_rejected' },
+            { status: 'rejected', paymentRemarks: { not: null } },
+            { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
+            { onboardingStatus: { stage: 'finance', state: 'rejected' } }
+          ];
+        } else if (queryStatus === 'ops_resubmitted') {
+          where.OR = [
+            { status: 'ops_resubmitted' },
+            { onboardingStatus: { code: 'ops_resubmitted' } }
+          ];
+        } else {
+          where.status = queryStatus;
+        }
       }
     }
   } else if (isFinanceDepartmentUser) {
@@ -757,6 +822,7 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
   const centers = await prisma.studyCenter.findMany({
     where,
     include: {
+      onboardingStatus: true,
       referrer: {
         select: {
           id: true,
@@ -775,9 +841,11 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
   });
   const mapped = centers.map(c => ({
     ...c,
-    status: c.status === 'rejected' && c.verifiedBy && c.paymentRemarks
-      ? 'rejected_from_finance'
-      : c.status,
+    status: c.onboardingStatus?.code || (
+      c.status === 'rejected' && c.verifiedBy && c.paymentRemarks
+        ? 'rejected_from_finance'
+        : (c.status === 'rejected' ? 'ops_rejected' : c.status)
+    ),
     _id: c.id
   }));
   res.json({ success: true, count: mapped.length, data: mapped });
@@ -786,6 +854,7 @@ export const getStudyCenter = asyncHandler(async (req: AuthRequest, res: Respons
   const center = await prisma.studyCenter.findUnique({
     where: { id: req.params.id },
     include: {
+      onboardingStatus: true,
       referrer: {
         select: {
           id: true,
@@ -804,6 +873,11 @@ export const getStudyCenter = asyncHandler(async (req: AuthRequest, res: Respons
   });
   if (center) {
     (center as any)._id = center.id;
+    (center as any).status = center.onboardingStatus?.code || (
+      center.status === 'rejected' && center.verifiedBy && center.paymentRemarks
+        ? 'rejected_from_finance'
+        : (center.status === 'rejected' ? 'ops_rejected' : center.status)
+    );
   }
   res.json({ success: true, data: center });
 });
@@ -1164,19 +1238,42 @@ export const getPendingVerificationCenters = asyncHandler(async (req: AuthReques
   const centers = await prisma.studyCenter.findMany({
     where: {
       organizationId: req.user.organizationId,
-      OR: [
-        { status: { in: ['pending', 'pending_verification'] } as any },
-        { status: 'rejected_from_finance' },
-        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+      AND: [
+        {
+          OR: [
+            { onboardingStatus: { code: { in: ['pending_verification', 'ops_resubmitted', 'finance_rejected', 'rejected_from_finance'] } } },
+            {
+              onboardingStatus: {
+                stage: 'operations',
+                state: { notIn: ['rejected'] },
+              },
+            },
+            {
+              status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'finance_rejected', 'rejected_from_finance'] },
+            },
+          ],
+        },
+        {
+          NOT: [
+            { status: 'ops_rejected' },
+            { status: 'rejected', paymentRemarks: null },
+            { onboardingStatus: { code: { in: ['ops_rejected', 'rejected'] } } },
+            { onboardingStatus: { stage: 'operations', state: 'rejected' } },
+          ],
+        },
       ],
       ...(isAssignedOperationsUser ? { assignedOperationsUserId: req.user.id } : {}),
     },
-    include: { referrer: { select: { name: true, email: true } } },
+    include: {
+      onboardingStatus: true,
+      referrer: { select: { name: true, email: true } },
+      assignedOperationsUser: { select: { id: true, name: true, email: true, role: true } },
+    },
     orderBy: { updatedAt: 'desc' },
   });
   const data = await Promise.all(centers.map(async center => ({
     ...center,
-    status: center.status === 'rejected' ? 'rejected_from_finance' : center.status,
+    status: center.onboardingStatus?.code || center.status,
     associatedUniversityIds: await prisma.university.findMany({
       where: {
         id: { in: center.universityIds || [] },
@@ -1191,8 +1288,8 @@ export const getPendingVerificationCenters = asyncHandler(async (req: AuthReques
 
 export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
-  if (!['approve', 'reject'].includes(action)) {
-    res.status(400).json({ success: false, message: 'action must be approve or reject' });
+  if (!['approve', 'reject', 'resubmit'].includes(action)) {
+    res.status(400).json({ success: false, message: 'action must be approve, reject, or resubmit' });
     return;
   }
   if (action === 'reject' && !remarks?.trim()) {
@@ -1223,39 +1320,95 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
       id: req.params.id,
       organizationId: req.user.organizationId,
       OR: [
-        { status: { in: ['pending', 'pending_verification'] } as any },
-        { status: 'rejected_from_finance' },
-        { status: 'rejected', verifiedBy: { not: null }, paymentRemarks: { not: null } },
+        { onboardingStatus: { stage: 'operations' } },
+        { onboardingStatus: { code: { in: ['finance_rejected', 'rejected_from_finance'] } } },
+        { status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'ops_rejected', 'rejected', 'finance_rejected', 'rejected_from_finance'] } },
       ],
     },
+    include: { onboardingStatus: true },
   });
   if (!existingCenter) {
     res.status(404).json({ success: false, message: 'Study center pending Operations verification not found' });
     return;
   }
 
+  const currentCode = existingCenter.onboardingStatus?.code || existingCenter.status;
+  const isFinanceRejected = ['finance_rejected', 'rejected_from_finance'].includes(currentCode);
+
+  // Workflow Rules:
+  // 1. If finance-rejected center is resubmitted/approved from Operations: move to finance_resubmitted (stage: finance)
+  // 2. Normal Operations approve: advance to pending_payment (stage: finance)
+  // 3. Reject: move to ops_rejected (stage: operations)
+  let targetStatusCode: string;
+  let historyStatusName: string;
+  let historyStage: string;
+  let historyState: string;
+
+  if (action === 'resubmit' || (action === 'approve' && isFinanceRejected)) {
+    targetStatusCode = 'finance_resubmitted';
+    historyStatusName = 'Finance Resubmitted';
+    historyStage = 'finance';
+    historyState = 'resubmitted';
+  } else if (action === 'approve') {
+    targetStatusCode = 'pending_payment';
+    historyStatusName = 'Pending Finance Verification';
+    historyStage = 'finance';
+    historyState = 'pending';
+  } else {
+    targetStatusCode = 'ops_rejected';
+    historyStatusName = 'Operations Rejected';
+    historyStage = 'operations';
+    historyState = 'rejected';
+  }
+
+  const targetStatus = await getOnboardingStatusByCode(targetStatusCode);
+
+  const historyRemarks = remarks?.trim() || (
+    isFinanceRejected && (action === 'resubmit' || action === 'approve')
+      ? 'Resubmitted to Finance after Operations review'
+      : ''
+  );
+
+  const historyEntry = {
+    status: targetStatus?.code || targetStatusCode,
+    statusName: targetStatus?.name || historyStatusName,
+    stage: targetStatus?.stage || historyStage,
+    state: targetStatus?.state || historyState,
+    actorId: req.user.id,
+    actorName: req.user.name,
+    remarks: historyRemarks,
+    timestamp: new Date().toISOString(),
+  };
+
+  const updateData: any = {
+    onboardingStatusId: targetStatus?.id || null,
+    status: targetStatusCode,
+    opsRemarks: remarks?.trim() || (isFinanceRejected ? 'Resubmitted to Finance after Operations review' : null),
+    verifiedBy: req.user.id,
+    verifiedAt: new Date(),
+    paymentRemarks: action === 'approve' && !isFinanceRejected ? null : existingCenter.paymentRemarks,
+    statusHistory: [
+      ...((existingCenter.statusHistory as any[]) || []),
+      historyEntry
+    ],
+  };
+
+  if (req.body.paymentProof) {
+    updateData.paymentProof = req.body.paymentProof;
+  }
+
   const center = await prisma.studyCenter.update({
     where: { id: existingCenter.id },
-    data: {
-      status: action === 'approve' ? 'pending_payment' as any : 'rejected' as any,
-      opsRemarks: remarks?.trim() || null,
-      verifiedBy: req.user.id,
-      verifiedAt: new Date(),
-      paymentRemarks: null,
-      statusHistory: [
-        ...((existingCenter.statusHistory as any[]) || []),
-        {
-          status: action === 'approve' ? 'pending_payment' : 'rejected',
-          actorId: req.user.id,
-          actorName: req.user.name,
-          remarks: remarks?.trim() || '',
-          timestamp: new Date().toISOString(),
-        },
-      ],
+    data: updateData,
+    include: {
+      onboardingStatus: true,
+      referrer: { select: { name: true, email: true } },
+      assignedOperationsUser: { select: { id: true, name: true, email: true, role: true } },
     }
   });
   res.json({ success: true, data: center });
 });
+
 
 // Allocations
 export const getProgramAllocations = asyncHandler(async (req: AuthRequest, res: Response) => {

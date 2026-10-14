@@ -381,8 +381,17 @@ export function FinanceCenterVerificationPanel() {
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold">{c.name}</h4>
                       <Badge variant="outline" className="text-[10px]">{c.code}</Badge>
-                      <Badge className="bg-purple-500/10 text-purple-700">Pending Payment Approval</Badge>
+                      {c.status === 'finance_resubmitted' && (
+                        <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/30">Payment Resubmitted</Badge>
+                      )}
+                      {c.status === 'finance_rejected' && (
+                        <Badge className="bg-destructive/10 text-destructive">Rejected by Finance</Badge>
+                      )}
+                      {(c.status === 'pending_payment' || !['finance_resubmitted', 'finance_rejected'].includes(c.status)) && (
+                        <Badge className="bg-purple-500/10 text-purple-700">Pending Payment Review</Badge>
+                      )}
                     </div>
+
                     <p className="text-xs text-muted-foreground">{c.email} · {c.contact}</p>
                     {c.verifiedBy && (
                       <p className="text-xs text-muted-foreground mt-0.5">Docs verified by: {c.verifiedBy.name}</p>
