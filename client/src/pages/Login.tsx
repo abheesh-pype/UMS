@@ -4,17 +4,14 @@ import {
   ArrowUpRight,
   BookOpen,
   Building2,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
-  FileText,
   GraduationCap,
   LayoutDashboard,
-  Megaphone,
-  ShieldCheck,
+  Landmark,
+  LibraryBig,
+  MapPin,
+  Microscope,
+  Music2,
   Users,
-  WalletCards,
-  Workflow,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -31,46 +28,28 @@ import {
 const features = [
   {
     icon: GraduationCap,
-    title: 'Student lifecycle',
-    description: 'Manage applications, enrollment reviews, student records, and learning services from a connected workspace.',
-    accent: 'bg-orange-100 text-orange-700',
+    title: 'Academic discovery',
+    description: 'Explore new interests, deepen your knowledge, and find a path that brings your ambitions to life.',
+    accent: 'bg-[#f3ead7] text-[#8b6332]',
   },
   {
-    icon: Building2,
-    title: 'Centers & admissions',
-    description: 'Coordinate study-center onboarding, verification, program allocation, and admission workflows.',
-    accent: 'bg-violet-100 text-violet-700',
-  },
-  {
-    icon: BookOpen,
-    title: 'Academic operations',
-    description: 'Organize universities, programs, modules, sessions, examinations, and academic resources.',
-    accent: 'bg-sky-100 text-sky-700',
-  },
-  {
-    icon: WalletCards,
-    title: 'Finance & payments',
-    description: 'Keep fee structures, invoices, payments, expenses, payroll, and finance reviews in view.',
-    accent: 'bg-emerald-100 text-emerald-700',
+    icon: Microscope,
+    title: 'Ideas into impact',
+    description: 'Ask meaningful questions, follow your curiosity, and discover how knowledge can make a difference.',
+    accent: 'bg-[#e6eee5] text-[#426c53]',
   },
   {
     icon: Users,
-    title: 'People & HR',
-    description: 'Support employee records, teams, attendance, leave, hiring, and payroll workflows.',
-    accent: 'bg-rose-100 text-rose-700',
-  },
-  {
-    icon: LayoutDashboard,
-    title: 'Sales & leadership',
-    description: 'Track leads, invite links, team activity, targets, and operational progress with role-based dashboards.',
-    accent: 'bg-amber-100 text-amber-700',
+    title: 'A community to call your own',
+    description: 'Meet people who challenge you, encourage you, and make the university experience unforgettable.',
+    accent: 'bg-[#e7e9f0] text-[#535e7a]',
   },
 ];
 
 const workflowSteps = [
-  { number: '01', title: 'Connect your teams', detail: 'Give each department a focused workspace and role-appropriate tools.' },
-  { number: '02', title: 'Move work forward', detail: 'Keep admissions, center reviews, and finance approvals moving through clear stages.' },
-  { number: '03', title: 'Stay informed', detail: 'Use dashboards, reports, announcements, and notifications to maintain visibility.' },
+  { number: '01', title: 'Discover your direction', detail: 'Take time to explore what interests you and where you would like your studies to lead.' },
+  { number: '02', title: 'Prepare for your next step', detail: 'Learn about the application journey and gather the information you need to get started.' },
+  { number: '03', title: 'Begin your university story', detail: 'Join a community where learning, new experiences, and future possibilities come together.' },
 ];
 
 export function Login() {
@@ -104,17 +83,17 @@ export function Login() {
     <main className="min-h-screen overflow-hidden bg-[#f4f7f1] text-[#173b34]">
       <header className="relative z-10 border-b border-[#dce8df] bg-[#f9fbf7]/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
-          <a href="#home" className="flex items-center gap-3" aria-label="UMS home">
+          <a href="#home" className="flex shrink-0 items-center gap-3" aria-label="UMS University home">
             <img src="/logo.png" alt="" className="h-10 w-10 rounded-xl object-contain" />
             <span className="text-xl font-bold tracking-tight text-[#173b34]">UMS</span>
             <span className="hidden border-l border-[#cad9cf] pl-3 text-xs font-medium text-[#60766b] sm:inline">
-              University Management System
+              University
             </span>
           </a>
-          <nav aria-label="Main navigation" className="flex items-center gap-3 sm:gap-7">
-            <a href="#platform" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] sm:inline">Platform</a>
-            <a href="#workflows" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] sm:inline">How it works</a>
-            <a href="#portals" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] sm:inline">Workspaces</a>
+          <nav aria-label="Main navigation" className="flex items-center gap-2 sm:gap-4 lg:gap-7">
+            <a href="#academics" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] lg:inline">Academics</a>
+            <a href="#admissions" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] lg:inline">Admissions</a>
+            <a href="#campus" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] lg:inline">Campus life</a>
             <button
               type="button"
               className="whitespace-nowrap rounded-full border border-[#b8cbbf] bg-transparent px-3.5 py-2.5 text-sm font-semibold text-[#285448] transition hover:bg-[#e7efe8] sm:px-4"
@@ -132,127 +111,110 @@ export function Login() {
         </div>
       </header>
 
-      <section id="home" className="relative isolate overflow-hidden bg-[#173b34] text-white">
-        <div className="pointer-events-none absolute -right-40 -top-40 h-[38rem] w-[38rem] rounded-full bg-[#a9dc77]/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-44 left-[30%] h-[32rem] w-[32rem] rounded-full bg-[#35a78a]/20 blur-3xl" />
+      <section id="home" className="relative isolate overflow-hidden bg-[#f0eee5] text-[#1c342d]">
+        <div className="pointer-events-none absolute -right-40 -top-40 h-[38rem] w-[38rem] rounded-full bg-[#d9e1ce]/70 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-44 left-[30%] h-[32rem] w-[32rem] rounded-full bg-[#e8dcc2]/50 blur-3xl" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[1fr_0.95fr] lg:gap-16 lg:py-28">
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3.5 py-1.5 text-xs font-semibold text-[#d8f0bf]">
-              <span className="h-2 w-2 rounded-full bg-[#b6e47a]" />
-              One connected platform for education
+            <div className="mb-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#8b7045]">
+              <span className="h-px w-8 bg-[#b5965d]" />
+              Welcome to UMS University
             </div>
             <h1 className="max-w-3xl text-5xl font-semibold leading-[1.06] tracking-[-0.055em] sm:text-6xl lg:text-[4.5rem]">
-              Every part of
-              <span className="mt-1 block text-[#b6e47a]">education, in sync.</span>
+              Find your place.
+              <span className="mt-2 block font-serif font-normal italic text-[#8b7045]">Shape your future.</span>
             </h1>
-            <p className="mt-7 max-w-xl text-base leading-7 text-[#c5d8d0] sm:text-lg sm:leading-8">
-              A calmer way to run your institution. Connect academic operations, admissions, finance, people, and student services in one shared workspace.
+            <p className="mt-7 max-w-xl text-base leading-7 text-[#5e685f] sm:text-lg sm:leading-8">
+              A university is more than a place to study. It is where curiosity finds direction, ideas become action, and lifelong possibilities begin.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <a
-                href="#platform"
-                className="inline-flex items-center gap-2 rounded-full bg-[#b6e47a] px-5 py-3 text-sm font-bold text-[#173b34] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[#c6ed94]"
+                href="#academics"
+                className="inline-flex items-center gap-2 rounded-full bg-[#244b3c] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#244b3c]/15 transition hover:-translate-y-0.5 hover:bg-[#183a2e]"
               >
-                Explore the platform <ArrowRight className="h-4 w-4" />
+                Discover university life <ArrowRight className="h-4 w-4" />
               </a>
-              <div className="inline-flex items-center gap-2 px-2 py-3 text-sm font-medium text-[#d2e1db]">
-                <ShieldCheck className="h-4 w-4 text-[#b6e47a]" />
-                Role-based workspaces
-              </div>
+              <a href="#admissions" className="inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-[#344b3f] transition hover:bg-white/70">
+                Admissions <ArrowUpRight className="h-4 w-4" />
+              </a>
             </div>
-            <div className="mt-12 flex flex-wrap gap-x-6 gap-y-3 border-t border-white/15 pt-6 text-sm text-[#d2e1db]">
-              <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#b6e47a]" />Connected workflows</span>
-              <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#b6e47a]" />Department dashboards</span>
-              <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#b6e47a]" />Student self-service</span>
+            <div className="mt-10 flex items-center gap-3 border-t border-[#d8d3c7] pt-5 text-sm text-[#657066]">
+              <MapPin className="h-4 w-4 shrink-0 text-[#8b7045]" />
+              <span>A community for learning, discovery, and new beginnings</span>
             </div>
           </div>
 
-          <div className="relative mx-auto w-full max-w-xl lg:pl-4">
-            <div className="absolute -right-2 top-4 h-24 w-24 rounded-full border border-[#b6e47a]/30 sm:-right-4 sm:h-32 sm:w-32" />
-            <div className="absolute -bottom-5 left-2 h-20 w-20 rounded-full bg-[#b6e47a]/20 blur-xl sm:left-0" />
-            <div className="relative overflow-hidden rounded-[1.75rem] border border-white/15 bg-[#f8fbf6] p-4 text-[#173b34] shadow-2xl shadow-black/20 sm:rounded-[2rem] sm:p-6">
-              <div className="flex items-center justify-between border-b border-[#e5ece6] pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#173b34] text-[#b6e47a]">
-                    <LayoutDashboard className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold">Institution overview</p>
-                    <p className="mt-0.5 text-[10px] text-[#71847a]">Your work, all in one view</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-[#e9f3e4] px-2.5 py-1 text-[10px] font-semibold text-[#3f704b]">Live workspace</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2.5 py-4 sm:gap-3">
-                {[
-                  { label: 'Students', count: '01', color: 'bg-[#e6f1de]', icon: GraduationCap },
-                  { label: 'Admissions', count: '02', color: 'bg-[#e1f1ed]', icon: ClipboardCheck },
-                  { label: 'Departments', count: '06', color: 'bg-[#eeebf8]', icon: Building2 },
-                ].map(({ label, count, color, icon: Icon }) => (
-                  <div key={label} className="rounded-2xl border border-[#e8eee9] bg-white p-3 sm:p-4">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${color}`}>
-                      <Icon className="h-4 w-4 text-[#285448]" />
-                    </div>
-                    <p className="mt-3 text-xl font-bold tracking-tight">{count}</p>
-                    <p className="mt-0.5 text-[10px] text-[#71847a] sm:text-xs">{label}</p>
-                  </div>
+          <div className="relative mx-auto w-full max-w-2xl">
+            <div className="absolute -right-4 -top-5 h-28 w-28 rounded-full border border-[#b5965d]/40 sm:-right-6 sm:-top-7 sm:h-36 sm:w-36" />
+            <div className="relative overflow-hidden rounded-[1.5rem] border-[7px] border-white bg-[#dfe7d9] shadow-2xl shadow-[#31483a]/15 sm:rounded-[2rem] sm:border-[10px]">
+              <svg viewBox="0 0 720 520" role="img" aria-label="Illustration of a university campus" className="block h-auto w-full">
+                <defs>
+                  <linearGradient id="campus-sky" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#d9e7e0" />
+                    <stop offset="100%" stopColor="#f1ead9" />
+                  </linearGradient>
+                  <linearGradient id="campus-building" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#f7f1e4" />
+                    <stop offset="100%" stopColor="#d9cfb9" />
+                  </linearGradient>
+                </defs>
+                <rect width="720" height="520" fill="url(#campus-sky)" />
+                <circle cx="575" cy="106" r="47" fill="#e8c98d" opacity=".75" />
+                <path d="M0 312 Q156 252 318 307 T720 286 V520 H0Z" fill="#a9bda0" />
+                <path d="M0 356 Q171 297 343 348 T720 322 V520 H0Z" fill="#748f70" />
+                <path d="M201 278 L360 176 L519 278Z" fill="#78694f" />
+                <path d="M226 271 L360 190 L494 271Z" fill="#a58a61" />
+                <rect x="230" y="270" width="260" height="151" fill="url(#campus-building)" />
+                <rect x="205" y="410" width="310" height="19" fill="#a58a61" />
+                <rect x="194" y="428" width="332" height="13" fill="#78694f" />
+                <rect x="346" y="224" width="28" height="45" rx="14" fill="#d9cfb9" />
+                <path d="M351 261 V239 A9 9 0 0 1 369 239 V261Z" fill="#657c6a" />
+                {[258, 310, 362, 414, 466].map(x => (
+                  <g key={x}>
+                    <rect x={x} y="289" width="26" height="111" fill="#b8a98c" />
+                    <path d={`M${x + 2} 315 V301 A11 11 0 0 1 ${x + 24} 301 V315Z`} fill="#748b78" />
+                    <rect x={x + 2} y="328" width="22" height="23" fill="#748b78" />
+                    <rect x={x + 2} y="358" width="22" height="23" fill="#748b78" />
+                    <rect x={x - 2} y="286" width="30" height="6" fill="#8e7b5d" />
+                    <rect x={x - 2} y="398" width="30" height="6" fill="#8e7b5d" />
+                  </g>
                 ))}
-              </div>
-              <div className="rounded-2xl border border-[#e8eee9] bg-white p-4 sm:p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold">A shared path forward</p>
-                    <p className="mt-1 text-[10px] text-[#71847a]">From first application to active student</p>
-                  </div>
-                  <Workflow className="h-5 w-5 text-[#438a68]" />
-                </div>
-                <div className="mt-5 flex items-center">
-                  {[
-                    { label: 'Apply', done: true },
-                    { label: 'Review', done: true },
-                    { label: 'Enroll', done: false },
-                    { label: 'Learn', done: false },
-                  ].map((step, index) => (
-                    <div key={step.label} className="flex min-w-0 flex-1 items-center last:flex-none">
-                      <div className="flex flex-col items-center gap-2">
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold ${step.done ? 'bg-[#438a68] text-white' : 'border border-[#d8e4db] bg-[#f7faf7] text-[#71847a]'}`}>
-                          {step.done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                        </span>
-                        <span className="text-[9px] font-medium text-[#71847a] sm:text-[10px]">{step.label}</span>
-                      </div>
-                      {index < 3 && <span className={`mx-1 mb-5 h-px flex-1 ${index === 0 ? 'bg-[#438a68]' : 'bg-[#dce7de]'}`} />}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-3 rounded-2xl bg-[#eaf3e6] p-3.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#438a68]">
-                  <ShieldCheck className="h-4 w-4" />
+                <rect x="331" y="351" width="58" height="69" fill="#897552" />
+                <path d="M340 419 V372 A20 20 0 0 1 380 372 V419Z" fill="#536b59" />
+                <path d="M0 445 Q174 403 360 445 T720 426 V520 H0Z" fill="#526f55" />
+                <path d="M318 520 L347 435 H373 L402 520Z" fill="#d7c79f" />
+                <g fill="#47654d">
+                  <circle cx="120" cy="338" r="57" /><circle cx="78" cy="367" r="44" /><circle cx="150" cy="379" r="39" />
+                  <circle cx="588" cy="329" r="63" /><circle cx="644" cy="365" r="48" /><circle cx="560" cy="379" r="42" />
+                </g>
+                <g fill="#806d4c">
+                  <rect x="111" y="371" width="17" height="66" /><rect x="582" y="365" width="18" height="70" />
+                </g>
+              </svg>
+              <div className="absolute bottom-4 left-4 flex items-center gap-3 rounded-2xl border border-white/70 bg-[#fffefa]/95 px-4 py-3 shadow-lg backdrop-blur sm:bottom-6 sm:left-6">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e7ede2] text-[#345b43]">
+                  <Landmark className="h-5 w-5" />
                 </span>
-                <div>
-                  <p className="text-xs font-bold">The right tools for every team</p>
-                  <p className="mt-0.5 text-[10px] text-[#60766b]">A clearer view, from campus to classroom</p>
-                </div>
+                <span>
+                  <span className="block text-xs font-bold text-[#263c30]">A place to belong</span>
+                  <span className="mt-0.5 block text-[10px] text-[#72776b]">Learn · Connect · Become</span>
+                </span>
               </div>
-            </div>
-            <div className="absolute -left-5 top-1/2 hidden -translate-y-1/2 items-center gap-2 rounded-2xl border border-[#e5ece6] bg-white px-4 py-3 text-xs font-semibold text-[#285448] shadow-xl shadow-black/10 sm:flex">
-              <span className="rounded-lg bg-[#e9f3e4] p-1.5 text-[#438a68]"><CalendarDays className="h-4 w-4" /></span>
-              One connected journey
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-y border-[#dce8df] bg-[#f9fbf7]">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-5 px-5 py-6 sm:px-8 md:grid-cols-4 md:gap-8">
+      <section className="border-y border-[#e8e3d8] bg-[#fffefa]">
+        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-6 sm:grid-cols-2 sm:px-8 lg:grid-cols-4 lg:gap-8">
           {[
-            { icon: Building2, label: 'Institution operations' },
-            { icon: GraduationCap, label: 'Academic journeys' },
-            { icon: WalletCards, label: 'Finance workflows' },
-            { icon: Users, label: 'People & teams' },
+            { icon: BookOpen, label: 'Learning with purpose' },
+            { icon: Microscope, label: 'Curiosity and discovery' },
+            { icon: Music2, label: 'Ideas and creativity' },
+            { icon: Users, label: 'A welcoming community' },
           ].map(({ icon: Icon, label }) => (
-            <div key={label} className="flex items-center gap-3 text-sm font-medium text-[#526b60]">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e7efe8] text-[#285448]">
+            <div key={label} className="flex items-center gap-3 text-sm font-medium text-[#536358]">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8e4d7] text-[#755f3c]">
                 <Icon className="h-4 w-4" />
               </span>
               {label}
@@ -261,52 +223,49 @@ export function Login() {
         </div>
       </section>
 
-      <section id="platform" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28">
+      <section id="academics" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28">
         <div className="mx-auto max-w-7xl">
-          <div className="max-w-2xl">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#438a68]">The platform</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[#173b34] sm:text-5xl">
-              Everything connected. Everyone in sync.
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8b7045]">The university experience</p>
+            <h2 className="mt-4 font-serif text-3xl font-medium leading-tight tracking-[-0.035em] text-[#1c342d] sm:text-5xl">
+              Come curious. Leave ready for what’s next.
             </h2>
-            <p className="mt-5 text-base leading-7 text-[#60766b]">
-              Bring essential institutional work into one flexible system, with focused tools for every team.
+            <p className="mt-5 text-base leading-7 text-[#687268]">
+              Discover the people, ideas, and opportunities that make a university journey your own.
             </p>
           </div>
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-12 grid gap-4 md:grid-cols-3">
             {features.map(({ icon: Icon, title, description, accent }) => (
-              <article key={title} className="group rounded-3xl border border-[#dce8df] bg-[#fbfdf9] p-6 transition hover:-translate-y-1 hover:border-[#a7c4ae] hover:shadow-xl hover:shadow-[#173b34]/5 sm:p-7">
+              <article key={title} className="rounded-3xl border border-[#e8e3d8] bg-[#fffefa] p-6 transition hover:-translate-y-1 hover:shadow-xl hover:shadow-[#31483a]/5 sm:p-8">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${accent}`}>
                   <Icon className="h-5 w-5" />
                 </div>
-                <h3 className="mt-6 text-lg font-semibold text-[#173b34]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#60766b]">{description}</p>
-                <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-[#8aa094] transition group-hover:text-[#438a68]">
-                  Built into your workspace <ArrowRight className="h-3.5 w-3.5" />
-                </div>
+                <h3 className="mt-6 font-serif text-xl font-semibold text-[#263c30]">{title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[#687268]">{description}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="workflows" className="scroll-mt-16 bg-[#e5efdf] px-5 py-20 text-[#173b34] sm:px-8 sm:py-24">
+      <section id="admissions" className="scroll-mt-16 bg-[#e9ede3] px-5 py-20 text-[#1c342d] sm:px-8 sm:py-24">
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#438a68]">Less chasing. More clarity.</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">
-              Work moves forward when everyone sees the next step.
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8b7045]">Admissions</p>
+            <h2 className="mt-4 font-serif text-3xl font-medium leading-tight tracking-[-0.035em] sm:text-5xl">
+              Your next chapter starts with a first step.
             </h2>
-            <p className="mt-5 max-w-lg text-sm leading-7 text-[#60766b] sm:text-base">
-              From a new student application to a center review, UMS helps teams follow shared processes and stay aligned.
+            <p className="mt-5 max-w-lg text-sm leading-7 text-[#5f6b60] sm:text-base">
+              Whether you are just beginning to explore or ready to apply, take your time and find the path that feels right for you.
             </p>
           </div>
-          <div className="divide-y divide-[#cdddcf]">
+          <div className="divide-y divide-[#d0d8cb]">
             {workflowSteps.map(step => (
               <div key={step.number} className="grid gap-3 py-5 sm:grid-cols-[4rem_1fr] sm:gap-5">
-                <span className="font-mono text-sm font-bold text-[#438a68]">{step.number}</span>
+                <span className="font-mono text-sm font-bold text-[#8b7045]">{step.number}</span>
                 <div>
                   <h3 className="font-semibold">{step.title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-[#60766b]">{step.detail}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#5f6b60]">{step.detail}</p>
                 </div>
               </div>
             ))}
@@ -314,33 +273,33 @@ export function Login() {
         </div>
       </section>
 
-      <section id="portals" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-24">
+      <section id="campus" className="scroll-mt-16 px-5 py-20 sm:px-8 sm:py-24">
         <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.75fr_1.25fr]">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#438a68]">Made for every role</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-[#173b34] sm:text-4xl">
-              The right view for the right people.
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#8b7045]">Life at university</p>
+            <h2 className="mt-4 font-serif text-3xl font-medium leading-tight tracking-[-0.035em] text-[#1c342d] sm:text-4xl">
+              There is room to find your own way.
             </h2>
-            <p className="mt-4 text-sm leading-7 text-[#60766b]">
-              Department dashboards and role-based navigation help people focus on the work that belongs to them.
+            <p className="mt-4 text-sm leading-7 text-[#687268]">
+              Learning happens in many ways. Make the most of the spaces, people, and experiences that surround you.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {[
-              { icon: ClipboardCheck, title: 'Operations', detail: 'Centers, student records, admissions, and reviews' },
-              { icon: WalletCards, title: 'Finance', detail: 'Fees, invoices, payments, expenses, and approvals' },
-              { icon: Users, title: 'HR & teams', detail: 'Employees, attendance, leave, hiring, and payroll' },
-              { icon: GraduationCap, title: 'Students', detail: 'A student portal for academic and campus information' },
-              { icon: Building2, title: 'Sales & centers', detail: 'Leads, referrals, onboarding, and center progress' },
-              { icon: Megaphone, title: 'Leadership', detail: 'Dashboards, reports, announcements, and visibility' },
+              { icon: LibraryBig, title: 'Discover ideas', detail: 'Follow your curiosity and make learning your own.' },
+              { icon: Microscope, title: 'Explore possibilities', detail: 'Look beyond the familiar and ask new questions.' },
+              { icon: Users, title: 'Find your community', detail: 'Build connections that make this place yours.' },
+              { icon: GraduationCap, title: 'Grow with purpose', detail: 'Develop knowledge and confidence for what comes next.' },
+              { icon: Music2, title: 'Make and create', detail: 'Bring your perspective, creativity, and energy.' },
+              { icon: MapPin, title: 'Make campus your own', detail: 'Find the spaces and experiences that inspire you.' },
             ].map(({ icon: Icon, title, detail }) => (
-              <div key={title} className="flex gap-4 rounded-2xl border border-[#dce8df] bg-[#fbfdf9] p-5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e7efe8] text-[#285448]">
+              <div key={title} className="flex gap-4 rounded-2xl border border-[#e8e3d8] bg-[#fffefa] p-5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8e4d7] text-[#755f3c]">
                   <Icon className="h-5 w-5" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-semibold text-[#173b34]">{title}</h3>
-                  <p className="mt-1 text-xs leading-5 text-[#71847a]">{detail}</p>
+                  <h3 className="text-sm font-semibold text-[#263c30]">{title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-[#72776b]">{detail}</p>
                 </div>
               </div>
             ))}
@@ -349,46 +308,42 @@ export function Login() {
       </section>
 
       <section className="px-5 pb-20 sm:px-8 sm:pb-24">
-        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 rounded-[2rem] bg-[#173b34] px-7 py-9 text-white sm:px-12 sm:py-12 md:flex-row md:items-center">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 rounded-[2rem] bg-[#244b3c] px-7 py-9 text-white sm:px-12 sm:py-12 md:flex-row md:items-center">
           <div className="max-w-2xl">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#b6e47a]">A clearer way to work</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-              Bring your institution’s work together.
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e2c58d]">Your next chapter</p>
+            <h2 className="mt-3 font-serif text-3xl font-medium leading-tight tracking-[-0.035em] sm:text-4xl">
+              Ready to make this your place?
             </h2>
-            <p className="mt-3 text-sm leading-6 text-[#c5d8d0]">
-              Sign in to open your UMS workspace and continue where your team needs you.
+            <p className="mt-3 text-sm leading-6 text-[#e0e8df]">
+              Take the first step toward a university experience filled with learning, possibility, and new beginnings.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => setLoginOpen(true)}
-            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#b6e47a] px-5 py-3 text-sm font-bold text-[#173b34] transition hover:bg-[#c6ed94]"
+            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e2c58d] px-5 py-3 text-sm font-bold text-[#243b30] transition hover:bg-[#edd5a5]"
           >
-            Go to sign in <ArrowUpRight className="h-4 w-4" />
+            Enroll now <ArrowRight className="h-4 w-4" />
           </button>
         </div>
       </section>
 
-      <footer className="border-t border-[#dce8df] bg-[#f9fbf7] px-5 py-6 sm:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-xs text-[#71847a] sm:flex-row">
-          <div className="flex items-center gap-2 font-semibold text-[#285448]">
+      <footer className="border-t border-[#e8e3d8] bg-[#fffefa] px-5 py-6 sm:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-xs text-[#72776b] sm:flex-row">
+          <div className="flex items-center gap-2 font-semibold text-[#344b3f]">
             <img src="/logo.png" alt="" className="h-6 w-6 rounded-md object-contain" />
-            UMS · University Management System
+            UMS University
           </div>
-          <div className="flex items-center gap-5">
-            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />Built around connected workflows</span>
-            <span className="hidden items-center gap-1.5 sm:inline-flex"><FileText className="h-3.5 w-3.5" />One institutional workspace</span>
-          </div>
+          <span>A place for learning, discovery, and possibility.</span>
         </div>
       </footer>
 
       <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl border-[#dce8df] bg-[#fbfdf9] p-7 sm:p-9">
           <DialogHeader className="mb-2">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#173b34] text-[#b6e47a]">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#244b3c] text-[#e2c58d]">
               <LayoutDashboard className="h-5 w-5" />
             </div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#438a68]">Your workspace awaits</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7045]">University community</p>
             <DialogTitle className="text-2xl font-semibold tracking-tight text-[#173b34]">Sign in to UMS</DialogTitle>
             <DialogDescription className="text-sm leading-6 text-[#71847a]">
               Use your email address or User ID to access your account.
@@ -439,7 +394,7 @@ export function Login() {
             </Button>
           </form>
           <p className="mt-1 text-center text-xs leading-5 text-[#8a9a91]">
-            Your account determines the workspace and tools available to you.
+            Sign in to access your university account and services.
           </p>
         </DialogContent>
       </Dialog>

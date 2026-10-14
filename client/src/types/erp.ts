@@ -9,6 +9,7 @@ export type UserRole =
   | 'finance_admin' 
   | 'hr_admin' 
   | 'sales_admin' 
+  | 'university_admin'
   | 'bde' 
   | 'center_admin' 
   | 'academic_admin'
@@ -76,6 +77,7 @@ export interface User {
   id: string;
   organizationId: string;
   universityId?: string;
+  studyCenterId?: string;
   departmentId?: string;
   subDepartmentId?: string;
   email: string;

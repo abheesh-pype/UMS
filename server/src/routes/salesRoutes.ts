@@ -25,6 +25,7 @@ import {
   reassignCenter,
 } from '../controllers/salesController.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { getSalesEnrollmentPipeline } from '../controllers/salesEnrollmentController.js';
 
 const router = express.Router();
 
@@ -51,6 +52,7 @@ router.get('/team-performance', getTeamPerformance);
 
 // Team members list for reassignment selection
 router.get('/team-members', getTeamMembers);
+router.get('/student-applications', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee'), getSalesEnrollmentPipeline);
 
 // My study centers (via invite links — self + subordinates)
 router.get('/my-centers', getMyCenters);

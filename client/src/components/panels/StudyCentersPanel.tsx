@@ -927,13 +927,13 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                 </Button>
               </>
             )}
-            {canCreateCenter && (
-              <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Study Center
-              </Button>
-            )}
           </div>
+        )}
+        {canCreateCenter && (
+          <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Study Center
+          </Button>
         )}
       </div>
 

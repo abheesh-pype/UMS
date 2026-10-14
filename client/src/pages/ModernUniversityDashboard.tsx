@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { UniversityEnrollmentReviewPanel } from '@/components/panels/UniversityEnrollmentReviewPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 
 
 interface Enrollment {
@@ -100,6 +101,18 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
   }
 
   // Render pending review tab
+  if (activeTab === 'pending_center_verification') {
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div>
+          <h1 className="text-2xl font-bold">{uniName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">University Admin Panel</p>
+        </div>
+        <PendingCenterVerificationPanel mode="university" />
+      </div>
+    );
+  }
+
   if (activeTab === 'pending-review') {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">

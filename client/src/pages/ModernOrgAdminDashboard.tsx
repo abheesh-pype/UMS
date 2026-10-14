@@ -25,6 +25,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 
 function StudyCentreCustomisationPage() {
   const { user } = useAuth();
@@ -234,6 +235,18 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
 
   if (activeTab === 'study-centre-customisation') {
     return <StudyCentreCustomisationPage />;
+  }
+
+  if (activeTab === 'pending_center_verification') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Pending Verification</h1>
+          <p className="mt-1 text-muted-foreground">Review pending students and study centres.</p>
+        </div>
+        <PendingCenterVerificationPanel mode="org" />
+      </div>
+    );
   }
 
   return (

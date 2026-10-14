@@ -651,8 +651,33 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
     || req.user.role === 'sales_sub_admin'
     || (req.user.role === 'employee' && req.query.mode === 'sales');
 
+  const operationsVerificationQueue = {
+    OR: [
+      { status: { in: ['pending', 'pending_verification', 'ops_resubmitted'] } },
+      { onboardingStatus: { code: { in: ['pending_verification', 'ops_resubmitted'] } } },
+      { onboardingStatus: { stage: 'operations', state: { in: ['pending', 'resubmitted'] } } },
+    ],
+  };
+
   const where: any = { organizationId: req.user.organizationId };
-  if (req.query.mode === 'sales' || isSalesStaff || isSalesAdmin) {
+  if (req.user.role === 'university_admin') {
+    where.universityIds = { has: req.user.universityId || '' };
+    where.OR = [
+      { status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'pending_payment', 'finance_resubmitted'] } },
+      { onboardingStatus: { code: { in: ['pending_verification', 'ops_resubmitted', 'pending_payment', 'finance_resubmitted'] } } },
+      { onboardingStatus: { stage: { in: ['operations', 'finance'] }, state: { in: ['pending', 'resubmitted'] } } },
+    ];
+  } else if (req.user.role === 'org_admin') {
+    if (req.query.status === 'all_pending') {
+      where.OR = [
+        { status: { in: ['pending', 'pending_verification', 'ops_resubmitted', 'pending_payment', 'finance_resubmitted'] } },
+        { onboardingStatus: { code: { in: ['pending_verification', 'ops_resubmitted', 'pending_payment', 'finance_resubmitted'] } } },
+        { onboardingStatus: { stage: { in: ['operations', 'finance'] }, state: { in: ['pending', 'resubmitted'] } } },
+      ];
+    } else if (req.query.status && req.query.status !== 'all') {
+      where.status = req.query.status as string;
+    }
+  } else if (req.query.mode === 'sales' || isSalesStaff || isSalesAdmin) {
     if (isSalesAdmin) {
       // Sales admin: view admin-created study centers PLUS subordinate study centers
       async function getSubordinateIds(managerId: string): Promise<string[]> {
@@ -693,7 +718,13 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
       ];
       if (req.query.status && req.query.status !== 'all') {
         const queryStatus = req.query.status as string;
-        if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
+        if (queryStatus === 'verification_queue') {
+          where.AND = [
+            ...(where.AND || []),
+            { referredBy: { in: [req.user.id, ...allSubordinateIds] } },
+            operationsVerificationQueue,
+          ];
+        } else if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
           where.AND = [
             ...(where.AND || []),
             {
@@ -737,7 +768,9 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
       where.referredBy = req.user.id;
       if (req.query.status && req.query.status !== 'all') {
         const queryStatus = req.query.status as string;
-        if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
+        if (queryStatus === 'verification_queue') {
+          where.AND = [...(where.AND || []), operationsVerificationQueue];
+        } else if (queryStatus === 'ops_rejected' || queryStatus === 'rejected') {
           where.OR = [
             { status: 'ops_rejected' },
             { status: 'rejected', paymentRemarks: null },

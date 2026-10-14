@@ -264,12 +264,26 @@ export const submitStudentApplication = asyncHandler(async (req: Request, res: R
 
 export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, res: Response) => {
   const organizationId = req.user.organizationId;
-  const salesUserId = req.user.id;
+  const salesUserIds = new Set([req.user.id]);
+
+  if (req.user.role === 'sales_admin') {
+    let managers = [req.user.id];
+    while (managers.length > 0) {
+      const reports = await prisma.user.findMany({
+        where: { organizationId, reportingTo: { in: managers } },
+        select: { id: true },
+      });
+      const newReports = reports.map(user => user.id).filter(id => !salesUserIds.has(id));
+      newReports.forEach(id => salesUserIds.add(id));
+      managers = newReports;
+    }
+  }
 
   const enrollments = await prisma.enrollment.findMany({
     where: {
       organizationId: organizationId,
-      salesUserId,
+      salesUserId: { in: [...salesUserIds] },
+      ...(req.query.status === 'ops_rejected' ? { status: 'ops_rejected' } : {}),
     },
     include: {
       program: { select: { id: true, name: true, code: true, courseType: true } },

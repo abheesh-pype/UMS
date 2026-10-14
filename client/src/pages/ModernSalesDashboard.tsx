@@ -21,6 +21,7 @@ import { TeamPerformancePanel } from '@/components/panels/TeamPerformancePanel';
 import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 import { StudyCentersPanel } from '@/components/panels/StudyCentersPanel';
+import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 import { CenterOnboardingOverviewPanel } from '@/components/panels/CenterOnboardingOverviewPanel';
 import { CentersAdmissionsPanel } from '@/components/panels/CentersAdmissionsPanel';
 import { PayrollPanel } from '@/components/panels/PayrollPanel';
@@ -102,6 +103,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
       case 'my_team':
       case 'team': return <MyTeamPanel departmentType="sales" title="Sales Team" />;
       case 'study_centre': return <StudyCentersPanel salesMode />;
+      case 'pending_center_verification': return <PendingCenterVerificationPanel mode="sales" />;
       case 'center_admissions': return <CentersAdmissionsPanel />;
       case 'center_onboarding': return <CenterOnboardingOverviewPanel mode="sales" />;
       case 'tasks': return <TasksPanel />;
@@ -138,6 +140,7 @@ export function getSalesNavItems() {
     { id: 'invite_links', label: 'Invite Links' },
     { id: 'my_team', label: 'My Team' },
     { id: 'study_centre', label: 'Study Centre' },
+    { id: 'pending_center_verification', label: 'Pending Verification' },
     { id: 'center_admissions', label: 'Centers Admissions' },
     { id: 'center_onboarding', label: 'Center Onboarding Status' },
     { id: 'tasks', label: 'Tasks' },
@@ -562,6 +565,7 @@ function SalesEmployeePortal({ initialTab, user }: { initialTab?: string; user: 
           case 'my_team':
           case 'team': return <MyTeamPanel departmentType="sales" title="Sales Team" />;
           case 'study_centre': return <StudyCentersPanel salesMode />;
+          case 'pending_center_verification': return <PendingCenterVerificationPanel mode="sales" />;
           case 'center_onboarding': return <CenterOnboardingOverviewPanel mode="sales" />;
           case 'my_attendance': return <AttendancePanel isPersonalView />;
           case 'my_leaves': return <LeavesPanel isPersonalView />;

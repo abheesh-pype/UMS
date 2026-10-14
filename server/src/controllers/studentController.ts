@@ -182,7 +182,14 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
   const finalName = name || `${firstName || ''} ${lastName || ''}`.trim() || 'Unknown Student';
   const finalEnrollmentNo = enrollmentNo || `ENR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  let finalCenterId = (centerId && centerId !== 'null' && centerId !== 'none') ? centerId : null;
+  let finalCenterId = req.user.role === 'center_admin'
+    ? req.user.studyCenterId
+    : ((centerId && centerId !== 'null' && centerId !== 'none') ? centerId : null);
+
+  if (req.user.role === 'center_admin' && !finalCenterId) {
+    res.status(400).json({ success: false, message: 'No study center assigned to your account' });
+    return;
+  }
 
   if (!email) {
     res.status(400).json({ success: false, message: 'Email is required' });

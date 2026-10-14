@@ -8,21 +8,29 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 // Returns all enrollments with status university_review for the requesting university_admin's university
 export const getUniversityReviewQueue = asyncHandler(async (req: AuthRequest, res: Response) => {
   const universityId = req.user.universityId;
+  const isOrgAdmin = req.user.role === 'org_admin';
 
-  if (!universityId) {
+  if (!isOrgAdmin && !universityId) {
     res.status(403).json({ success: false, message: 'No university linked to your account' });
     return;
   }
 
   const enrollments = await prisma.enrollment.findMany({
     where: {
-      status: 'university_review' as any,
-      program: { universityId },
+      organizationId: req.user.organizationId,
+      status: isOrgAdmin
+        ? { in: ['pending_doc_review', 'document_review', 'university_review', 'finance_review', 'pending_finance_review'] } as any
+        : 'university_review' as any,
+      ...(isOrgAdmin ? {} : { program: { universityId } }),
     },
     include: {
       program: { select: { id: true, name: true, code: true, courseType: true } },
       studyCenter: { select: { id: true, name: true, code: true } },
       session: { select: { id: true, name: true } },
+      ...(isOrgAdmin ? {
+        departmentReviewer: { select: { id: true, name: true } },
+        assignedOpsUser: { select: { id: true, name: true } },
+      } : {}),
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -33,9 +41,10 @@ export const getUniversityReviewQueue = asyncHandler(async (req: AuthRequest, re
 // PUT /enrollment/university-review/:id/approve
 export const approveUniversityEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const universityId = req.user.universityId;
+  const isOrgAdmin = req.user.role === 'org_admin';
   const now = new Date();
 
-  if (!universityId) {
+  if (!isOrgAdmin && !universityId) {
     res.status(403).json({ success: false, message: 'No university linked to your account' });
     return;
   }
@@ -53,7 +62,8 @@ export const approveUniversityEnrollment = asyncHandler(async (req: AuthRequest,
     return;
   }
 
-  if ((enrollment as any).program?.universityId !== universityId) {
+  if (enrollment.organizationId !== req.user.organizationId
+    || (!isOrgAdmin && (enrollment as any).program?.universityId !== universityId)) {
     res.status(403).json({ success: false, message: 'Enrollment does not belong to your university' });
     return;
   }
@@ -119,6 +129,7 @@ export const approveUniversityEnrollment = asyncHandler(async (req: AuthRequest,
 export const rejectUniversityEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { remarks } = req.body;
   const universityId = req.user.universityId;
+  const isOrgAdmin = req.user.role === 'org_admin';
   const now = new Date();
 
   if (!remarks || remarks.trim().length === 0) {
@@ -126,7 +137,7 @@ export const rejectUniversityEnrollment = asyncHandler(async (req: AuthRequest, 
     return;
   }
 
-  if (!universityId) {
+  if (!isOrgAdmin && !universityId) {
     res.status(403).json({ success: false, message: 'No university linked to your account' });
     return;
   }
@@ -144,7 +155,8 @@ export const rejectUniversityEnrollment = asyncHandler(async (req: AuthRequest, 
     return;
   }
 
-  if ((enrollment as any).program?.universityId !== universityId) {
+  if (enrollment.organizationId !== req.user.organizationId
+    || (!isOrgAdmin && (enrollment as any).program?.universityId !== universityId)) {
     res.status(403).json({ success: false, message: 'Enrollment does not belong to your university' });
     return;
   }

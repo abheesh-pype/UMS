@@ -335,6 +335,7 @@ export function EnrollStudentPanel() {
     if (status === 'hidden') return null;
 
     const isRequired = isFieldMandatory(key, false);
+    const isNumericId = key === 'abcId' || key === 'debId';
 
     if (type === 'file') {
       return (
@@ -391,15 +392,18 @@ export function EnrollStudentPanel() {
           {label} {isRequired && <span className="text-destructive">*</span>}
         </Label>
         <Input
-          type={type}
-          inputMode={type === 'number' || type === 'tel' ? 'numeric' : undefined}
+          type={isNumericId ? 'text' : type}
+          inputMode={isNumericId || type === 'number' || type === 'tel' ? 'numeric' : undefined}
+          maxLength={isNumericId ? 12 : undefined}
+          pattern={isNumericId ? '\\d{12}' : undefined}
           value={(form as any)[key]}
           onChange={e => {
             let val = e.target.value;
             if (key.toLowerCase().includes('phone')) val = val.replace(/\D/g, '');
+            if (isNumericId) val = val.replace(/\D/g, '').slice(0, 12);
             setForm(f => ({ ...f, [key]: val }));
           }}
-          placeholder={`Enter ${label.toLowerCase()}`}
+          placeholder={isNumericId ? `Enter 12-digit ${label}` : `Enter ${label.toLowerCase()}`}
           required={isRequired}
         />
       </div>
@@ -408,6 +412,13 @@ export function EnrollStudentPanel() {
 
   const triggerConfirm = () => {
     if (!selectedProgram) return;
+    for (const [field, label] of [['abcId', 'ABCID'], ['debId', 'DEBID']] as const) {
+      const value = form[field];
+      if (value && !/^\d{12}$/.test(value)) {
+        toast.error(`${label} must be exactly 12 digits`);
+        return;
+      }
+    }
     if (!selectedSessionId) {
       toast.error('Please select an intake admission session');
       return;

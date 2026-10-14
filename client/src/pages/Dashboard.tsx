@@ -15,6 +15,7 @@ import { ModernBranchManagerDashboard } from './ModernBranchManagerDashboard';
 import { CenterOnboardingGate } from '@/components/CenterOnboardingGate';
 import { ModernStudentDashboard } from './ModernStudentDashboard';
 import { AcademicAdminPanel } from './AcademicAdminPanel';
+import { ModernUniversityDashboard } from './ModernUniversityDashboard';
 
 interface DashboardProps {
   onNavigateToTable?: (table: string) => void;
@@ -148,6 +149,10 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
 
   if (user?.role === 'org_admin') {
     return <ModernOrgAdminDashboard initialTab={initialTab} onNavigate={onNavigateToTable} />;
+  }
+
+  if (user?.role === 'university_admin') {
+    return <ModernUniversityDashboard initialTab={initialTab} onNavigate={onNavigateToTable} />;
   }
 
   if (user?.role === 'finance_admin') {

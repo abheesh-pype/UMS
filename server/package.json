@@ -5,8 +5,11 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
+    "predev": "prisma generate",
     "dev": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 tsx watch src/server.ts",
+    "prebuild": "prisma generate",
     "build": "tsc",
+    "prestart": "prisma generate",
     "start": "node dist/server.js",
     "postinstall": "prisma generate",
     "seed": "tsx src/scripts/seed.ts",

@@ -24,6 +24,11 @@ import {
   assignDeptEnrollment,
   resubmitToFinance,
 } from '../controllers/enrollmentReviewController.js';
+import {
+  getUniversityReviewQueue,
+  approveUniversityEnrollment,
+  rejectUniversityEnrollment,
+} from '../controllers/universityEnrollmentController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 
@@ -69,5 +74,10 @@ router.put('/review/:id/assign', authorize('ops_admin', 'ops_sub_admin', 'supera
 router.put('/review/:id/approve', authorize('ops_admin', 'ops_sub_admin', 'employee'), approveDeptEnrollment);
 router.put('/review/:id/reject', authorize('ops_admin', 'ops_sub_admin', 'employee'), rejectDeptEnrollment);
 router.put('/review/:id/resubmit', authorize('ops_admin', 'ops_sub_admin', 'employee', 'superadmin', 'org_admin'), resubmitToFinance);
+
+// University admin enrollment verification
+router.get('/university-review', authorize('university_admin', 'org_admin'), getUniversityReviewQueue);
+router.put('/university-review/:id/approve', authorize('university_admin', 'org_admin'), approveUniversityEnrollment);
+router.put('/university-review/:id/reject', authorize('university_admin', 'org_admin'), rejectUniversityEnrollment);
 
 export default router;

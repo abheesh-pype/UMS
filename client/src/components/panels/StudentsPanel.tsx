@@ -104,11 +104,24 @@ export function StudentsPanel() {
 
   const fetchCenters = useCallback(async () => {
     try {
-      const response = await api.get('/operations/centers');
-      setCenters(response.data.data || []);
-    } catch (error) {
+      if (user?.role === 'center_admin') {
+        const response = await api.get('/enrollment/my-center-status');
+        const center = response.data.data;
+        setCenters(center ? [center] : []);
+        setFormData(previous => ({
+          ...previous,
+          centerId: center?.centerId || center?.id || user.studyCenterId || ''
+        }));
+      } else {
+        const response = await api.get('/operations/centers');
+        setCenters(response.data.data || []);
+      }
+    } catch (error: any) {
+      if (user?.role === 'center_admin') {
+        toast.error(error.response?.data?.message || 'Failed to load your study centre');
+      }
     }
-  }, []);
+  }, [user?.role, user?.studyCenterId]);
 
   const fetchUniversities = useCallback(async () => {
     try {
@@ -213,7 +226,9 @@ export function StudentsPanel() {
       address: student.address || '',
       enrollmentNo: student.enrollmentNo || '',
       programId: programId?.toString() || '',
-      centerId: centerId?.toString() || '',
+      centerId: user?.role === 'center_admin'
+        ? user.studyCenterId || centers[0]?.centerId || centers[0]?.id || ''
+        : centerId?.toString() || '',
       status: student.status || 'active'
     });
     setDialogOpen(true);
@@ -237,7 +252,9 @@ export function StudentsPanel() {
       address: '',
       enrollmentNo: '',
       programId: '',
-      centerId: '',
+      centerId: user?.role === 'center_admin'
+        ? user.studyCenterId || centers[0]?.centerId || centers[0]?.id || ''
+        : '',
       status: 'pending'
     });
   };
@@ -297,17 +314,25 @@ export function StudentsPanel() {
                 </div>
                 <div>
                   <Label>Study Center</Label>
-                  <Select value={formData.centerId} onValueChange={(value) => setFormData({...formData, centerId: value})}>
-                    <SelectTrigger><SelectValue placeholder="Select center (Optional for Direct)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="direct">Direct University Admission (No Center)</SelectItem>
-                      {centers.filter(c => c && (c.id || c.id)).map((center) => (
-                        <SelectItem key={center.id || center.id} value={(center.id || center.id).toString()}>
-                          {center.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {user?.role === 'center_admin' ? (
+                    <Input
+                      value={centers[0]?.name || (user.studyCenterId ? 'Loading study centre...' : 'No study centre assigned')}
+                      disabled
+                      readOnly
+                    />
+                  ) : (
+                    <Select value={formData.centerId} onValueChange={(value) => setFormData({...formData, centerId: value})}>
+                      <SelectTrigger><SelectValue placeholder="Select center (Optional for Direct)" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="direct">Direct University Admission (No Center)</SelectItem>
+                        {centers.filter(c => c && (c.id || c.id)).map((center) => (
+                          <SelectItem key={center.id || center.id} value={(center.id || center.id).toString()}>
+                            {center.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
               <div>

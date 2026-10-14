@@ -118,6 +118,7 @@ function App() {
       case 'finance_admin':
       case 'hr_admin':
       case 'sales_admin': return 'overview';
+      case 'university_admin': return 'overview';
       case 'academic_admin': return 'dashboard';
       case 'student': return 'dashboard';
       default: return 'tasks';
@@ -199,6 +200,13 @@ function App() {
   // Define available tables based on user role
   const getAvailableTables = () => {
     if (!user) return [];
+
+    if (user.role === 'university_admin') {
+      return [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'pending_center_verification', label: 'Pending Verification' },
+      ];
+    }
     
     const baseTables = [
       { id: 'dashboard', label: 'Dashboard' },
@@ -247,6 +255,7 @@ function App() {
         { id: 'universities', label: 'Universities' },
         { id: 'programs', label: 'Programs' },
         { id: 'study_centers', label: 'Study Centers' },
+        { id: 'pending_center_verification', label: 'Pending Verification' },
         { id: 'center_admissions', label: 'Centers Admissions' },
         { id: 'invoices', label: 'Invoices' },
         { id: 'payments', label: 'Payments' },
@@ -403,14 +412,14 @@ function App() {
       return;
     }
 
-    const roleDashboardRoles = ['ops_admin', 'ops_sub_admin', 'finance_admin', 'hr_admin', 'sales_admin', 'academic_admin'];
+    const roleDashboardRoles = ['org_admin', 'ops_admin', 'ops_sub_admin', 'finance_admin', 'hr_admin', 'sales_admin', 'university_admin', 'academic_admin'];
     const isEmployeeSubDeptManager = user?.role === 'employee' && Boolean((user as any)?.subDepartmentId) && Boolean(deptType);
     const isEmployeeRole = user?.role === 'employee';
     const isBranchManager = Boolean((user as any)?.branchId);
     if (user && (roleDashboardRoles.includes(user.role) || isEmployeeSubDeptManager || isEmployeeRole || isBranchManager)) {
       setViewMode('dashboard');
       setActiveTable(table);
-      setActiveTab(table);
+      setActiveTab(user.role === 'org_admin' ? (TABLE_TO_TAB[table] || table) : table);
       return;
     }
 

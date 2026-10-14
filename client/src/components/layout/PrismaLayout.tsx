@@ -278,21 +278,21 @@ export function PrismaLayout({
                     'w-full px-4 py-2.5 rounded-lg text-left text-sm transition-all duration-200 flex items-center gap-3 group',
                     table.disabled && 'cursor-not-allowed opacity-50',
                     isActive
-                      ? 'bg-sidebar-primary/15 text-sidebar-primary font-semibold shadow-sm ring-1 ring-sidebar-primary/10'
+                      ? 'bg-[#35252c] text-[#ff5945] font-semibold shadow-none ring-1 ring-white/90 rounded-xl'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                   )}
                 >
                   <div className={cn(
                     "p-1.5 rounded-md transition-colors shrink-0",
                     isActive
-                      ? "bg-sidebar-primary text-white"
+                      ? "bg-[#f15340] text-white"
                       : "bg-sidebar-accent text-sidebar-foreground/60 group-hover:text-sidebar-foreground"
                   )}>
                     {table.icon}
                   </div>
                   <span className="truncate">{table.label}</span>
                   {hasChildren ? <ChevronRight className={cn('ml-auto w-4 h-4 transition-transform', isExpanded && 'rotate-90')} /> : isActive && (
-                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary shrink-0" />
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#f15340] shrink-0" />
                   )}
                 </button>
                 {hasChildren && isExpanded && (
@@ -304,7 +304,7 @@ export function PrismaLayout({
                         className={cn(
                           'w-full px-3 py-2 rounded-lg text-left text-xs transition-colors',
                           activeTable === child.id
-                            ? 'bg-sidebar-primary/20 text-sidebar-primary font-semibold'
+                            ? 'bg-[#35252c] text-[#ff5945] font-semibold ring-1 ring-white/90 rounded-xl'
                             : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                         )}
                       >
@@ -374,7 +374,7 @@ export function PrismaLayout({
                       'shrink-0 rounded-lg px-2.5 py-2 text-sm transition-colors sm:px-3',
                       table.disabled && 'cursor-not-allowed opacity-50',
                       activeTable === table.id
-                        ? 'bg-primary/10 font-semibold text-primary'
+                        ? 'rounded-xl bg-[#35252c] font-semibold text-[#ff5945] ring-1 ring-white/90'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     )}
                   >

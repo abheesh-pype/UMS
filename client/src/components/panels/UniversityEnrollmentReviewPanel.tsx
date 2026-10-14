@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, GraduationCap } from 'lucide-react';
+import { Bell, CheckCircle, XCircle, RefreshCw, GraduationCap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,12 +18,15 @@ interface Enrollment {
   studentPhone: string;
   studentAddress: string;
   createdAt: string;
+  status: string;
   program: { id: string; name: string; code: string; courseType: string };
   studyCenter: { id: string; name: string; code: string };
   session: { id: string; name: string };
+  departmentReviewer?: { id: string; name: string } | null;
+  assignedOpsUser?: { id: string; name: string } | null;
 }
 
-export function UniversityEnrollmentReviewPanel() {
+export function UniversityEnrollmentReviewPanel({ organizationWide = false }: { organizationWide?: boolean }) {
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; id: string; studentName: string }>({ open: false, id: '', studentName: '' });
@@ -70,13 +73,22 @@ export function UniversityEnrollmentReviewPanel() {
     }
   };
 
+  const pendingDepartment = (status: string) => {
+    if (['pending_doc_review', 'document_review'].includes(status)) return 'Operations Department';
+    if (status === 'university_review') return 'University Administration';
+    if (['finance_review', 'pending_finance_review'].includes(status)) return 'Finance Department';
+    return 'Department';
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold">Pending Enrollment Review</h2>
+          <h2 className="text-xl font-bold">{organizationWide ? 'Pending Student Verification' : 'Pending Enrollment Review'}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Review student enrollments forwarded by Operations for final approval.
+            {organizationWide
+              ? 'See which department is currently reviewing each student.'
+              : 'Review student enrollments forwarded by Operations for final approval.'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -112,6 +124,11 @@ export function UniversityEnrollmentReviewPanel() {
                         <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">{e.enrollmentNumber}</span>
                       )}
                       <Badge variant="secondary" className="text-xs">{e.program.courseType}</Badge>
+                      {organizationWide && (
+                        <Badge variant="outline">
+                          Pending for {pendingDepartment(e.status)} approval
+                        </Badge>
+                      )}
                     </div>
                     <h4 className="font-semibold text-base">{e.studentName}</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5 mt-2 text-sm text-muted-foreground">
@@ -124,19 +141,29 @@ export function UniversityEnrollmentReviewPanel() {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0 flex-col sm:flex-row">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => { setRejectDialog({ open: true, id: e.id, studentName: e.studentName }); setRemarks(''); }}
-                    >
-                      <XCircle className="w-4 h-4 mr-1" />
-                      Reject
-                    </Button>
-                    <Button size="sm" onClick={() => handleApprove(e.id)}>
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                      Approve
-                    </Button>
+                      {(!organizationWide || e.status === 'university_review') && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                            onClick={() => { setRejectDialog({ open: true, id: e.id, studentName: e.studentName }); setRemarks(''); }}
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                          <Button size="sm" onClick={() => handleApprove(e.id)}>
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                        </>
+                      )}
+                      {organizationWide && (
+                        <Button variant="outline" size="sm">
+                          <Bell className="w-4 h-4 mr-1" />
+                          Send Reminder
+                        </Button>
+                      )}
                   </div>
                 </div>
               </CardContent>

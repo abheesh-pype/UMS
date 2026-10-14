@@ -5,6 +5,9 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 
+const invalidNumericId = (value: unknown) =>
+  value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
+
 export const getWallet = asyncHandler(async (req: AuthRequest, res: Response) => {
   const centerId = req.user.studyCenterId || '';
   const [wallet, totalEnrollments, pendingReview] = await Promise.all([
@@ -213,6 +216,11 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
 
   if (!studentName || !studentEmail || !studentPhone || !studentAddress || !programId) {
     res.status(400).json({ success: false, message: 'Missing required fields' });
+    return;
+  }
+  if (invalidNumericId(abcId) || invalidNumericId(debId)) {
+    const field = invalidNumericId(abcId) ? 'ABCID' : 'DEBID';
+    res.status(400).json({ success: false, message: `${field} must be exactly 12 digits` });
     return;
   }
   if (req.user.role === 'center_admin' && !studyCenterId) {
@@ -647,6 +655,12 @@ export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   } = req.body;
   const organizationId = req.user.organizationId;
   const studyCenterId = req.user.studyCenterId;
+
+  if (invalidNumericId(abcId) || invalidNumericId(debId)) {
+    const field = invalidNumericId(abcId) ? 'ABCID' : 'DEBID';
+    res.status(400).json({ success: false, message: `${field} must be exactly 12 digits` });
+    return;
+  }
 
   if (!studyCenterId) {
     res.status(400).json({ success: false, message: 'No study center assigned to your account' });
