@@ -16,6 +16,7 @@ interface SalesEnrollment {
   createdAt: string;
   program?: { name: string; code: string } | null;
   session?: { name: string } | null;
+  salesUser?: { id: string; name: string; email: string } | null;
 }
 
 export function SalesStudentEnrollmentPanel() {
@@ -57,7 +58,7 @@ export function SalesStudentEnrollmentPanel() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold">Student Enrollment</h2>
-          <p className="mt-1 text-sm text-muted-foreground">View student applications submitted from your Sales account.</p>
+          <p className="mt-1 text-sm text-muted-foreground">View and manage student applications submitted by you and your sales team.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchEnrollments} disabled={loading}>
@@ -89,6 +90,7 @@ export function SalesStudentEnrollmentPanel() {
                     <th className="px-4 py-3 font-medium">Phone</th>
                     <th className="px-4 py-3 font-medium">Program</th>
                     <th className="px-4 py-3 font-medium">Admission Session</th>
+                    <th className="px-4 py-3 font-medium">Enrolled By</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Submitted</th>
                   </tr>
@@ -101,6 +103,12 @@ export function SalesStudentEnrollmentPanel() {
                       <td className="px-4 py-3">{enrollment.studentPhone}</td>
                       <td className="px-4 py-3">{enrollment.program?.name || '—'}{enrollment.program?.code ? ` (${enrollment.program.code})` : ''}</td>
                       <td className="px-4 py-3">{enrollment.session?.name || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-foreground">{enrollment.salesUser?.name || '—'}</span>
+                        {enrollment.salesUser?.email && (
+                          <span className="block text-xs text-muted-foreground">{enrollment.salesUser.email}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <Badge variant="secondary">{enrollment.status.replace(/_/g, ' ')}</Badge>
                       </td>

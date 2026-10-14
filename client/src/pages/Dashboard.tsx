@@ -25,9 +25,23 @@ interface DashboardProps {
 
 export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTable }: DashboardProps) {
   const { user } = useAuth();
-  const [departmentType, setDepartmentType] = useState<string | null>(null);
+  const getInitialDeptType = (u: any) => {
+    if (!u) return null;
+    const dept = u.department || u.departmentId;
+    if (dept && typeof dept === 'object' && dept.type) return dept.type;
+    const subDept = u.subDepartment || u.subDepartmentId;
+    if (subDept && typeof subDept === 'object') {
+      if (subDept.parentDeptId?.type) return subDept.parentDeptId.type;
+      if (subDept.parentDept?.type) return subDept.parentDept.type;
+      if (subDept.type) return subDept.type;
+    }
+    return null;
+  };
+
+  const initialDeptType = getInitialDeptType(user);
+  const [departmentType, setDepartmentType] = useState<string | null>(() => initialDeptType);
   const isBranchManager = Boolean((user as any)?.branchId);
-  const [deptLoading, setDeptLoading] = useState(Boolean(useDepartmentDashboard) && !isBranchManager);
+  const [deptLoading, setDeptLoading] = useState(Boolean(useDepartmentDashboard) && !isBranchManager && !initialDeptType);
 
   const subDeptId = (user as any)?.subDepartmentId;
   const hasSubDept = Boolean(subDeptId);
@@ -187,7 +201,7 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
     return <ModernStudentDashboard initialTab={initialTab} />;
   }
 
-  if (user?.role === 'employee') {
+  if (user?.role === 'employee' || user?.role === 'staff') {
     return <ModernEmployeeDashboard initialTab={initialTab} onNavigate={onNavigateToTable} />;
   }
 
