@@ -5,20 +5,38 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 
-export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
+const FINANCE_VISIBLE_ENROLLMENT_STATUSES = [
+  'pending_finance_review',
+  'finance_review',
+  'enrolled',
+  'rejected',
+  'finance_rejected',
+];
+
+const getAllEnrollmentsHandler = async (req: AuthRequest, res: Response, financeQueueOnly = false) => {
   const { status, search } = req.query;
   const where: any = { organizationId: req.user.organizationId };
 
+  if (financeQueueOnly) {
+    where.status = { in: FINANCE_VISIBLE_ENROLLMENT_STATUSES };
+  }
+
   if (status) {
+    let statuses: string[] | null = null;
     if (status === 'rejected') {
-      where.status = { in: ['rejected', 'finance_rejected', 'department_rejected', 'ops_rejected'] };
+      statuses = ['rejected', 'finance_rejected', 'department_rejected', 'ops_rejected'];
     } else if (status === 'pending_finance_review' || status === 'finance_review') {
-      where.status = { in: ['pending_finance_review', 'finance_review'] };
+      statuses = ['pending_finance_review', 'finance_review'];
     } else if (status === 'document_review' || status === 'pending_doc_review') {
-      where.status = { in: ['document_review', 'pending_doc_review'] };
+      statuses = ['document_review', 'pending_doc_review'];
     } else {
-      where.status = status as string;
+      statuses = [status as string];
     }
+
+    if (financeQueueOnly) {
+      statuses = statuses.filter(value => FINANCE_VISIBLE_ENROLLMENT_STATUSES.includes(value));
+    }
+    where.status = { in: statuses };
   }
 
   // Regular employees only see enrollments assigned to them
@@ -36,6 +54,9 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   const summaryWhere: any = { organizationId: req.user.organizationId };
+  if (financeQueueOnly) {
+    summaryWhere.status = { in: FINANCE_VISIBLE_ENROLLMENT_STATUSES };
+  }
   if (req.user.role === 'employee') {
     summaryWhere.assignedFinanceUserId = req.user.id;
   }
@@ -78,6 +99,14 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
   });
 
   res.status(200).json({ success: true, count: enrollments.length, data: enrollments, summary });
+};
+
+export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
+  await getAllEnrollmentsHandler(req, res);
+});
+
+export const getFinanceAllEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
+  await getAllEnrollmentsHandler(req, res, true);
 });
 
 export const getFinanceEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -102,6 +131,18 @@ export const getFinanceEnrollments = asyncHandler(async (req: AuthRequest, res: 
 
 export const assignFinanceEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { assignedFinanceUserId } = req.body;
+  const financeEnrollment = await prisma.enrollment.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      status: { in: ['pending_finance_review', 'finance_review'] },
+    },
+    select: { id: true },
+  });
+  if (!financeEnrollment) {
+    res.status(404).json({ success: false, message: 'Finance-review enrollment not found' });
+    return;
+  }
 
   if (assignedFinanceUserId) {
     const targetUser = await prisma.user.findFirst({
@@ -152,8 +193,12 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     include: { program: { include: { university: true } } }
   });
 
-  if (!dbEnrollment) {
+  if (!dbEnrollment || dbEnrollment.organizationId !== req.user.organizationId) {
     res.status(404).json({ success: false, message: 'Enrollment not found' });
+    return;
+  }
+  if (!['pending_finance_review', 'finance_review'].includes(dbEnrollment.status)) {
+    res.status(409).json({ success: false, message: 'Enrollment must be approved by Operations before Finance can approve it' });
     return;
   }
 
@@ -448,8 +493,20 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
 });
 
 export const rejectFinanceEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const currentEnrollment = await prisma.enrollment.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      status: { in: ['pending_finance_review', 'finance_review'] },
+    },
+  });
+  if (!currentEnrollment) {
+    res.status(404).json({ success: false, message: 'Finance-review enrollment not found' });
+    return;
+  }
+
   const enrollment = await prisma.enrollment.update({
-    where: { id: req.params.id },
+    where: { id: currentEnrollment.id },
     data: {
       status: 'finance_rejected' as any,
       financeReviewer: { connect: { id: req.user.id } },

@@ -75,8 +75,6 @@ const STATUS_META: Record<string, { label: string; color: string; icon: React.Re
 
 const FILTER_TABS = [
   { key: '', label: 'All' },
-  { key: 'payment_pending', label: 'Fee Pending' },
-  { key: 'document_review', label: 'Doc Review' },
   { key: 'pending_finance_review', label: 'Finance Review' },
   { key: 'enrolled', label: 'Enrolled' },
   { key: 'rejected', label: 'Rejected' },
@@ -229,7 +227,7 @@ export function FinanceEnrollmentsPanel() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold">Student Enrollments</h2>
-          <p className="text-muted-foreground text-sm mt-1">All student enrollment data across every stage.</p>
+          <p className="text-muted-foreground text-sm mt-1">Applications approved by Operations and forwarded to Finance.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={loading}>
           <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
@@ -238,13 +236,10 @@ export function FinanceEnrollmentsPanel() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <SummaryCard label="Payment Pending" count={summary.payment_pending} icon={<Clock className="w-4 h-4" />} color="text-slate-500 bg-slate-50 dark:bg-slate-900/20" onClick={() => handleTabChange('payment_pending')} />
-          <SummaryCard label="Doc Review" count={summary.document_review} icon={<Search className="w-4 h-4" />} color="text-blue-500 bg-blue-50 dark:bg-blue-900/20" onClick={() => handleTabChange('document_review')} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <SummaryCard label="Finance Review" count={summary.pending_finance_review ?? summary.finance_review ?? 0} icon={<Clock className="w-4 h-4" />} color="text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" onClick={() => handleTabChange('pending_finance_review')} />
           <SummaryCard label="Enrolled" count={summary.enrolled} icon={<CheckCircle className="w-4 h-4" />} color="text-green-500 bg-green-50 dark:bg-green-900/20" onClick={() => handleTabChange('enrolled')} />
           <SummaryCard label="Rejected" count={summary.rejected} icon={<XCircle className="w-4 h-4" />} color="text-red-500 bg-red-50 dark:bg-red-900/20" onClick={() => handleTabChange('rejected')} />
-          <SummaryCard label="Dept Rejected" count={summary.department_rejected} icon={<Ban className="w-4 h-4" />} color="text-red-400 bg-red-50 dark:bg-red-900/20" onClick={() => handleTabChange('department_rejected')} />
         </div>
       )}
 

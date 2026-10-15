@@ -61,7 +61,7 @@ import {
   getFinanceEnrollments,
   approveFinanceEnrollment,
   rejectFinanceEnrollment,
-  getAllEnrollments,
+  getFinanceAllEnrollments,
   processRefund,
   assignFinanceEnrollment,
 } from '../controllers/financeEnrollmentController.js';
@@ -154,7 +154,7 @@ router.post('/student-payments/:id/receipt', authorize('finance_admin'), recordR
 router.post('/student-payments/:id/extra-fee', authorize('finance_admin'), addExtraFee);
 
 // Finance Enrollment Review
-router.get('/enrollments/all', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), getAllEnrollments);
+router.get('/enrollments/all', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), getFinanceAllEnrollments);
 router.get('/enrollments', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), getFinanceEnrollments);
 router.put('/enrollments/:id/assign', authorize('finance_admin', 'finance_sub_admin', 'superadmin', 'org_admin'), assignFinanceEnrollment);
 router.put('/enrollments/:id/approve', authorize('finance_admin', 'finance_sub_admin', 'employee', 'superadmin', 'org_admin'), approveFinanceEnrollment);
