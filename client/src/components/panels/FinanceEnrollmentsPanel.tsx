@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle, XCircle, Search, GraduationCap, Clock, AlertCircle, Ban, UserCheck } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, Search, GraduationCap, Clock, AlertCircle, Ban, UserCheck, Eye, FileText, Mail, Phone, MapPin, Calendar } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +17,23 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
-  programId: { name: string; code: string } | string;
-  studyCenterId: { name: string; code: string } | string;
+  studentAddress?: string;
+  studentPhoto?: string;
+  specialisation?: string;
+  abcId?: string;
+  debId?: string;
+  dob?: string;
+  religion?: string;
+  caste?: string;
+  maritalStatus?: string;
+  currentlyWorking?: string;
+  fatherName?: string;
+  motherName?: string;
+  parentMobile?: string;
+  pincode?: string;
+  alternativePhone?: string;
+  programId?: { name: string; code: string } | string | null;
+  studyCenterId?: { name: string; code: string } | string | null;
   program?: { name: string; code: string } | null;
   studyCenter?: { name: string; code: string } | null;
   status: string;
@@ -27,6 +42,10 @@ interface Enrollment {
   assignedFinanceUserId?: string;
   assignedFinanceUser?: { id: string; name: string; email: string; role?: string } | null;
   payment?: { amount: number; debitedAt: string; walletId?: string } | null;
+  totalFee?: number;
+  paymentMethod?: string;
+  documents?: { name: string; url: string }[];
+  educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
   createdAt: string;
   enrolledAt?: string;
 }
@@ -34,20 +53,24 @@ interface Enrollment {
 interface Summary {
   payment_pending: number;
   document_review: number;
-  finance_review: number;
+  finance_review?: number;
+  pending_finance_review?: number;
   enrolled: number;
   rejected: number;
   department_rejected: number;
 }
 
 const STATUS_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  payment_pending:     { label: 'Fee Pending',      color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', icon: <Clock className="w-3 h-3" /> },
-  document_review:     { label: 'Doc Review',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: <Search className="w-3 h-3" /> },
-  pending_finance_review:      { label: 'Finance Review',   color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: <Clock className="w-3 h-3" /> },
-  enrolled:            { label: 'Enrolled',         color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',     icon: <CheckCircle className="w-3 h-3" /> },
-  rejected:            { label: 'Rejected',         color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <XCircle className="w-3 h-3" /> },
-  department_rejected: { label: 'Dept Rejected',    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
-  finance_rejected:    { label: 'Finance Rejected', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
+  payment_pending:        { label: 'Fee Pending',      color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', icon: <Clock className="w-3 h-3" /> },
+  document_review:        { label: 'Doc Review',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: <Search className="w-3 h-3" /> },
+  pending_doc_review:     { label: 'Doc Review',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: <Search className="w-3 h-3" /> },
+  finance_review:         { label: 'Finance Review',   color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: <Clock className="w-3 h-3" /> },
+  pending_finance_review: { label: 'Finance Review',   color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: <Clock className="w-3 h-3" /> },
+  enrolled:               { label: 'Enrolled',         color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',     icon: <CheckCircle className="w-3 h-3" /> },
+  rejected:               { label: 'Rejected',         color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <XCircle className="w-3 h-3" /> },
+  department_rejected:    { label: 'Dept Rejected',    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
+  ops_rejected:           { label: 'Dept Rejected',    color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
+  finance_rejected:       { label: 'Finance Rejected', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',             icon: <Ban className="w-3 h-3" /> },
 };
 
 const FILTER_TABS = [
@@ -75,6 +98,7 @@ export function FinanceEnrollmentsPanel() {
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [refundDialog, setRefundDialog] = useState<{ open: boolean; id: string, amount: string, status: string }>({ open: false, id: '', amount: '', status: 'processed' });
   const [remarks, setRemarks] = useState('');
+  const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
 
   const fetchData = async (status = statusFilter, q = search) => {
     setLoading(true);
@@ -179,15 +203,25 @@ export function FinanceEnrollmentsPanel() {
     }
   };
 
-  const getProgramName = (e: Enrollment) =>
-    e.program && typeof e.program === 'object'
-      ? `${e.program.name} (${e.program.code})`
-      : (typeof e.programId === 'object' ? `${(e.programId).name} (${(e.programId).code})` : e.programId);
+  const getProgramName = (e: Enrollment) => {
+    if (e.program && typeof e.program === 'object') {
+      return `${e.program.name || 'Program'} ${e.program.code ? `(${e.program.code})` : ''}`.trim();
+    }
+    if (e.programId && typeof e.programId === 'object') {
+      return `${(e.programId as any).name || 'Program'} ${(e.programId as any).code ? `(${(e.programId as any).code})` : ''}`.trim();
+    }
+    return typeof e.programId === 'string' ? e.programId : '—';
+  };
 
-  const getCenterName = (e: Enrollment) =>
-    e.studyCenter && typeof e.studyCenter === 'object'
-      ? `${e.studyCenter.name} (${e.studyCenter.code})`
-      : (typeof e.studyCenterId === 'object' ? `${(e.studyCenterId).name}` : (e.studyCenterId || 'Direct University Admission'));
+  const getCenterName = (e: Enrollment) => {
+    if (e.studyCenter && typeof e.studyCenter === 'object') {
+      return `${e.studyCenter.name || 'Study Center'} ${e.studyCenter.code ? `(${e.studyCenter.code})` : ''}`.trim();
+    }
+    if (e.studyCenterId && typeof e.studyCenterId === 'object') {
+      return `${(e.studyCenterId as any).name || 'Study Center'}`;
+    }
+    return typeof e.studyCenterId === 'string' && e.studyCenterId ? e.studyCenterId : 'Direct Admission (Sales)';
+  };
 
   return (
     <div className="space-y-6">
@@ -207,7 +241,7 @@ export function FinanceEnrollmentsPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <SummaryCard label="Payment Pending" count={summary.payment_pending} icon={<Clock className="w-4 h-4" />} color="text-slate-500 bg-slate-50 dark:bg-slate-900/20" onClick={() => handleTabChange('payment_pending')} />
           <SummaryCard label="Doc Review" count={summary.document_review} icon={<Search className="w-4 h-4" />} color="text-blue-500 bg-blue-50 dark:bg-blue-900/20" onClick={() => handleTabChange('document_review')} />
-          <SummaryCard label="Finance Review" count={summary.pending_finance_review || 0} icon={<Clock className="w-4 h-4" />} color="text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" onClick={() => handleTabChange('pending_finance_review')} />
+          <SummaryCard label="Finance Review" count={summary.pending_finance_review ?? summary.finance_review ?? 0} icon={<Clock className="w-4 h-4" />} color="text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20" onClick={() => handleTabChange('pending_finance_review')} />
           <SummaryCard label="Enrolled" count={summary.enrolled} icon={<CheckCircle className="w-4 h-4" />} color="text-green-500 bg-green-50 dark:bg-green-900/20" onClick={() => handleTabChange('enrolled')} />
           <SummaryCard label="Rejected" count={summary.rejected} icon={<XCircle className="w-4 h-4" />} color="text-red-500 bg-red-50 dark:bg-red-900/20" onClick={() => handleTabChange('rejected')} />
           <SummaryCard label="Dept Rejected" count={summary.department_rejected} icon={<Ban className="w-4 h-4" />} color="text-red-400 bg-red-50 dark:bg-red-900/20" onClick={() => handleTabChange('department_rejected')} />
@@ -232,7 +266,9 @@ export function FinanceEnrollmentsPanel() {
               {tab.label}
               {summary && tab.key && (
                 <span className="ml-1.5 opacity-70">
-                  {summary[tab.key as keyof Summary] ?? 0}
+                  {tab.key === 'pending_finance_review'
+                    ? (summary.pending_finance_review ?? summary.finance_review ?? 0)
+                    : (summary[tab.key as keyof Summary] ?? 0)}
                 </span>
               )}
             </button>
@@ -313,9 +349,14 @@ export function FinanceEnrollmentsPanel() {
                 return (
                   <tr key={e.id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-3">
-                      <p className="font-medium">{e.studentName}</p>
-                      <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
-                      {e.enrollmentNumber && <p className="text-[10px] text-muted-foreground font-mono">{e.enrollmentNumber}</p>}
+                      <div className="cursor-pointer group/stud" onClick={() => setSelectedEnrollment(e)}>
+                        <p className="font-medium group-hover/stud:text-primary transition-colors flex items-center gap-1">
+                          {e.studentName}
+                          <Eye className="w-3.5 h-3.5 opacity-0 group-hover/stud:opacity-100 text-primary transition-opacity" />
+                        </p>
+                        <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
+                        {e.enrollmentNumber && <p className="text-[10px] text-muted-foreground font-mono">{e.enrollmentNumber}</p>}
+                      </div>
                     </td>
                     <td className="p-3 hidden md:table-cell text-muted-foreground">{getProgramName(e)}</td>
                     <td className="p-3 hidden lg:table-cell text-muted-foreground">{getCenterName(e)}</td>
@@ -329,6 +370,11 @@ export function FinanceEnrollmentsPanel() {
                           <span className="text-[10px] text-muted-foreground block font-mono">
                             Wallet: {e.payment.walletId ? e.payment.walletId.slice(0, 8) : 'N/A'}
                           </span>
+                        </div>
+                      ) : e.totalFee ? (
+                        <div className="space-y-0.5">
+                          <span className="text-foreground font-semibold block">₹{Number(e.totalFee).toLocaleString()}</span>
+                          <span className="text-[10px] text-muted-foreground block capitalize">{e.paymentMethod?.replace('_', ' ') || 'Direct'}</span>
                         </div>
                       ) : (
                         <span className="text-muted-foreground text-xs">—</span>
@@ -376,23 +422,26 @@ export function FinanceEnrollmentsPanel() {
                       {new Date(e.createdAt).toLocaleDateString()}
                     </td>
                     <td className="p-3 text-right">
-                      {e.status === 'pending_finance_review' && (
-                        <div className="flex gap-1.5 justify-end">
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleApprove(e.id)}>
-                            <CheckCircle className="w-3 h-3 mr-1" />Enroll
+                      <div className="flex gap-1.5 justify-end items-center">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" title="View Details" onClick={() => setSelectedEnrollment(e)}>
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                        {(e.status === 'pending_finance_review' || e.status === 'finance_review') && (
+                          <>
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleApprove(e.id)}>
+                              <CheckCircle className="w-3 h-3 mr-1" />Enroll
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => { setRejectDialog({ open: true, id: e.id }); setRemarks(''); }}>
+                              <XCircle className="w-3 h-3 mr-1" />Reject
+                            </Button>
+                          </>
+                        )}
+                        {e.status === 'enrolled' && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setRefundDialog({ open: true, id: e.id, amount: '', status: 'processed' })}>
+                            Refund
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => { setRejectDialog({ open: true, id: e.id }); setRemarks(''); }}>
-                            <XCircle className="w-3 h-3 mr-1" />Reject
-                          </Button>
-                        </div>
-                      )}
-                      {e.status === 'enrolled' && (
-                        <div className="flex gap-1.5 justify-end">
-                           <Button size="sm" variant="outline" className="h-7 text-xs text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setRefundDialog({ open: true, id: e.id, amount: '', status: 'processed' })}>
-                             Refund
-                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -418,6 +467,7 @@ export function FinanceEnrollmentsPanel() {
         </DialogContent>
       </Dialog>
 
+      {/* Refund Dialog */}
       <Dialog open={refundDialog.open} onOpenChange={open => !open && setRefundDialog({ ...refundDialog, open: false })}>
         <DialogContent>
           <DialogHeader><DialogTitle>Process Refund</DialogTitle></DialogHeader>
@@ -439,6 +489,233 @@ export function FinanceEnrollmentsPanel() {
             <Button variant="outline" onClick={() => setRefundDialog({ ...refundDialog, open: false })}>Cancel</Button>
             <Button onClick={handleRefund}>Submit Refund</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Details Dialog */}
+      <Dialog open={!!selectedEnrollment} onOpenChange={o => !o && setSelectedEnrollment(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedEnrollment && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    {selectedEnrollment.studentPhoto ? (
+                      <img
+                        src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                        alt={selectedEnrollment.studentName}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-primary/20 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-base border border-primary/20">
+                        {selectedEnrollment.studentName.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <DialogTitle className="text-lg">{selectedEnrollment.studentName}</DialogTitle>
+                      <p className="text-xs text-muted-foreground">{selectedEnrollment.studentEmail}</p>
+                    </div>
+                  </div>
+                  <Badge className={cn('text-[10px] uppercase font-bold', STATUS_META[selectedEnrollment.status]?.color || 'bg-muted text-muted-foreground')}>
+                    {STATUS_META[selectedEnrollment.status]?.label || selectedEnrollment.status.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-5 py-3">
+                {/* Rejection / Remarks alerts */}
+                {selectedEnrollment.financeRemarks && (
+                  <div className="bg-destructive/10 text-destructive border border-destructive/20 p-3.5 rounded-xl text-sm">
+                    <p className="font-semibold text-xs flex items-center gap-1.5"><AlertCircle className="w-4 h-4" /> Finance Remarks:</p>
+                    <p className="mt-1 font-medium">{selectedEnrollment.financeRemarks}</p>
+                  </div>
+                )}
+                {selectedEnrollment.departmentRemarks && (
+                  <div className="bg-muted/40 border border-border p-3.5 rounded-xl text-sm">
+                    <p className="font-semibold text-xs flex items-center gap-1.5"><AlertCircle className="w-4 h-4 text-primary" /> Operations Department Remarks:</p>
+                    <p className="mt-1 font-medium">{selectedEnrollment.departmentRemarks}</p>
+                  </div>
+                )}
+
+                {/* Contact details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-muted/20 p-3.5 rounded-xl border text-sm">
+                  <div className="flex items-start gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-semibold">Email</p>
+                      <p className="font-medium break-all">{selectedEnrollment.studentEmail}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-semibold">Phone</p>
+                      <p className="font-medium">{selectedEnrollment.studentPhone || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-semibold">Alt / Parent</p>
+                      <p className="font-medium">{selectedEnrollment.alternativePhone || selectedEnrollment.parentMobile || 'N/A'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 lg:col-span-3">
+                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-semibold">Address</p>
+                      <p className="font-medium">{selectedEnrollment.studentAddress || 'N/A'} {selectedEnrollment.pincode ? `- ${selectedEnrollment.pincode}` : ''}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Course & Center Info */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                    <GraduationCap className="w-4 h-4 text-primary" /> Program & Admission Info
+                  </h4>
+                  <div className="bg-muted/10 p-3.5 rounded-xl border text-sm grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground block font-semibold">Program</span>
+                      <span className="font-medium">{getProgramName(selectedEnrollment)}</span>
+                    </div>
+                    {selectedEnrollment.specialisation && (
+                      <div>
+                        <span className="text-xs text-muted-foreground block font-semibold">Specialisation</span>
+                        <span className="font-medium">{selectedEnrollment.specialisation}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs text-muted-foreground block font-semibold">Channel / Center</span>
+                      <span className="font-medium">{getCenterName(selectedEnrollment)}</span>
+                    </div>
+                    {selectedEnrollment.totalFee && (
+                      <div>
+                        <span className="text-xs text-muted-foreground block font-semibold">Configured Fee</span>
+                        <span className="font-semibold text-green-600">₹{Number(selectedEnrollment.totalFee).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="sm:col-span-2 pt-1 border-t text-xs text-muted-foreground flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Submitted: {new Date(selectedEnrollment.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Personal Details */}
+                {(selectedEnrollment.dob || selectedEnrollment.fatherName || selectedEnrollment.abcId || selectedEnrollment.debId) && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                      <span className="w-4 h-4 flex items-center justify-center text-primary text-xs">👤</span> Personal Details
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/10 p-3.5 rounded-xl border text-sm">
+                      {selectedEnrollment.dob && (
+                        <div>
+                          <span className="text-xs text-muted-foreground block font-semibold">DOB</span>
+                          <span className="font-medium">{selectedEnrollment.dob}</span>
+                        </div>
+                      )}
+                      {selectedEnrollment.fatherName && (
+                        <div>
+                          <span className="text-xs text-muted-foreground block font-semibold">Father</span>
+                          <span className="font-medium">{selectedEnrollment.fatherName}</span>
+                        </div>
+                      )}
+                      {selectedEnrollment.abcId && (
+                        <div>
+                          <span className="text-xs text-muted-foreground block font-semibold">ABC ID</span>
+                          <span className="font-medium">{selectedEnrollment.abcId}</span>
+                        </div>
+                      )}
+                      {selectedEnrollment.debId && (
+                        <div>
+                          <span className="text-xs text-muted-foreground block font-semibold">DEB ID</span>
+                          <span className="font-medium">{selectedEnrollment.debId}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Educational Details */}
+                {selectedEnrollment.educationalDetails && selectedEnrollment.educationalDetails.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                      <GraduationCap className="w-4 h-4 text-primary" /> Educational History
+                    </h4>
+                    <div className="space-y-2">
+                      {selectedEnrollment.educationalDetails.map((edu, idx) => (
+                        <div key={idx} className="bg-muted/10 p-2.5 rounded-lg border text-sm grid grid-cols-3 gap-2">
+                          <span className="font-semibold">{edu.qualification}</span>
+                          <span className="text-muted-foreground truncate">{edu.institution}</span>
+                          <span className="text-right text-muted-foreground">{edu.passingYear} {edu.percentage ? `· ${edu.percentage}%` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Uploaded Documents */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-primary" /> Documents
+                  </h4>
+                  {selectedEnrollment.documents && selectedEnrollment.documents.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {selectedEnrollment.documents.map((doc, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-muted/10 p-2 rounded-lg border text-sm">
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate font-medium text-xs">{doc.name}</span>
+                          </div>
+                          <a
+                            href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary hover:underline font-semibold flex-shrink-0"
+                          >
+                            View
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic bg-muted/10 p-3 rounded-lg border">No documents uploaded.</p>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setSelectedEnrollment(null)}>
+                  Close
+                </Button>
+                {(selectedEnrollment.status === 'pending_finance_review' || selectedEnrollment.status === 'finance_review') && (
+                  <>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        const id = selectedEnrollment.id;
+                        setSelectedEnrollment(null);
+                        setRejectDialog({ open: true, id });
+                        setRemarks('');
+                      }}
+                    >
+                      <XCircle className="w-4 h-4 mr-1" /> Reject
+                    </Button>
+                    <Button
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => {
+                        const id = selectedEnrollment.id;
+                        setSelectedEnrollment(null);
+                        handleApprove(id);
+                      }}
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1" /> Enroll Student
+                    </Button>
+                  </>
+                )}
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -11,7 +11,11 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
 
   if (status) {
     if (status === 'rejected') {
-      where.status = { in: ['rejected', 'finance_rejected'] };
+      where.status = { in: ['rejected', 'finance_rejected', 'department_rejected', 'ops_rejected'] };
+    } else if (status === 'pending_finance_review' || status === 'finance_review') {
+      where.status = { in: ['pending_finance_review', 'finance_review'] };
+    } else if (status === 'document_review' || status === 'pending_doc_review') {
+      where.status = { in: ['document_review', 'pending_doc_review'] };
     } else {
       where.status = status as string;
     }
@@ -67,17 +71,17 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
   allEnrollmentsForSummary.forEach(e => {
     if (e.status === 'payment_pending') summary.payment_pending++;
     else if (e.status === 'document_review' || e.status === 'pending_doc_review') summary.document_review++;
-    else if (e.status === 'pending_finance_review') summary.pending_finance_review++;
+    else if (e.status === 'pending_finance_review' || e.status === 'finance_review') summary.pending_finance_review++;
     else if (e.status === 'enrolled') summary.enrolled++;
     else if (e.status === 'rejected' || e.status === 'finance_rejected') summary.rejected++;
-    else if (e.status === 'department_rejected') summary.department_rejected++;
+    else if (e.status === 'department_rejected' || e.status === 'ops_rejected') summary.department_rejected++;
   });
 
   res.status(200).json({ success: true, count: enrollments.length, data: enrollments, summary });
 });
 
 export const getFinanceEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const where: any = { organizationId: req.user.organizationId, status: 'pending_finance_review' };
+  const where: any = { organizationId: req.user.organizationId, status: { in: ['pending_finance_review', 'finance_review'] } };
   if (req.user.role === 'employee') {
     where.assignedFinanceUserId = req.user.id;
   }

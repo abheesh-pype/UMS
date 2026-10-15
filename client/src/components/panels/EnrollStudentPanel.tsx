@@ -731,7 +731,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
                     className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   >
                     <option value="">
-                      {programs.length > 0 ? '-- Select Program --' : 'No allocated programs available'}
+                      {programs.length > 0
+                        ? '-- Select Program --'
+                        : mode === 'sales'
+                          ? 'No programs available'
+                          : 'No allocated programs available'}
                     </option>
                     {programs.map(p => (
                       <option key={p.id} value={p.id}>
@@ -741,7 +745,9 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
                   </select>
                   {programs.length === 0 && (
                     <p className="text-xs text-destructive">
-                      No active programs are allocated to this study center. Please contact Operations.
+                      {mode === 'sales'
+                        ? 'No active programs found in this organization.'
+                        : 'No active programs are allocated to this study center. Please contact Operations.'}
                     </p>
                   )}
                 </div>

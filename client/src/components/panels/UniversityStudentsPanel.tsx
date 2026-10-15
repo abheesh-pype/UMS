@@ -300,15 +300,15 @@ export function UniversityStudentsPanel() {
                         <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
                       </td>
                       <td className="py-3 pr-4">
-                        <p className="font-medium">{e.program.name}</p>
-                        <p className="text-xs text-muted-foreground">{e.program.code} · {e.program.courseType}</p>
+                        <p className="font-medium">{e.program?.name || 'Program'}</p>
+                        <p className="text-xs text-muted-foreground">{e.program?.code || '—'} · {e.program?.courseType || '—'}</p>
                       </td>
                       <td className="py-3 pr-4">
-                        <p className="font-medium">{e.studyCenter.name}</p>
-                        <p className="text-xs text-muted-foreground">{e.studyCenter.city || e.studyCenter.code}</p>
+                        <p className="font-medium">{e.studyCenter?.name || 'Direct'}</p>
+                        <p className="text-xs text-muted-foreground">{e.studyCenter?.city || e.studyCenter?.code || 'Direct Admission'}</p>
                       </td>
                       <td className="py-3 pr-4">
-                        <span className="text-xs">{e.session.name}</span>
+                        <span className="text-xs">{e.session?.name || '—'}</span>
                       </td>
                       <td className="py-3 text-xs text-muted-foreground">
                         {e.enrolledAt ? new Date(e.enrolledAt).toLocaleDateString() : '—'}
