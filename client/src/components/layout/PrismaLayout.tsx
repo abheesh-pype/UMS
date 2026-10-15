@@ -105,11 +105,18 @@ export function PrismaLayout({
     };
   });
 
-  const filteredTables = normalizedTables.filter(table =>
-    table.isSection ||
-    table.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    table.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const seenTableIds = new Set<string>();
+  const filteredTables = normalizedTables.filter(table => {
+    if (seenTableIds.has(table.id)) return false;
+    const matches = table.isSection ||
+      table.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      table.id.toLowerCase().includes(searchQuery.toLowerCase());
+    if (matches) {
+      seenTableIds.add(table.id);
+      return true;
+    }
+    return false;
+  });
 
   function getLucideIcon(tableId: string): React.ReactNode {
     const iconClass = "w-4 h-4";

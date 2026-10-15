@@ -11,7 +11,7 @@ export const getPendingReviews = asyncHandler(async (req: AuthRequest, res: Resp
   };
 
   if (isHistory) {
-    where.status = { in: ['pending_finance_review', 'payment_pending', 'enrolled', 'rejected', 'department_rejected'] } as any;
+    where.status = { in: ['pending_finance_review', 'finance_review', 'payment_pending', 'enrolled', 'rejected', 'department_rejected', 'ops_rejected'] } as any;
     if (req.user.role === 'employee') {
       where.OR = [
         { assignedOpsUserId: req.user.id },
@@ -20,7 +20,7 @@ export const getPendingReviews = asyncHandler(async (req: AuthRequest, res: Resp
     }
   } else {
     // Both pending document review and finance-rejected forms need Operations action
-    where.status = { in: ['pending_doc_review', 'finance_rejected'] } as any;
+    where.status = { in: ['pending_doc_review', 'document_review', 'finance_rejected'] } as any;
     // Regular employees only see reviews specifically assigned to them
     if (req.user.role === 'employee') {
       where.assignedOpsUserId = req.user.id;
@@ -87,7 +87,7 @@ export const assignDeptEnrollment = asyncHandler(async (req: AuthRequest, res: R
 });
 
 export const getDeptReviewEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const where: any = { organizationId: req.user.organizationId, status: 'pending_doc_review' };
+  const where: any = { organizationId: req.user.organizationId, status: { in: ['pending_doc_review', 'document_review'] } };
   if (req.user.role === 'employee') {
     where.assignedOpsUserId = req.user.id;
   }
@@ -116,16 +116,46 @@ export const approveDeptEnrollment = asyncHandler(async (req: AuthRequest, res: 
 
   // Once approved by Operations, always forward to Finance Review so it shows in Finance Admin panel
   const nextStatus = 'pending_finance_review';
+  const now = new Date();
+  const history = Array.isArray(currentEnrollment.statusHistory) ? [...currentEnrollment.statusHistory] : [];
+  history.push({
+    status: nextStatus,
+    actorId: req.user.id,
+    actorName: req.user.name,
+    actorRole: req.user.role,
+    timestamp: now.toISOString(),
+    note: 'Documents verified and approved by Operations department',
+  });
 
   const enrollment = await prisma.enrollment.update({
     where: { id: req.params.id },
     data: {
       status: nextStatus,
       departmentReviewer: { connect: { id: req.user.id } },
-      departmentReviewedAt: new Date()
+      departmentReviewedAt: now,
+      statusHistory: history,
     },
     include: { program: true }
   });
+
+  // Notify Sales user if this was created via Sales
+  if (currentEnrollment.salesUserId) {
+    try {
+      await prisma.notification.create({
+        data: {
+          organizationId: req.user.organizationId,
+          userId: currentEnrollment.salesUserId,
+          title: 'Application Verified by Operations',
+          message: `${enrollment.studentName}'s application has been verified and forwarded to Finance for fee verification.`,
+          type: 'general' as any,
+          priority: 'medium' as any,
+          link: 'student-applications'
+        }
+      });
+    } catch (err) {
+      console.error('Failed to notify sales user:', err);
+    }
+  }
 
   // Notify Finance Admins - batch insert instead of N+1
   try {
@@ -149,31 +179,57 @@ export const approveDeptEnrollment = asyncHandler(async (req: AuthRequest, res: 
 });
 
 export const rejectDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const currentEnrollment = await prisma.enrollment.findUnique({
+    where: { id: req.params.id }
+  });
+
+  if (!currentEnrollment) {
+    res.status(404).json({ success: false, message: 'Enrollment not found' });
+    return;
+  }
+
+  const now = new Date();
+  const history = Array.isArray(currentEnrollment.statusHistory) ? [...currentEnrollment.statusHistory] : [];
+  history.push({
+    status: 'department_rejected',
+    actorId: req.user.id,
+    actorName: req.user.name,
+    actorRole: req.user.role,
+    timestamp: now.toISOString(),
+    note: req.body.remarks ? `Rejected by Operations: ${req.body.remarks}` : 'Application rejected by Operations department',
+  });
+
   const enrollment = await prisma.enrollment.update({
     where: { id: req.params.id },
     data: {
       status: 'department_rejected' as any,
       departmentReviewer: { connect: { id: req.user.id } },
-      departmentReviewedAt: new Date(),
-      departmentRemarks: req.body.remarks
+      departmentReviewedAt: now,
+      departmentRemarks: req.body.remarks,
+      statusHistory: history,
     },
     include: { program: true }
   });
 
   // Notify Study Center and Sales User - batch insert instead of N+1
   try {
-    const centerAdmins = enrollment.studyCenterId ? await prisma.user.findMany({
-      where: { studyCenterId: enrollment.studyCenterId, role: 'center_admin' as any }
-    }) : [];
-    const recipients = centerAdmins.map(a => a.id);
-    if (enrollment.salesUserId) recipients.push(enrollment.salesUserId);
+    const recipients: string[] = [];
+    if (enrollment.studyCenterId) {
+      const centerAdmins = await prisma.user.findMany({
+        where: { studyCenterId: enrollment.studyCenterId, role: 'center_admin' as any }
+      });
+      recipients.push(...centerAdmins.map(a => a.id));
+    }
+    if (enrollment.salesUserId && !recipients.includes(enrollment.salesUserId)) {
+      recipients.push(enrollment.salesUserId);
+    }
     if (recipients.length > 0) {
       await prisma.notification.createMany({
         data: recipients.map(userId => ({
           organizationId: req.user.organizationId,
           userId,
           title: '❌ Enrollment Rejected by Operations',
-          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks || 'No remarks'}. Please edit and re-submit from My Enrollments.`,
+          message: `Enrollment for ${enrollment.studentName} was rejected. Remarks: ${req.body.remarks || 'No remarks'}.`,
           type: 'general' as any,
           priority: 'high' as any,
           link: userId === enrollment.salesUserId ? 'student-applications' : 'enrollments'

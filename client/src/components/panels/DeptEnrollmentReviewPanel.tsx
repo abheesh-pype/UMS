@@ -19,8 +19,9 @@ interface Enrollment {
   studentEmail: string;
   studentPhone?: string;
   studentAddress?: string;
-  programId: string;
-  studyCenterId: string;
+  studentPhoto?: string;
+  programId?: string | null;
+  studyCenterId?: string | null;
   status: string;
   createdAt: string;
   departmentRemarks?: string;
@@ -43,7 +44,7 @@ interface Enrollment {
   assignedOpsUser?: { id: string; name: string; email: string; role?: string };
   departmentReviewer?: { id: string; name: string };
   program?: { name: string; code: string; university?: { id: string; name: string } };
-  studyCenter?: { id: string; name: string };
+  studyCenter?: { id: string; name: string } | null;
   session?: { name: string };
   documents?: { name: string; url: string }[];
   educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
@@ -168,15 +169,25 @@ export function DeptEnrollmentReviewPanel() {
     }
   };
 
-  const getProgramName = (e: Enrollment) =>
-    e.program && typeof e.program === 'object'
-      ? `${e.program.name} (${e.program.code})`
-      : (typeof e.programId === 'object' ? `${(e.programId as any).name} (${(e.programId as any).code})` : e.programId);
+  const getProgramName = (e: Enrollment) => {
+    if (e.program && typeof e.program === 'object') {
+      return `${e.program.name || 'Program'} ${e.program.code ? `(${e.program.code})` : ''}`.trim();
+    }
+    if (e.programId && typeof e.programId === 'object') {
+      return `${(e.programId as any).name || 'Program'} ${(e.programId as any).code ? `(${(e.programId as any).code})` : ''}`.trim();
+    }
+    return typeof e.programId === 'string' ? e.programId : '—';
+  };
 
-  const getCenterName = (e: Enrollment) =>
-    e.studyCenter && typeof e.studyCenter === 'object'
-      ? e.studyCenter.name
-      : (typeof e.studyCenterId === 'object' ? (e.studyCenterId as any).name : (e.studyCenterId || 'Direct University Admission'));
+  const getCenterName = (e: Enrollment) => {
+    if (e.studyCenter && typeof e.studyCenter === 'object') {
+      return e.studyCenter.name || 'Study Center';
+    }
+    if (e.studyCenterId && typeof e.studyCenterId === 'object') {
+      return (e.studyCenterId as any).name || 'Study Center';
+    }
+    return typeof e.studyCenterId === 'string' && e.studyCenterId ? e.studyCenterId : 'Direct Admission (Sales)';
+  };
 
   const uniqueUniversities = Array.from(new Set(enrollments.filter(e => e.program?.university).map(e => JSON.stringify({ id: e.program!.university!.id, name: e.program!.university!.name })))).map(s => JSON.parse(s));
   const uniqueCenters = Array.from(new Set(enrollments.filter(e => e.studyCenter).map(e => JSON.stringify({ id: e.studyCenter!.id, name: e.studyCenter!.name })))).map(s => JSON.parse(s));
@@ -431,8 +442,24 @@ export function DeptEnrollmentReviewPanel() {
           {selectedEnrollment && (
             <>
               <DialogHeader>
-                <div className="flex items-center gap-2">
-                  <DialogTitle>Review Enrollment Details</DialogTitle>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    {selectedEnrollment.studentPhoto ? (
+                      <img
+                        src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                        alt={selectedEnrollment.studentName}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-primary/20 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-base border border-primary/20">
+                        {selectedEnrollment.studentName.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <DialogTitle className="text-lg">{selectedEnrollment.studentName}</DialogTitle>
+                      <p className="text-xs text-muted-foreground">{selectedEnrollment.studentEmail}</p>
+                    </div>
+                  </div>
                   <Badge className={cn('text-[10px] uppercase font-bold', STATUS_COLOR[selectedEnrollment.status] || 'bg-muted text-muted-foreground')}>
                     {selectedEnrollment.status.replace(/_/g, ' ')}
                   </Badge>
@@ -651,7 +678,7 @@ export function DeptEnrollmentReviewPanel() {
                         setRemarks('');
                       }}
                     >
-                      <XCircle className="w-4 h-4 mr-1" /> Reject to Center
+                      <XCircle className="w-4 h-4 mr-1" /> Reject Application
                     </Button>
                     {selectedEnrollment.status === 'finance_rejected' ? (
                       <Button

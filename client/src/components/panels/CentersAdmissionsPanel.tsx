@@ -16,15 +16,15 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
-  program: { 
+  program?: { 
     name: string; 
     code: string;
-    university: { name: string; code: string; }
-  };
-  studyCenter: {
+    university?: { name: string; code: string; } | null;
+  } | null;
+  studyCenter?: {
     name: string;
     code: string;
-  };
+  } | null;
   status: string;
   createdAt: string;
 }
@@ -64,11 +64,15 @@ export function CentersAdmissionsPanel() {
   useEffect(() => { fetch(); }, []);
 
   const filtered = enrollments.filter(e => {
+    const s = search.toLowerCase();
     const matchesSearch = 
-      e.studentName.toLowerCase().includes(search.toLowerCase()) ||
-      e.enrollmentNumber?.toLowerCase().includes(search.toLowerCase()) ||
-      e.studyCenter.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.program.name.toLowerCase().includes(search.toLowerCase());
+      (e.studentName || '').toLowerCase().includes(s) ||
+      (e.enrollmentNumber || '').toLowerCase().includes(s) ||
+      (e.studyCenter?.name || '').toLowerCase().includes(s) ||
+      (e.studyCenter?.code || '').toLowerCase().includes(s) ||
+      (e.program?.name || '').toLowerCase().includes(s) ||
+      (e.program?.code || '').toLowerCase().includes(s) ||
+      (e.program?.university?.name || '').toLowerCase().includes(s);
     
     const matchesStatus = !statusFilter || e.status === statusFilter;
     
@@ -153,16 +157,20 @@ export function CentersAdmissionsPanel() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-primary font-semibold">
                         <School className="w-4 h-4" />
-                        <span>{e.program.university.name}</span>
+                        <span>{e.program?.university?.name || 'Direct University'}</span>
                       </div>
-                      <p className="text-sm font-medium pl-6">{e.program.name} ({e.program.code})</p>
+                      <p className="text-sm font-medium pl-6">
+                        {e.program?.name || 'Program'} {e.program?.code ? `(${e.program.code})` : ''}
+                      </p>
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Building2 className="w-4 h-4" />
-                        <span className="text-sm font-medium">{e.studyCenter.name}</span>
-                        <Badge variant="outline" className="text-[10px]">{e.studyCenter.code}</Badge>
+                        <span className="text-sm font-medium">{e.studyCenter?.name || 'Direct / Sales Direct'}</span>
+                        {e.studyCenter?.code && (
+                          <Badge variant="outline" className="text-[10px]">{e.studyCenter.code}</Badge>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -286,8 +286,7 @@ function App() {
 
     if (user.role === 'ops_admin' || user.role === 'ops_sub_admin') {
       const isSubDeptManager = Boolean((user as any)?.subDepartmentId);
-      const items = getOpsNavItems(isSubDeptManager);
-      return [...items, { id: 'center_admissions', label: 'Centers Admissions' }];
+      return getOpsNavItems(isSubDeptManager);
     }
 
     if (user.role === 'finance_admin') {
@@ -381,7 +380,17 @@ function App() {
     return baseTables;
   };
 
-  const tables = useMemo(() => isRegisterPage ? [] : getAvailableTables(), [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType]);
+  const tables = useMemo(() => {
+    if (isRegisterPage) return [];
+    const rawTables = getAvailableTables();
+    const seen = new Set<string>();
+    return rawTables.filter(item => {
+      const id = typeof item === 'string' ? item : item.id;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType]);
 
   // Fetch data for active table — only when in table view mode
   useEffect(() => {

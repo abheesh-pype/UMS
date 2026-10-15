@@ -19,8 +19,8 @@ interface Enrollment {
   studentAddress: string;
   createdAt: string;
   status: string;
-  program: { id: string; name: string; code: string; courseType: string };
-  studyCenter: { id: string; name: string; code: string };
+  program?: { id: string; name: string; code: string; courseType: string } | null;
+  studyCenter?: { id: string; name: string; code: string } | null;
   session: { id: string; name: string };
   departmentReviewer?: { id: string; name: string } | null;
   assignedOpsUser?: { id: string; name: string } | null;
@@ -134,9 +134,9 @@ export function UniversityEnrollmentReviewPanel({ organizationWide = false }: { 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5 mt-2 text-sm text-muted-foreground">
                       <span>{e.studentEmail}</span>
                       <span>{e.studentPhone}</span>
-                      <span className="font-medium text-foreground">{e.program.name} ({e.program.code})</span>
-                      <span>Partner: {e.studyCenter.name}</span>
-                      <span>Session: {e.session.name}</span>
+                      <span className="font-medium text-foreground">{e.program?.name} ({e.program?.code})</span>
+                      <span>Partner: {e.studyCenter?.name || 'Direct / Sales Direct'}</span>
+                      <span>Session: {e.session?.name}</span>
                       <span>Submitted: {new Date(e.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>

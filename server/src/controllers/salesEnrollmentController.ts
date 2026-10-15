@@ -11,7 +11,7 @@ const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
     return false;
   }
 
-  if (req.user.role === 'sales_admin') {
+  if (req.user.role === 'sales_admin' || req.user.role === 'ceo' || req.user.role === 'org_admin') {
     return true;
   }
 
@@ -275,6 +275,33 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
       },
     });
   });
+
+  // Notify Operations team of new student enrollment for review
+  try {
+    const opsAdmins = await prisma.user.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        role: { in: ['ops_admin', 'ops_sub_admin'] } as any,
+        status: 'active' as any,
+      },
+      select: { id: true },
+    });
+    if (opsAdmins.length > 0) {
+      await prisma.notification.createMany({
+        data: opsAdmins.map((admin) => ({
+          organizationId: req.user.organizationId,
+          userId: admin.id,
+          title: '📋 New Student Application for Review',
+          message: `${studentName} has been submitted by Sales (${req.user.name}). Please review the documents.`,
+          type: 'general' as any,
+          priority: 'medium' as any,
+          link: 'enrollment_review',
+        })),
+      });
+    }
+  } catch (err) {
+    console.error('Failed to notify ops admins:', err);
+  }
 
   res.status(201).json({ success: true, data: enrollment });
 });
@@ -589,11 +616,11 @@ export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, 
   // Build pipeline summary
   const summary = {
     total: enrollments.length,
-    document_review: enrollments.filter(e => e.status === 'document_review').length,
-    finance_review: enrollments.filter(e => e.status === 'finance_review').length,
+    document_review: enrollments.filter(e => e.status === 'document_review' || e.status === 'pending_doc_review').length,
+    finance_review: enrollments.filter(e => e.status === 'finance_review' || e.status === 'pending_finance_review').length,
     enrolled: enrollments.filter(e => e.status === 'enrolled').length,
-    ops_rejected: enrollments.filter(e => e.status === 'ops_rejected').length,
-    rejected: enrollments.filter(e => e.status === 'rejected').length,
+    ops_rejected: enrollments.filter(e => e.status === 'ops_rejected' || e.status === 'department_rejected').length,
+    rejected: enrollments.filter(e => e.status === 'rejected' || e.status === 'finance_rejected').length,
   };
 
   res.status(200).json({ success: true, count: enrollments.length, summary, data: enrollments });
