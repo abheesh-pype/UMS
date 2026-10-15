@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { EditSalesStudentDialog } from '@/components/dialogs/EditSalesStudentDialog';
 
 interface StatusHistoryEntry {
   status: string;
@@ -54,7 +55,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   payment_pending: { label: 'Payment Pending', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: <Clock className="w-3 h-3" /> },
   enrolled: { label: 'Enrolled', color: 'bg-green-100 text-green-700 border-green-200', icon: <CheckCircle className="w-3 h-3" /> },
   ops_rejected: { label: 'Rejected by Ops', color: 'bg-red-100 text-red-700 border-red-200', icon: <XCircle className="w-3 h-3" /> },
+  department_rejected: { label: 'Rejected by Ops', color: 'bg-red-100 text-red-700 border-red-200', icon: <XCircle className="w-3 h-3" /> },
   rejected: { label: 'Rejected by Finance', color: 'bg-red-100 text-red-700 border-red-200', icon: <XCircle className="w-3 h-3" /> },
+  finance_rejected: { label: 'Rejected by Finance', color: 'bg-red-100 text-red-700 border-red-200', icon: <XCircle className="w-3 h-3" /> },
   submitted: { label: 'Submitted', color: 'bg-muted text-muted-foreground', icon: <Clock className="w-3 h-3" /> },
 };
 
@@ -75,6 +78,7 @@ export function SalesStudentPipelinePanel() {
   const [programFilter, setProgramFilter] = useState('all');
   const [centerFilter, setCenterFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingEnrollment, setEditingEnrollment] = useState<any | null>(null);
 
   const fetchPipeline = async () => {
     setLoading(true);
@@ -236,14 +240,26 @@ export function SalesStudentPipelinePanel() {
                         </p>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setExpandedId(isExpanded ? null : e.id)}
-                      className="shrink-0"
-                    >
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {(e.status === 'ops_rejected' || e.status === 'department_rejected') && (
+                        <Button
+                          size="sm"
+                          className="bg-amber-600 text-white hover:bg-amber-700 h-8 text-xs font-medium"
+                          onClick={() => setEditingEnrollment(e)}
+                        >
+                          <RefreshCw className="mr-1.5 h-3 w-3" />
+                          Edit &amp; Re-submit
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                        className="shrink-0"
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Expanded: full status timeline */}
@@ -292,6 +308,14 @@ export function SalesStudentPipelinePanel() {
           })}
         </div>
       )}
+
+      {/* Edit & Re-submit Dialog */}
+      <EditSalesStudentDialog
+        open={!!editingEnrollment}
+        onOpenChange={(open) => !open && setEditingEnrollment(null)}
+        enrollment={editingEnrollment}
+        onSuccess={fetchPipeline}
+      />
     </div>
   );
 }
