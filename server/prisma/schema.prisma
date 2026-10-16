@@ -65,6 +65,7 @@ model Organization {
   examinations          Examination[]
   examinationRegistrations ExaminationRegistration[]
   programMaterials      ProgramMaterial[]
+  scheduledClasses     ScheduledClass[]
   programAllocations    ProgramAllocation[]
   universityAllocations UniversityAllocation[]
   programFeeStructures  ProgramFeeStructure[]
@@ -172,6 +173,7 @@ model User {
   updatedAt                     DateTime               @updatedAt
   approvedSessions              AdmissionSession[]     @relation("SessionApprovedBy")
   createdSessions               AdmissionSession[]     @relation("SessionCreatedBy")
+  createdScheduledClasses      ScheduledClass[]      @relation("ScheduledClassCreator")
   postedAnnouncements           Announcement[]
   attendances                   Attendance[]
   auditLogs                     AuditLog[]
@@ -400,6 +402,7 @@ model Program {
   programFeeStructure     ProgramFeeStructure[]
   reregRules              ReregRule[]
   students                Student[]
+  scheduledClasses        ScheduledClass[]
   studyCenters            StudyCenter[]         @relation("ProgramToStudyCenter")
   assignedSubDepts        SubDepartment[]       @relation("SubDeptToProgram")
 
@@ -422,6 +425,7 @@ model Module {
   program           Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
   academicSession   AdmissionSession? @relation(fields: [academicSessionId], references: [id])
   semester          Semester?         @relation(fields: [semesterId], references: [id])
+  scheduledClasses  ScheduledClass[]
 
   @@unique([programId, moduleCode])
   @@index([organizationId])
@@ -445,6 +449,7 @@ model Semester {
   academicSession   AdmissionSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
   modules           Module[]
   examinations      Examination[]
+  scheduledClasses  ScheduledClass[]
 
   @@unique([programId, semesterNumber])
   @@index([organizationId])
@@ -628,6 +633,7 @@ model Student {
   referrer              User?                  @relation("StudentReferredBy", fields: [referredBy], references: [id])
   statusRequests        StudentStatusRequest[]
   examinationRegistrations ExaminationRegistration[]
+  scheduledClasses     ScheduledClassStudent[]
 
   @@index([organizationId, status])
   @@index([centerId])
@@ -992,6 +998,7 @@ model AdmissionSession {
   academicPrograms        Program[]             @relation("AcademicSessionPrograms")
   modules                 Module[]
   examinations            Examination[]
+  scheduledClasses        ScheduledClass[]
   semesters               Semester[]
   studyCenter             StudyCenter?          @relation(fields: [studyCenterId], references: [id])
   subDepartment           SubDepartment?        @relation(fields: [subDepartmentId], references: [id])
@@ -1687,6 +1694,44 @@ model ProgramMaterial {
 
   @@index([programId])
   @@index([organizationId])
+}
+
+model ScheduledClass {
+  id                String                 @id @default(uuid())
+  organizationId    String
+  academicSessionId String
+  programId         String
+  semesterId        String
+  moduleId          String
+  title             String
+  startsAt          DateTime
+  meetingUrl        String
+  createdBy         String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicSession   AdmissionSession       @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  program           Program                @relation(fields: [programId], references: [id], onDelete: Cascade)
+  semester          Semester               @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  module            Module                 @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  creator           User?                  @relation("ScheduledClassCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  students          ScheduledClassStudent[]
+
+  @@index([organizationId, startsAt])
+  @@index([academicSessionId, programId, semesterId, moduleId], map: "scheduled_classes_scope_idx")
+  @@map("scheduled_classes")
+}
+
+model ScheduledClassStudent {
+  scheduledClassId String
+  studentId        String
+  createdAt        DateTime       @default(now())
+  scheduledClass   ScheduledClass @relation(fields: [scheduledClassId], references: [id], onDelete: Cascade)
+  student          Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([scheduledClassId, studentId])
+  @@index([studentId])
+  @@map("scheduled_class_students")
 }
 
 enum OrganizationStatus {

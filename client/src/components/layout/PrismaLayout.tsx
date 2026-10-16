@@ -186,6 +186,7 @@ export function PrismaLayout({
       case 'student-payment-info': return <Wallet className={iconClass} />;
       case 'academic-video-classes':
       case 'student-video-classes': return <Video className={iconClass} />;
+      case 'academic-scheduled-classes': return <Calendar className={iconClass} />;
       case 'student-scheduled-classes': return <Calendar className={iconClass} />;
       case 'student-examinations': return <ClipboardList className={iconClass} />;
       case 'student-e-books': return <BookOpen className={iconClass} />;

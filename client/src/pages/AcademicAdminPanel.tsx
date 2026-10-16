@@ -78,6 +78,23 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [videoModules, setVideoModules] = useState<any[]>([]);
   const [videoSemestersLoading, setVideoSemestersLoading] = useState(false);
   const [videoModulesLoading, setVideoModulesLoading] = useState(false);
+  const [scheduledClassForm, setScheduledClassForm] = useState({
+    academicSessionId: '',
+    programId: '',
+    semesterId: '',
+    moduleId: '',
+    title: '',
+    startsAt: '',
+    meetingUrl: '',
+  });
+  const [scheduledClassSemesters, setScheduledClassSemesters] = useState<any[]>([]);
+  const [scheduledClassModules, setScheduledClassModules] = useState<any[]>([]);
+  const [schedulableStudents, setSchedulableStudents] = useState<any[]>([]);
+  const [selectedScheduledStudentIds, setSelectedScheduledStudentIds] = useState<string[]>([]);
+  const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
+  const [scheduledClassLoading, setScheduledClassLoading] = useState(false);
+  const [schedulableStudentsLoading, setSchedulableStudentsLoading] = useState(false);
+  const [scheduledClassSaving, setScheduledClassSaving] = useState(false);
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
@@ -219,7 +236,113 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   useEffect(() => {
     if (initialTab === 'academic-ebooks') fetchAllEbooks();
     if (initialTab === 'academic-video-classes') fetchVideoClasses();
+    if (initialTab === 'academic-scheduled-classes') fetchScheduledClasses();
   }, [initialTab]);
+
+  const fetchScheduledClasses = async () => {
+    setScheduledClassLoading(true);
+    try {
+      const response = await api.get('/operations/scheduled-classes');
+      setScheduledClasses(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load scheduled classes');
+    } finally {
+      setScheduledClassLoading(false);
+    }
+  };
+
+  const handleScheduledSessionChange = (academicSessionId: string) => {
+    setScheduledClassForm({
+      academicSessionId,
+      programId: '',
+      semesterId: '',
+      moduleId: '',
+      title: '',
+      startsAt: '',
+      meetingUrl: '',
+    });
+    setScheduledClassSemesters([]);
+    setScheduledClassModules([]);
+    setSchedulableStudents([]);
+    setSelectedScheduledStudentIds([]);
+  };
+
+  const handleScheduledProgramChange = async (programId: string) => {
+    setScheduledClassForm(current => ({ ...current, programId, semesterId: '', moduleId: '' }));
+    setScheduledClassSemesters([]);
+    setScheduledClassModules([]);
+    setSchedulableStudents([]);
+    setSelectedScheduledStudentIds([]);
+    if (!programId || !scheduledClassForm.academicSessionId) return;
+    setScheduledClassLoading(true);
+    setSchedulableStudentsLoading(true);
+    try {
+      const [semestersResponse, studentsResponse] = await Promise.all([
+        api.get(`/operations/programs/${programId}/semesters`),
+        api.get('/operations/scheduled-classes/students', {
+          params: { academicSessionId: scheduledClassForm.academicSessionId, programId },
+        }),
+      ]);
+      setScheduledClassSemesters(semestersResponse.data.data || []);
+      setSchedulableStudents(studentsResponse.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load semesters or enrolled students');
+    } finally {
+      setScheduledClassLoading(false);
+      setSchedulableStudentsLoading(false);
+    }
+  };
+
+  const handleScheduledSemesterChange = async (semesterId: string) => {
+    setScheduledClassForm(current => ({ ...current, semesterId, moduleId: '' }));
+    setScheduledClassModules([]);
+    if (!semesterId || !scheduledClassForm.programId) return;
+    setScheduledClassLoading(true);
+    try {
+      const response = await api.get(`/operations/programs/${scheduledClassForm.programId}/modules`, {
+        params: { semesterId },
+      });
+      setScheduledClassModules(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load modules');
+    } finally {
+      setScheduledClassLoading(false);
+    }
+  };
+
+  const handleScheduledClassSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (selectedScheduledStudentIds.length === 0) {
+      toast.error('Select at least one enrolled student');
+      return;
+    }
+    setScheduledClassSaving(true);
+    try {
+      await api.post('/operations/scheduled-classes', {
+        ...scheduledClassForm,
+        studentIds: selectedScheduledStudentIds,
+      });
+      toast.success('Class scheduled and students notified');
+      setScheduledClassForm({
+        academicSessionId: '',
+        programId: '',
+        semesterId: '',
+        moduleId: '',
+        title: '',
+        startsAt: '',
+        meetingUrl: '',
+      });
+      setScheduledClassSemesters([]);
+      setScheduledClassModules([]);
+      setSchedulableStudents([]);
+      setSelectedScheduledStudentIds([]);
+      await fetchScheduledClasses();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to schedule class');
+    } finally {
+      setScheduledClassSaving(false);
+    }
+  };
 
   const fetchVideoClasses = async () => {
     setVideoLoading(true);
@@ -1241,9 +1364,183 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-video-classes' ? 'Video Classes' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : initialTab === 'academic-video-classes' ? 'Upload and manage video classes for academic modules' : 'Manage programs by academic session'}</p>
+        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-video-classes' ? 'Video Classes' : initialTab === 'academic-scheduled-classes' ? 'Schedule Class' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : initialTab === 'academic-video-classes' ? 'Upload and manage video classes for academic modules' : initialTab === 'academic-scheduled-classes' ? 'Schedule a live class and notify selected students' : 'Manage programs by academic session'}</p>
       </div>
+
+      {initialTab === 'academic-scheduled-classes' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Schedule a live class</CardTitle>
+              <CardDescription>Choose the academic details, enrolled students, start time, and live meeting link.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleScheduledClassSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Academic Session *</Label>
+                    <Select value={scheduledClassForm.academicSessionId} onValueChange={handleScheduledSessionChange}>
+                      <SelectTrigger><SelectValue placeholder="Select session" /></SelectTrigger>
+                      <SelectContent>
+                        {sessions.map(session => (
+                          <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Program *</Label>
+                    <Select
+                      value={scheduledClassForm.programId}
+                      onValueChange={handleScheduledProgramChange}
+                      disabled={!scheduledClassForm.academicSessionId}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
+                      <SelectContent>
+                        {programs.filter(item => item.academicSessionId === scheduledClassForm.academicSessionId).map(item => (
+                          <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Semester *</Label>
+                    <Select
+                      value={scheduledClassForm.semesterId}
+                      onValueChange={handleScheduledSemesterChange}
+                      disabled={!scheduledClassForm.programId}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select semester" /></SelectTrigger>
+                      <SelectContent>
+                        {scheduledClassSemesters.map(item => (
+                          <SelectItem key={item.id} value={item.id}>{item.semesterName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Module *</Label>
+                    <Select
+                      value={scheduledClassForm.moduleId}
+                      onValueChange={moduleId => setScheduledClassForm(current => ({ ...current, moduleId }))}
+                      disabled={!scheduledClassForm.semesterId}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger>
+                      <SelectContent>
+                        {scheduledClassModules.map(item => (
+                          <SelectItem key={item.id} value={item.id}>{item.moduleCode} · {item.moduleName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduled-class-title">Class title *</Label>
+                    <Input
+                      id="scheduled-class-title"
+                      value={scheduledClassForm.title}
+                      onChange={event => setScheduledClassForm(current => ({ ...current, title: event.target.value }))}
+                      placeholder="e.g. Live lecture: Introduction"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduled-class-start">Start date and time *</Label>
+                    <Input
+                      id="scheduled-class-start"
+                      type="datetime-local"
+                      value={scheduledClassForm.startsAt}
+                      onChange={event => setScheduledClassForm(current => ({ ...current, startsAt: event.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2 lg:col-span-3">
+                    <Label htmlFor="scheduled-class-link">Live meeting link *</Label>
+                    <Input
+                      id="scheduled-class-link"
+                      type="url"
+                      value={scheduledClassForm.meetingUrl}
+                      onChange={event => setScheduledClassForm(current => ({ ...current, meetingUrl: event.target.value }))}
+                      placeholder="https://meet.google.com/..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Select enrolled students *</Label>
+                    <span className="text-sm text-muted-foreground">
+                      {schedulableStudentsLoading ? 'Loading students…' : `${selectedScheduledStudentIds.length} selected`}
+                    </span>
+                  </div>
+                  {!scheduledClassForm.programId ? (
+                    <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                      Select a session and program to load eligible students.
+                    </p>
+                  ) : schedulableStudents.length === 0 && !schedulableStudentsLoading ? (
+                    <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                      No enrolled students were found for this program and session.
+                    </p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto rounded-md border p-3">
+                      <div className="space-y-3">
+                        {schedulableStudents.map(item => (
+                          <label key={item.id} className="flex cursor-pointer items-center gap-3 text-sm">
+                            <Checkbox
+                              checked={selectedScheduledStudentIds.includes(item.id)}
+                              onCheckedChange={checked => setSelectedScheduledStudentIds(current => (
+                                checked === true
+                                  ? [...current, item.id]
+                                  : current.filter(id => id !== item.id)
+                              ))}
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium">{item.name}</span>
+                              <span className="text-xs text-muted-foreground">{item.enrollmentNo} · {item.email}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <Button type="submit" disabled={scheduledClassSaving || scheduledClassLoading || schedulableStudentsLoading}>
+                  {scheduledClassSaving ? 'Scheduling…' : 'Schedule Class'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Scheduled classes</CardTitle>
+              <CardDescription>Classes created for students in your organization.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {scheduledClassLoading && scheduledClasses.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Loading scheduled classes…</p>
+              ) : scheduledClasses.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No classes have been scheduled yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {scheduledClasses.map(item => (
+                    <div key={item.id} className="flex flex-col gap-2 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium">{item.title}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {item.academicSession.name} · {item.program.name} · {item.semester.semesterName} · {item.module.moduleName}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">{new Date(item.startsAt).toLocaleString()}</p>
+                      </div>
+                      <Badge variant="secondary">{item._count.students} students</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {initialTab === 'academic-video-classes' && (
         <div className="space-y-6">

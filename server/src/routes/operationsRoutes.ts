@@ -81,6 +81,7 @@ import {
 } from '../controllers/programMaterialController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadVideo } from '../middleware/upload.js';
+import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
 
 const router = express.Router();
 
@@ -185,6 +186,10 @@ router.get('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmi
 router.post('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), createVideoClass);
 router.put('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), updateVideoClass);
 router.delete('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), deleteVideoClass);
+router.route('/scheduled-classes')
+  .get(authorize('academic_admin'), getScheduledClasses)
+  .post(authorize('academic_admin'), createScheduledClass);
+router.get('/scheduled-classes/students', authorize('academic_admin'), getSchedulableStudents);
 router.get('/programs/:programId/detail', getProgramDetail);
 router.get('/programs/:programId/materials', getProgramMaterials);
 router.post('/programs/:programId/materials', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), uploadProgramMaterial);

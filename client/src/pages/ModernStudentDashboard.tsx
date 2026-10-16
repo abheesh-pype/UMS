@@ -59,6 +59,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
+  const [scheduledClassesLoading, setScheduledClassesLoading] = useState(false);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
   const [selectedVideoClassId, setSelectedVideoClassId] = useState<string | null>(null);
   const [selectedVideoMaterialId, setSelectedVideoMaterialId] = useState<string | null>(null);
@@ -137,6 +139,17 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     if (activeSection !== 'documents') return;
     fetchStudentDocuments();
   }, [activeSection, fetchStudentDocuments]);
+
+  useEffect(() => {
+    if (activeSection !== 'scheduled-classes') return;
+    setScheduledClassesLoading(true);
+    api.get('/students/scheduled-classes')
+      .then(response => setScheduledClasses(response.data.data || []))
+      .catch((error: any) => {
+        toast.error(error.response?.data?.message || 'Failed to load scheduled classes');
+      })
+      .finally(() => setScheduledClassesLoading(false));
+  }, [activeSection]);
 
   useEffect(() => {
     const updateFullscreenState = () => {
@@ -378,23 +391,6 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       && (!metadata.sessionId || metadata.sessionId === enrolledSessionId);
   });
   const videoApiBase = import.meta.env.VITE_API_URL || '/api/v1';
-  const sampleMeetingLinks = [
-    'https://meet.google.com/abc-defg-hij',
-    'https://meet.google.com/jkl-mnop-qrs',
-    'https://meet.google.com/tuv-wxyz-abc',
-  ];
-  const scheduledClassSamples = [0, 1, 2].map(index => {
-    const module = enrolledModules[index % Math.max(enrolledModules.length, 1)];
-    const semester = enrolledSemesters.find(item => item.id === module?.semesterId);
-    const startsAt = new Date(Date.now() + (index + 1) * 60 * 60 * 1000);
-    return {
-      id: `sample-scheduled-class-${index + 1}`,
-      startsAt,
-      moduleName: module?.moduleName || `Sample Module ${index + 1}`,
-      semesterName: semester?.semesterName || `Semester ${index + 1}`,
-      meetingUrl: sampleMeetingLinks[index],
-    };
-  });
   const selectedEbookModule = enrolledModules.find((module: any) => module.id === selectedEbookModuleId);
   const selectedModuleEbooks = materials.filter(
     material => material.category === 'ebook'
@@ -724,50 +720,56 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
               Scheduled Classes
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upcoming live classes for {program?.name || 'your program'} · {enrolledSession?.name || 'your session'}.
+              Upcoming live classes scheduled for your enrollment.
             </p>
           </div>
-          <div className="mb-5 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
-            These are sample schedule notifications. Class times and meeting links are for demonstration only.
-          </div>
-          <div className="space-y-4">
-            {scheduledClassSamples.map((scheduledClass, index) => (
-              <Card key={scheduledClass.id}>
-                <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-start gap-4">
-                    <div className="rounded-full bg-primary/10 p-3 text-primary">
-                      <Video className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="font-semibold">{scheduledClass.moduleName} Live Class</h2>
-                        <Badge variant="secondary">Upcoming</Badge>
-                        <Badge variant="outline">Demo</Badge>
+          {scheduledClassesLoading ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">Loading scheduled classes...</p>
+          ) : scheduledClasses.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                No upcoming classes have been scheduled for you.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {scheduledClasses.map(scheduledClass => (
+                <Card key={scheduledClass.id}>
+                  <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="rounded-full bg-primary/10 p-3 text-primary">
+                        <Video className="h-5 w-5" />
                       </div>
-                      <div className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
-                        <p><span className="font-medium text-foreground">Session:</span> {enrolledSession?.name || 'Current session'}</p>
-                        <p><span className="font-medium text-foreground">Program:</span> {program?.name || 'Your program'}</p>
-                        <p><span className="font-medium text-foreground">Semester:</span> {scheduledClass.semesterName}</p>
-                        <p><span className="font-medium text-foreground">Module:</span> {scheduledClass.moduleName}</p>
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="font-semibold">{scheduledClass.title}</h2>
+                          <Badge variant="secondary">Upcoming</Badge>
+                        </div>
+                        <div className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+                          <p><span className="font-medium text-foreground">Session:</span> {scheduledClass.academicSession.name}</p>
+                          <p><span className="font-medium text-foreground">Program:</span> {scheduledClass.program.name}</p>
+                          <p><span className="font-medium text-foreground">Semester:</span> {scheduledClass.semester.semesterName}</p>
+                          <p><span className="font-medium text-foreground">Module:</span> {scheduledClass.module.moduleName}</p>
+                        </div>
+                        <p className="flex items-center gap-2 text-sm font-medium text-primary">
+                          <Clock className="h-4 w-4" />
+                          {new Date(scheduledClass.startsAt).toLocaleString()}
+                        </p>
                       </div>
-                      <p className="flex items-center gap-2 text-sm font-medium text-primary">
-                        <Clock className="h-4 w-4" />
-                        Starts in {index + 1} {index === 0 ? 'hour' : 'hours'} · {scheduledClass.startsAt.toLocaleString()}
-                      </p>
                     </div>
-                  </div>
-                  <Button
-                    type="button"
-                    className="shrink-0"
-                    onClick={() => window.open(scheduledClass.meetingUrl, '_blank', 'noopener,noreferrer')}
-                  >
-                    Join Class
-                    <ExternalLink className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      onClick={() => window.open(scheduledClass.meetingUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      Join Class
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </main>
       ) : activeSection === 'video-classes' ? (
         <main className="container mx-auto max-w-screen-2xl px-4 py-10">

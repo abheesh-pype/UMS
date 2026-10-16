@@ -93,6 +93,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   'student-examination-portal': 'examination-portal',
   'student-video-classes': 'video-classes',
   'student-scheduled-classes': 'scheduled-classes',
+  'academic-scheduled-classes': 'academic-scheduled-classes',
   'student-e-books': 'e-books',
   'student-result': 'results',
   'student-documents': 'documents',
@@ -346,6 +347,7 @@ function App() {
         { id: 'academic-modules', label: 'Modules' },
         { id: 'academic-ebooks', label: 'E-Book' },
         { id: 'academic-video-classes', label: 'Video Classes' },
+        { id: 'academic-scheduled-classes', label: 'Schedule Class' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
         {
           id: 'academic-examination',
