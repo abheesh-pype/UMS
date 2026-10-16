@@ -10,6 +10,7 @@ import {
   getPrograms,
   getProgram,
   createProgram,
+  importProgramsFromSession,
   updateProgram,
   deleteProgram,
   activateProgram,
@@ -69,6 +70,10 @@ import {
   getProgramDetail,
   getProgramMaterials,
   getAllProgramEbooks,
+  getAllVideoClasses,
+  createVideoClass,
+  updateVideoClass,
+  deleteVideoClass,
   uploadProgramMaterial,
   updateProgramMaterial,
   deleteProgramMaterial,
@@ -90,6 +95,7 @@ router.put('/universities/:id/activate', authorize('org_admin', 'superadmin', 'o
 
 // Programs — write access restricted to org_admin / superadmin & operations admin
 router.route('/programs').get(getPrograms).post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), createProgram);
+router.post('/programs/import-from-session', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), importProgramsFromSession);
 router.route('/programs/:id')
   .get(getProgram)
   .put(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'academic_admin'), updateProgram)
@@ -174,6 +180,10 @@ router.delete('/centers/:id/uni-allocations/:allocId', authorize('ops_admin', 'o
 
 // Program detail & materials
 router.get('/ebooks', authorize('academic_admin'), getAllProgramEbooks);
+router.get('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), getAllVideoClasses);
+router.post('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), createVideoClass);
+router.put('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), updateVideoClass);
+router.delete('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), deleteVideoClass);
 router.get('/programs/:programId/detail', getProgramDetail);
 router.get('/programs/:programId/materials', getProgramMaterials);
 router.post('/programs/:programId/materials', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), uploadProgramMaterial);
