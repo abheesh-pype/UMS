@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,9 @@ import {
   LogOut, 
   MapPin, 
   School,
-  FileDown
+  FileDown,
+  Maximize,
+  Minimize
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,6 +34,18 @@ const readStudentExamPortals = () => {
   }
 };
 
+const studentVideoClasses = [
+  { number: 1, section: 'Introduction' },
+  { number: 2, section: 'Fundamentals' },
+  { number: 3, section: 'Core Concepts' },
+  { number: 4, section: 'Key Principles' },
+  { number: 5, section: 'Methods and Applications' },
+  { number: 6, section: 'Worked Examples' },
+  { number: 7, section: 'Practice and Review' },
+  { number: 8, section: 'Advanced Topics' },
+  { number: 9, section: 'Summary and Further Study' },
+];
+
 interface ModernStudentDashboardProps {
   initialTab?: string;
 }
@@ -44,8 +58,11 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal'>(
-    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal'
+  const [selectedVideoClass, setSelectedVideoClass] = useState(studentVideoClasses[0]);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes'
       ? initialTab
       : 'portal'
   );
@@ -65,7 +82,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
   useEffect(() => {
     setActiveSection(
-      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal'
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes'
         ? initialTab
         : 'portal'
     );
@@ -73,6 +90,14 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
   useEffect(() => {
     fetchStudentData();
+  }, []);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      setIsVideoFullscreen(document.fullscreenElement === videoContainerRef.current);
+    };
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
   }, []);
 
   useEffect(() => {
@@ -383,6 +408,96 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
               )}
             </CardContent>
           </Card>
+        </main>
+      ) : activeSection === 'video-classes' ? (
+        <main className="container mx-auto px-4 py-8 max-w-7xl">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Class {selectedVideoClass.number}: {selectedVideoClass.section}</CardTitle>
+                  <CardDescription>Watch the selected class video.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
+                    <iframe
+                      key={selectedVideoClass.number}
+                      className="h-full w-full"
+                      src="https://www.youtube.com/embed/NRk4fzgsmEQ?controls=0&rel=0&modestbranding=1"
+                      title={`Class ${selectedVideoClass.number}: ${selectedVideoClass.section}`}
+                      allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="secondary"
+                      className="absolute bottom-3 right-3 z-10"
+                      aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                      title={isVideoFullscreen ? 'Exit full screen' : 'View full screen'}
+                      onClick={() => {
+                        const container = videoContainerRef.current;
+                        if (!container) return;
+                        if (document.fullscreenElement === container) {
+                          document.exitFullscreen().catch(() => {
+                            toast.error('Unable to exit full screen');
+                          });
+                          return;
+                        }
+                        if (!container.requestFullscreen) {
+                          toast.error('Full screen is not supported by this browser');
+                          return;
+                        }
+                        container.requestFullscreen().catch(() => {
+                          toast.error('Unable to open full screen');
+                        });
+                      }}
+                    >
+                      {isVideoFullscreen
+                        ? <Minimize className="h-4 w-4" />
+                        : <Maximize className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Notes</CardTitle>
+                  <CardDescription>Notes for the selected class.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="min-h-32 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                    No notes available.
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            <Card className="h-fit lg:sticky lg:top-20">
+              <CardHeader>
+                <CardTitle>Classes</CardTitle>
+                <CardDescription>Class number and section</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                {studentVideoClasses.map(videoClass => (
+                  <Button
+                    key={videoClass.number}
+                    type="button"
+                    variant={selectedVideoClass.number === videoClass.number ? 'default' : 'outline'}
+                    className="h-auto w-full justify-start py-3 text-left"
+                    onClick={() => setSelectedVideoClass(videoClass)}
+                  >
+                    <span className="flex flex-col items-start gap-1">
+                      <span>Class {videoClass.number}</span>
+                      <span className="text-xs font-normal opacity-80">{videoClass.section}</span>
+                    </span>
+                  </Button>
+                ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </main>
       ) : (
       <>

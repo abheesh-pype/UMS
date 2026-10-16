@@ -68,7 +68,7 @@ export function StudentsPanel() {
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('enrolled');
   const [universityFilter, setUniversityFilter] = useState('');
   const [centerFilter, setCenterFilter] = useState('');
   const [programFilter, setProgramFilter] = useState('');
@@ -360,6 +360,7 @@ export function StudentsPanel() {
       <div className="flex gap-2 flex-wrap mb-4">
         {[
           { key: '', label: 'All' },
+          { key: 'enrolled', label: 'Enrolled' },
           { key: 'active', label: 'Active' },
           { key: 'hold', label: 'Hold' },
           { key: 'dropout', label: 'Dropout' }

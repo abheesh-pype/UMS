@@ -179,6 +179,7 @@ const navItems: NavItem[] = [
       { id: 'academic-programs', label: 'Programs', icon: BookOpen, roles: ['academic_admin'] },
       { id: 'academic-semesters', label: 'Semester', icon: Calendar, roles: ['academic_admin'] },
       { id: 'academic-modules', label: 'Modules', icon: BookOpen, roles: ['academic_admin'] },
+      { id: 'academic-ebooks', label: 'E-Book', icon: BookOpen, roles: ['academic_admin'] },
       { id: 'academic-study-material', label: 'Study Material', icon: FileText, roles: ['academic_admin'] },
       { id: 'academic-calendar', label: 'Academic Calendar', icon: Calendar, roles: ['academic_admin'] },
       { id: 'academic-examination', label: 'Examination', icon: FileText, roles: ['academic_admin'] },

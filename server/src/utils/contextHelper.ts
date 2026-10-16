@@ -40,9 +40,7 @@ export const getDefaultUniversityId = async (): Promise<string> => {
  * Helper to get both organization and university IDs.
  */
 export const getSingleTenantContext = async (): Promise<{ organizationId: string; universityId: string }> => {
-  const [organizationId, universityId] = await Promise.all([
-    getDefaultOrganizationId(),
-    getDefaultUniversityId()
-  ]);
+  const organizationId = await getDefaultOrganizationId();
+  const universityId = await getDefaultUniversityId();
   return { organizationId, universityId };
 };

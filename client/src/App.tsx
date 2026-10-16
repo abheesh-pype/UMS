@@ -91,6 +91,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   'student-notifications': 'notifications',
   'student-active-session': 'active-session',
   'student-examination-portal': 'examination-portal',
+  'student-video-classes': 'video-classes',
   // Employee
   notice_board: 'notice-board',
   ld_portal: 'ld-portal',
@@ -321,7 +322,7 @@ function App() {
         { id: 'student-active-session', label: 'Active Session' },
         { id: 'student-examination-portal', label: 'Examination Portal' },
         { id: 'student-payment-info', label: 'Payment info', disabled: true },
-        { id: 'student-video-classes', label: 'Video Classes', disabled: true },
+        { id: 'student-video-classes', label: 'Video Classes' },
         { id: 'student-examinations', label: 'Examinations', disabled: true },
         { id: 'student-e-books', label: 'E-Books', disabled: true },
         { id: 'student-documents', label: 'Documents', disabled: true },
@@ -338,6 +339,7 @@ function App() {
         { id: 'academic-programs', label: 'Programs' },
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
+        { id: 'academic-ebooks', label: 'E-Book' },
         { id: 'academic-study-material', label: 'Study Material' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
         {
