@@ -3,6 +3,8 @@ import express from 'express';
 import {
   getStudents,
   getStudent,
+  getStudentResults,
+  getStudentDocuments,
   getStudentExamination,
   registerForExamination,
   createStudent,
@@ -34,6 +36,8 @@ router.route('/marks/:id').get(getInternalMark).put(authorize('ops_admin', 'empl
 // Installments routes
 router.get('/:id/installments', getStudentInstallments);
 router.post('/:id/pay-installment', authorize('center_admin'), payStudentInstallment);
+router.get('/results', authorize('student'), getStudentResults);
+router.get('/documents', authorize('student'), getStudentDocuments);
 router.get('/examinations/:examinationId', getStudentExamination);
 router.post('/examinations/:examinationId/register', registerForExamination);
 

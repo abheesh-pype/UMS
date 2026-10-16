@@ -100,6 +100,45 @@ export const uploadProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
   res.status(201).json({ success: true, data: material });
 });
 
+export const uploadProgramVideo = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, message: 'Please upload a video file' });
+    return;
+  }
+  if (typeof req.body?.moduleId !== 'string' || !req.body.moduleId.trim()) {
+    res.status(400).json({ success: false, message: 'A module is required for this video' });
+    return;
+  }
+
+  const module = await prisma.module.findFirst({
+    where: {
+      id: req.body.moduleId.trim(),
+      programId: req.params.programId,
+      organizationId: req.user.organizationId,
+    },
+    select: { id: true, moduleName: true },
+  });
+  if (!module) {
+    res.status(404).json({ success: false, message: 'Module not found for this program' });
+    return;
+  }
+
+  const material = await prisma.programMaterial.create({
+    data: {
+      title: req.file.originalname,
+      description: `Module: ${module.id} - ${module.moduleName}`,
+      category: 'video',
+      fileUrl: `/uploads/${req.file.filename}`,
+      fileName: req.file.originalname,
+      isActive: true,
+      program: { connect: { id: req.params.programId } },
+      organization: { connect: { id: req.user.organizationId } },
+      uploader: { connect: { id: req.user.id } },
+    },
+  });
+  res.status(201).json({ success: true, data: material });
+});
+
 export const updateProgramMaterial = asyncHandler(async (req: AuthRequest, res: Response) => {
   const existingMaterial = await prisma.programMaterial.findFirst({
     where: {

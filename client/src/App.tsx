@@ -92,6 +92,9 @@ const TABLE_TO_TAB: Record<string, string> = {
   'student-active-session': 'active-session',
   'student-examination-portal': 'examination-portal',
   'student-video-classes': 'video-classes',
+  'student-e-books': 'e-books',
+  'student-result': 'results',
+  'student-documents': 'documents',
   // Employee
   notice_board: 'notice-board',
   ld_portal: 'ld-portal',
@@ -323,10 +326,10 @@ function App() {
         { id: 'student-examination-portal', label: 'Examination Portal' },
         { id: 'student-payment-info', label: 'Payment info', disabled: true },
         { id: 'student-video-classes', label: 'Video Classes' },
+        { id: 'student-e-books', label: 'E-Books' },
         { id: 'student-examinations', label: 'Examinations', disabled: true },
-        { id: 'student-e-books', label: 'E-Books', disabled: true },
-        { id: 'student-documents', label: 'Documents', disabled: true },
-        { id: 'student-result', label: 'Result', disabled: true },
+        { id: 'student-documents', label: 'Documents' },
+        { id: 'student-result', label: 'Result' },
         { id: 'student-notice', label: 'Notice', disabled: true },
         { id: 'student-schedule', label: 'Schedule', disabled: true },
       ];

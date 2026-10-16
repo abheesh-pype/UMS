@@ -70,11 +70,12 @@ import {
   getProgramMaterials,
   getAllProgramEbooks,
   uploadProgramMaterial,
+  uploadProgramVideo,
   updateProgramMaterial,
   deleteProgramMaterial,
 } from '../controllers/programMaterialController.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload } from '../middleware/upload.js';
+import { upload, uploadVideo } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -177,6 +178,7 @@ router.get('/ebooks', authorize('academic_admin'), getAllProgramEbooks);
 router.get('/programs/:programId/detail', getProgramDetail);
 router.get('/programs/:programId/materials', getProgramMaterials);
 router.post('/programs/:programId/materials', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), uploadProgramMaterial);
+router.post('/programs/:programId/videos', authorize('academic_admin'), uploadVideo.single('file'), uploadProgramVideo);
 router.put('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), updateProgramMaterial);
 router.delete('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), deleteProgramMaterial);
 

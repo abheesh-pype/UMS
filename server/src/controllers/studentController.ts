@@ -67,7 +67,17 @@ export const getStudents = asyncHandler(async (req: AuthRequest, res: Response) 
     include: { 
       enrollments: { include: { session: true } },
       center: true,
-      program: { include: { university: true } }
+      program: {
+        include: {
+          university: true,
+          academicSession: true,
+          semesterRecords: { orderBy: { semesterNumber: 'asc' } },
+          modules: {
+            include: { academicSession: true, semester: true },
+            orderBy: { moduleName: 'asc' },
+          },
+        },
+      }
     },
     orderBy: { createdAt: 'desc' }
   });
@@ -109,6 +119,103 @@ export const getStudent = asyncHandler(async (req: AuthRequest, res: Response) =
   };
 
   res.status(200).json({ success: true, data: mappedStudent });
+});
+
+export const getStudentResults = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (req.user.role !== 'student') {
+    res.status(403).json({ success: false, message: 'Student access required' });
+    return;
+  }
+
+  const student = await prisma.student.findFirst({
+    where: { organizationId: req.user.organizationId, email: req.user.email },
+    select: { id: true },
+  });
+  if (!student) {
+    res.status(404).json({ success: false, message: 'Student record not found' });
+    return;
+  }
+
+  const marks = await prisma.internalMark.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      studentId: student.id,
+      status: 'published',
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      id: true,
+      subject: true,
+      marks: true,
+      maxMarks: true,
+      updatedAt: true,
+    },
+  });
+
+  res.json({
+    results: marks.map(mark => ({
+      assessment_id: mark.id,
+      assessment_name: mark.subject,
+      examination: '',
+      obtained_mark: mark.marks,
+      total_mark: mark.maxMarks,
+      pass_mark: null,
+      passed: null,
+      evaluated_at: mark.updatedAt,
+    })),
+  });
+});
+
+export const getStudentDocuments = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (req.user.role !== 'student') {
+    res.status(403).json({ success: false, message: 'Student access required' });
+    return;
+  }
+
+  const student = await prisma.student.findFirst({
+    where: {
+      organizationId: req.user.organizationId,
+      email: { equals: req.user.email, mode: 'insensitive' },
+    },
+    select: { id: true },
+  });
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      OR: [
+        { studentEmail: { equals: req.user.email, mode: 'insensitive' } },
+        ...(student ? [{ studentId: student.id }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      studentName: true,
+      program: { select: { name: true } },
+      session: { select: { name: true } },
+      documents: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const documents = enrollments.flatMap(enrollment => {
+    const uploadedDocuments = Array.isArray(enrollment.documents) ? enrollment.documents : [];
+    return uploadedDocuments.flatMap((document: any, index: number) => {
+      if (!document || typeof document !== 'object') return [];
+      const url = typeof document.url === 'string' ? document.url : document.fileUrl;
+      if (typeof url !== 'string' || !url) return [];
+      return [{
+        id: `${enrollment.id}-${index}`,
+        name: document.name || document.fileName || document.reqName || 'Enrollment document',
+        requirement: document.reqName || null,
+        url,
+        program: enrollment.program?.name || '',
+        session: enrollment.session?.name || '',
+      }];
+    });
+  });
+
+  res.json({ success: true, count: documents.length, data: documents });
 });
 
 export const getStudentExamination = asyncHandler(async (req: AuthRequest, res: Response) => {

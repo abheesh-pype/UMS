@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Calendar, Check, Edit, GraduationCap, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, Calendar, Check, Edit, GraduationCap, Plus, Trash2, Video } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -40,6 +40,11 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
   const [allEbooks, setAllEbooks] = useState<any[]>([]);
   const [allEbooksLoading, setAllEbooksLoading] = useState(false);
+  const [videoModule, setVideoModule] = useState<any | null>(null);
+  const [videoMaterials, setVideoMaterials] = useState<any[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
@@ -79,6 +84,74 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   });
 
   const moduleEbookTag = (module: any) => `Module: ${module.id} - ${module.moduleName}`;
+  const moduleVideoTag = moduleEbookTag;
+
+  const openVideoDialog = async (module: any) => {
+    setVideoModule(module);
+    setVideoFile(null);
+    setVideoMaterials([]);
+    setVideoLoading(true);
+    try {
+      const response = await api.get(`/operations/programs/${module.programId}/materials`);
+      const moduleTag = moduleVideoTag(module);
+      setVideoMaterials((response.data.data || []).filter((material: any) => (
+        material.category === 'video' && material.description === moduleTag
+      )));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to load this module's videos");
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  const uploadModuleVideo = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!videoModule || !videoFile) {
+      toast.error('Select a video file to upload');
+      return;
+    }
+    if (videoFile.size > 10 * 1024 * 1024) {
+      toast.error('Video must be 10 MB or smaller');
+      return;
+    }
+    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
+    const allowedVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v'];
+    const extension = videoFile.name.slice(videoFile.name.lastIndexOf('.')).toLowerCase();
+    if (!allowedVideoTypes.includes(videoFile.type) || !allowedVideoExtensions.includes(extension)) {
+      toast.error('Only MP4, WebM, MOV, or M4V videos are allowed');
+      return;
+    }
+
+    setVideoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('moduleId', videoModule.id);
+      formData.append('file', videoFile);
+      const response = await api.post(
+        `/operations/programs/${videoModule.programId}/videos`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      setVideoMaterials(current => [response.data.data, ...current]);
+      setVideoFile(null);
+      toast.success('Video uploaded successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to upload video');
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const deleteModuleVideo = async (material: any) => {
+    if (!videoModule || !window.confirm(`Delete "${material.fileName}"?`)) return;
+    try {
+      await api.delete(`/operations/programs/${videoModule.programId}/materials/${material.id}`);
+      setVideoMaterials(current => current.filter(item => item.id !== material.id));
+      toast.success('Video deleted');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete video');
+    }
+  };
 
   const openEbookDialog = async (module: any) => {
     setEbookModule(module);
@@ -958,7 +1031,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {initialTab === 'academic-modules' && (
         <Card>
           <CardHeader><CardTitle>All Modules ({modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).length})</CardTitle><p className="text-sm text-muted-foreground">Filter modules by academic session, program, and semester</p></CardHeader>
-          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button></div>)}</div></div></CardContent>
+          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button><Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}>Add Video</Button></div></div>)}</div></div></CardContent>
         </Card>
       )}
 
@@ -993,6 +1066,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     </div>
                     <div className="flex gap-2 mt-3">
                       <Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}><Video className="w-3.5 h-3.5 mr-1" />Add Video</Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => handleEditModule(module)}><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
                       <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteModule(module)}><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
                     </div>
@@ -1201,6 +1275,60 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                         <Button type="button" size="sm" variant="outline" onClick={() => { setEbookEditingMaterialId(material.id); setEbookFile(null); }}>Update</Button>
                         <Button type="button" size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteModuleEbook(material)}>Delete</Button>
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(videoModule)} onOpenChange={open => { if (!open && !videoUploading) setVideoModule(null); }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Videos - {videoModule?.moduleName}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={uploadModuleVideo} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="moduleVideo">Video file (10 MB maximum)</Label>
+              <Input
+                id="moduleVideo"
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
+                onChange={event => setVideoFile(event.target.files?.[0] || null)}
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={!videoFile || videoUploading}>
+                {videoUploading ? 'Uploading...' : 'Upload Video'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setVideoModule(null)} disabled={videoUploading}>Close</Button>
+            </div>
+          </form>
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold">Uploaded Videos</h3>
+            {videoLoading ? (
+              <p className="text-sm text-muted-foreground">Loading videos...</p>
+            ) : videoMaterials.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No videos uploaded for this module.</p>
+            ) : (
+              <div className="max-h-64 space-y-2 overflow-y-auto">
+                {videoMaterials.map(material => {
+                  const fileUrl = material.fileUrl.startsWith('http')
+                    ? material.fileUrl
+                    : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${material.fileUrl}`;
+                  return (
+                    <div key={material.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="truncate text-sm font-medium text-primary hover:underline">
+                          {material.fileName}
+                        </a>
+                        <Badge variant="outline">{videoModule?.moduleName}</Badge>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" className="shrink-0 text-destructive hover:text-destructive" onClick={() => deleteModuleVideo(material)}>Delete</Button>
                     </div>
                   );
                 })}

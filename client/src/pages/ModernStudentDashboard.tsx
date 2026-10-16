@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,16 +11,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   BookOpen, 
   Download, 
-  FileText, 
-  ClipboardList, 
+  FileText,
   LogOut, 
   MapPin, 
   School,
-  FileDown,
   Maximize,
   Minimize
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface StudentAssessmentResult {
+  assessment_id: string;
+  assessment_name: string;
+  examination: string;
+  obtained_mark: number;
+  total_mark: number;
+  pass_mark: number | null;
+  passed: boolean | null;
+  evaluated_at: string;
+}
 
 const readStudentExamPortals = () => {
   try {
@@ -34,18 +43,6 @@ const readStudentExamPortals = () => {
   }
 };
 
-const studentVideoClasses = [
-  { number: 1, section: 'Introduction' },
-  { number: 2, section: 'Fundamentals' },
-  { number: 3, section: 'Core Concepts' },
-  { number: 4, section: 'Key Principles' },
-  { number: 5, section: 'Methods and Applications' },
-  { number: 6, section: 'Worked Examples' },
-  { number: 7, section: 'Practice and Review' },
-  { number: 8, section: 'Advanced Topics' },
-  { number: 9, section: 'Summary and Further Study' },
-];
-
 interface ModernStudentDashboardProps {
   initialTab?: string;
 }
@@ -58,11 +55,12 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
-  const [selectedVideoClass, setSelectedVideoClass] = useState(studentVideoClasses[0]);
+  const [selectedVideoClassId, setSelectedVideoClassId] = useState<string | null>(null);
+  const [selectedVideoMaterialId, setSelectedVideoMaterialId] = useState<string | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes'>(
-    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes'
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes' | 'e-books' | 'results' | 'documents'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
       ? initialTab
       : 'portal'
   );
@@ -79,10 +77,17 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     phone: '',
   });
   const [registrationConfirmed, setRegistrationConfirmed] = useState(false);
+  const [selectedEbookModuleId, setSelectedEbookModuleId] = useState<string | null>(null);
+  const [studentResults, setStudentResults] = useState<StudentAssessmentResult[]>([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState('');
+  const [studentDocuments, setStudentDocuments] = useState<any[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState('');
 
   useEffect(() => {
     setActiveSection(
-      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes'
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
         ? initialTab
         : 'portal'
     );
@@ -91,6 +96,42 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   useEffect(() => {
     fetchStudentData();
   }, []);
+
+  const fetchStudentResults = useCallback(async () => {
+    setResultsLoading(true);
+    setResultsError('');
+    try {
+      const response = await api.get('/students/results');
+      setStudentResults(response.data.results || []);
+    } catch (error: unknown) {
+      setResultsError(error instanceof Error ? error.message : 'Failed to load results.');
+    } finally {
+      setResultsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'results') return;
+    fetchStudentResults();
+  }, [activeSection, fetchStudentResults]);
+
+  const fetchStudentDocuments = useCallback(async () => {
+    setDocumentsLoading(true);
+    setDocumentsError('');
+    try {
+      const response = await api.get('/students/documents');
+      setStudentDocuments(response.data.data || []);
+    } catch (error: any) {
+      setDocumentsError(error.response?.data?.message || 'Failed to load enrollment documents.');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'documents') return;
+    fetchStudentDocuments();
+  }, [activeSection, fetchStudentDocuments]);
 
   useEffect(() => {
     const updateFullscreenState = () => {
@@ -241,6 +282,15 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     document.body.removeChild(a);
   };
 
+  const formatResultDate = (value: string) => new Date(value).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -274,30 +324,40 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   }
 
   const program = student.program;
-  const totalSemesters = program?.duration ? program.duration * 2 : 1;
-  const semesterList = Array.from({ length: totalSemesters }, (_, i) => (i + 1).toString());
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'syllabus':
-        return <FileText className="w-5 h-5 text-indigo-500" />;
-      case 'question_paper':
-        return <ClipboardList className="w-5 h-5 text-amber-500" />;
-      default:
-        return <BookOpen className="w-5 h-5 text-emerald-500" />;
-    }
-  };
-
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'syllabus':
-        return 'Syllabus';
-      case 'question_paper':
-        return 'Question Paper';
-      default:
-        return 'Study Material';
-    }
-  };
+  const enrolledSessionId = student.sessionId || student.activeSession?.id || program?.academicSessionId;
+  const enrolledSession = student.activeSession || program?.academicSession;
+  const enrolledSemesters = (program?.semesterRecords || []).filter(
+    (semester: any) => semester.academicSessionId === enrolledSessionId
+  );
+  const semesterList = enrolledSemesters.map((semester: any) => String(semester.semesterNumber));
+  const activeSemester = semesterList.includes(selectedSemester) ? selectedSemester : semesterList[0];
+  const enrolledModules = (program?.modules || []).filter(
+    (module: any) => module.academicSessionId === enrolledSessionId
+  );
+  const studentVideoClasses = enrolledModules.map((module: any, index: number) => ({
+    ...module,
+    number: index + 1,
+    section: module.moduleName,
+  }));
+  const selectedVideoClass = studentVideoClasses.find((videoClass: any) => videoClass.id === selectedVideoClassId) || null;
+  const selectedVideoMaterials = materials.filter(
+    material => material.category === 'video'
+      && selectedVideoClass
+      && material.description === `Module: ${selectedVideoClass.id} - ${selectedVideoClass.moduleName}`
+  );
+  const selectedVideoMaterial = selectedVideoMaterials.find(material => material.id === selectedVideoMaterialId) || null;
+  const videoApiBase = import.meta.env.VITE_API_URL || '/api/v1';
+  const selectedVideoUrl = selectedVideoMaterial
+    ? selectedVideoMaterial.fileUrl.startsWith('http')
+      ? selectedVideoMaterial.fileUrl
+      : `${videoApiBase.replace('/api/v1', '')}${selectedVideoMaterial.fileUrl}`
+    : '';
+  const selectedEbookModule = enrolledModules.find((module: any) => module.id === selectedEbookModuleId);
+  const selectedModuleEbooks = materials.filter(
+    material => material.category === 'ebook'
+      && selectedEbookModule
+      && material.description === `Module: ${selectedEbookModule.id} - ${selectedEbookModule.moduleName}`
+  );
 
   return (
     <div className="min-h-screen bg-muted/30 pb-12">
@@ -387,6 +447,119 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
             </CardContent>
           </Card>
         </main>
+      ) : activeSection === 'results' ? (
+        <main className="container mx-auto max-w-7xl px-4 py-8">
+          <Card className="border-none shadow-xl">
+            <CardHeader>
+              <CardTitle>Your Results</CardTitle>
+              <CardDescription>Evaluated results published for your student account.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {resultsLoading ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">Loading your results...</p>
+              ) : resultsError ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm text-destructive">{resultsError}</p>
+                  <Button className="mt-3" variant="outline" onClick={fetchStudentResults}>
+                    Try again
+                  </Button>
+                </div>
+              ) : studentResults.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">No evaluated results have been published yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Examination</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assessment</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Marks</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Result</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evaluated On</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {studentResults.map((result, index) => (
+                        <tr key={result.assessment_id} className={`border-t transition-colors hover:bg-muted/40 ${index % 2 ? 'bg-muted/15' : ''}`}>
+                          <td className="px-4 py-3">{result.examination || '-'}</td>
+                          <td className="px-4 py-3 font-medium">{result.assessment_name || '-'}</td>
+                          <td className="px-4 py-3">{result.obtained_mark} / {result.total_mark}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col items-start gap-1">
+                              <Badge className={result.passed === true
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                                : result.passed === false
+                                  ? 'bg-red-100 text-red-800 hover:bg-red-100'
+                                  : 'bg-muted text-muted-foreground hover:bg-muted'}>
+                                {result.passed === true ? 'Passed' : result.passed === false ? 'Failed' : 'Pass mark not set'}
+                              </Badge>
+                              {result.pass_mark != null && (
+                                <span className="text-xs text-muted-foreground">Pass mark: {result.pass_mark}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">{formatResultDate(result.evaluated_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      ) : activeSection === 'documents' ? (
+        <main className="container mx-auto max-w-7xl px-4 py-8">
+          <Card className="border-none shadow-xl">
+            <CardHeader>
+              <CardTitle>Enrollment Documents</CardTitle>
+              <CardDescription>Documents submitted with your student enrollment.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {documentsLoading ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">Loading your documents...</p>
+              ) : documentsError ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm text-destructive">{documentsError}</p>
+                  <Button className="mt-3" variant="outline" onClick={fetchStudentDocuments}>Try again</Button>
+                </div>
+              ) : studentDocuments.length === 0 ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">No enrollment documents have been uploaded.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {studentDocuments.map(document => {
+                    const apiBase = import.meta.env.VITE_API_URL || '/api/v1';
+                    const fileUrl = document.url.startsWith('http')
+                      ? document.url
+                      : `${apiBase.replace('/api/v1', '')}${document.url.startsWith('/') ? '' : '/'}${document.url}`;
+                    return (
+                      <Card key={document.id} className="flex flex-col">
+                        <CardContent className="flex flex-1 flex-col gap-4 p-5">
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-lg bg-primary/10 p-3">
+                              <FileText className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="break-words font-semibold">{document.name}</h3>
+                              <p className="mt-1 text-sm text-muted-foreground">{document.requirement || 'Enrollment document'}</p>
+                            </div>
+                          </div>
+                          <div className="mt-auto space-y-1 border-t pt-3 text-xs text-muted-foreground">
+                            <p>Program: {document.program || '-'}</p>
+                            <p>Session: {document.session || '-'}</p>
+                          </div>
+                          <a href={fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                            <Download className="h-4 w-4" /> View / Download
+                          </a>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </main>
       ) : activeSection === 'active-session' ? (
         <main className="container mx-auto px-4 py-8 max-w-4xl">
           <Card>
@@ -395,16 +568,107 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
               <CardDescription>Your admission session from the enrolled student record.</CardDescription>
             </CardHeader>
             <CardContent>
-              {student.activeSession ? (
+              {enrolledSession ? (
                 <div className="rounded-lg border p-4 space-y-2">
-                  <p className="font-semibold">{student.activeSession.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(student.activeSession.startDate).toLocaleDateString()} - {new Date(student.activeSession.endDate).toLocaleDateString()}
-                  </p>
-                  <Badge variant="outline">{student.activeSession.status}</Badge>
+                  <p className="font-semibold">{enrolledSession.name}</p>
+                  {enrolledSession.startDate && enrolledSession.endDate && (
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(enrolledSession.startDate).toLocaleDateString()} - {new Date(enrolledSession.endDate).toLocaleDateString()}
+                    </p>
+                  )}
+                  {enrolledSession.status && <Badge variant="outline">{enrolledSession.status}</Badge>}
                 </div>
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">No active admission session is assigned.</p>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+      ) : activeSection === 'e-books' ? (
+        <main className="container mx-auto max-w-7xl px-4 py-8">
+          <Card className="border-none shadow-xl">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>E-Books</CardTitle>
+                <CardDescription>
+                  {program?.name || 'Program'}{enrolledSession?.name ? ` · ${enrolledSession.name}` : ''}
+                </CardDescription>
+              </div>
+              <Badge variant="outline">Enrolled Session</Badge>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {semesterList.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No semesters are available for your enrolled session.
+                </p>
+              ) : (
+                <Tabs value={activeSemester} onValueChange={value => { setSelectedSemester(value); setSelectedEbookModuleId(null); }} className="space-y-6">
+                  <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted p-1">
+                    {enrolledSemesters.map((semester: any) => (
+                      <TabsTrigger key={semester.id} value={String(semester.semesterNumber)} className="px-3 py-1.5">
+                        {semester.semesterName}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {enrolledSemesters.map((semester: any) => {
+                    const semesterModules = enrolledModules.filter(
+                      (module: any) => module.semesterId === semester.id
+                    );
+                    return (
+                      <TabsContent key={semester.id} value={String(semester.semesterNumber)} className="space-y-5 outline-none">
+                        {semesterModules.length === 0 ? (
+                          <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+                            No modules are available for {semester.semesterName}.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {semesterModules.map((module: any) => (
+                              <Button
+                                key={module.id}
+                                type="button"
+                                variant={selectedEbookModuleId === module.id ? 'default' : 'outline'}
+                                className="h-auto min-h-20 justify-start whitespace-normal p-4 text-left"
+                                onClick={() => setSelectedEbookModuleId(module.id)}
+                              >
+                                <span className="flex flex-col items-start gap-1">
+                                  <span>{module.moduleName}</span>
+                                  <span className="text-xs font-normal opacity-75">{module.moduleCode}</span>
+                                </span>
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                        {selectedEbookModule && selectedEbookModule.semesterId === semester.id && (
+                          <section className="space-y-3 border-t pt-5">
+                            <h3 className="font-semibold">{selectedEbookModule.moduleName} E-Books</h3>
+                            {selectedModuleEbooks.length === 0 ? (
+                              <p className="py-6 text-center text-sm text-muted-foreground">
+                                No E-Books have been uploaded for this module.
+                              </p>
+                            ) : (
+                              <div className="space-y-3">
+                                {selectedModuleEbooks.map(material => (
+                                  <div key={material.id} className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <BookOpen className="h-5 w-5 shrink-0 text-primary" />
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium">{material.fileName}</p>
+                                        <p className="text-xs text-muted-foreground">{material.title}</p>
+                                      </div>
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => handleDownload(material)}>
+                                      <Download className="mr-2 h-4 w-4" /> Download
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </section>
+                        )}
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
               )}
             </CardContent>
           </Card>
@@ -413,87 +677,143 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
         <main className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Class {selectedVideoClass.number}: {selectedVideoClass.section}</CardTitle>
-                  <CardDescription>Watch the selected class video.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
-                    <iframe
-                      key={selectedVideoClass.number}
-                      className="h-full w-full"
-                      src="https://www.youtube.com/embed/NRk4fzgsmEQ?controls=0&rel=0&modestbranding=1"
-                      title={`Class ${selectedVideoClass.number}: ${selectedVideoClass.section}`}
-                      allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      allowFullScreen
-                    />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="secondary"
-                      className="absolute bottom-3 right-3 z-10"
-                      aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
-                      title={isVideoFullscreen ? 'Exit full screen' : 'View full screen'}
-                      onClick={() => {
-                        const container = videoContainerRef.current;
-                        if (!container) return;
-                        if (document.fullscreenElement === container) {
-                          document.exitFullscreen().catch(() => {
-                            toast.error('Unable to exit full screen');
-                          });
-                          return;
-                        }
-                        if (!container.requestFullscreen) {
-                          toast.error('Full screen is not supported by this browser');
-                          return;
-                        }
-                        container.requestFullscreen().catch(() => {
-                          toast.error('Unable to open full screen');
-                        });
-                      }}
-                    >
-                      {isVideoFullscreen
-                        ? <Minimize className="h-4 w-4" />
-                        : <Maximize className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notes</CardTitle>
-                  <CardDescription>Notes for the selected class.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="min-h-32 rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
-                    No notes available.
-                  </div>
-                </CardContent>
-              </Card>
+              {selectedVideoClass ? (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{selectedVideoMaterial?.fileName || selectedVideoClass.moduleName}</CardTitle>
+                      <CardDescription>{selectedVideoClass.moduleCode} · {selectedVideoClass.moduleType}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
+                        {selectedVideoMaterial ? (
+                          <video
+                            key={selectedVideoMaterial.id}
+                            className="h-full w-full"
+                            src={selectedVideoUrl}
+                            title={selectedVideoMaterial.fileName}
+                            controls
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
+                            Select a video from this module to start playback.
+                          </div>
+                        )}
+                        {selectedVideoMaterial && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            className="absolute bottom-3 right-3 z-10"
+                            aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                            title={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                            onClick={() => {
+                              const container = videoContainerRef.current;
+                              if (!container) return;
+                              if (document.fullscreenElement === container) {
+                                document.exitFullscreen().catch(() => {
+                                  toast.error('Unable to exit full screen');
+                                });
+                                return;
+                              }
+                              if (!container.requestFullscreen) {
+                                toast.error('Full screen is not supported by this browser');
+                                return;
+                              }
+                              container.requestFullscreen().catch(() => {
+                                toast.error('Unable to open full screen');
+                              });
+                            }}
+                          >
+                            {isVideoFullscreen
+                              ? <Minimize className="h-4 w-4" />
+                              : <Maximize className="h-4 w-4" />}
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>{selectedVideoClass.moduleName}</CardTitle>
+                      <CardDescription>Selected topic and academic details</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                      <p><span className="text-muted-foreground">Topic:</span> {selectedVideoClass.moduleName}</p>
+                      <p><span className="text-muted-foreground">Module Code:</span> {selectedVideoClass.moduleCode}</p>
+                      <p><span className="text-muted-foreground">Module Type:</span> {selectedVideoClass.moduleType}</p>
+                      <p><span className="text-muted-foreground">Semester:</span> {selectedVideoClass.semester?.semesterName || 'Not assigned'}</p>
+                      <p><span className="text-muted-foreground">Program:</span> {program?.name || 'Not assigned'}</p>
+                      <p><span className="text-muted-foreground">Session:</span> {enrolledSession?.name || 'Not assigned'}</p>
+                    </CardContent>
+                  </Card>
+                </>
+              ) : (
+                <Card>
+                  <CardContent className="py-16 text-center text-sm text-muted-foreground">
+                    Select a module from the classes list to see its uploaded videos.
+                  </CardContent>
+                </Card>
+              )}
             </div>
-            <Card className="h-fit lg:sticky lg:top-20">
+            <Card className="h-fit self-start lg:sticky lg:top-20">
               <CardHeader>
-                <CardTitle>Classes</CardTitle>
-                <CardDescription>Class number and section</CardDescription>
+                <CardTitle>{selectedVideoClass ? 'Videos' : 'Modules'}</CardTitle>
+                <CardDescription>{selectedVideoClass ? selectedVideoClass.moduleName : 'Topics from your enrolled program'}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
-                {studentVideoClasses.map(videoClass => (
-                  <Button
-                    key={videoClass.number}
-                    type="button"
-                    variant={selectedVideoClass.number === videoClass.number ? 'default' : 'outline'}
-                    className="h-auto w-full justify-start py-3 text-left"
-                    onClick={() => setSelectedVideoClass(videoClass)}
-                  >
-                    <span className="flex flex-col items-start gap-1">
-                      <span>Class {videoClass.number}</span>
-                      <span className="text-xs font-normal opacity-80">{videoClass.section}</span>
-                    </span>
-                  </Button>
-                ))}
+                <div className="h-[360px] overflow-y-auto space-y-2 pr-1">
+                  {selectedVideoClass ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => {
+                          setSelectedVideoClassId(null);
+                          setSelectedVideoMaterialId(null);
+                        }}
+                      >
+                        ← Back to modules
+                      </Button>
+                      {selectedVideoMaterials.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">No videos uploaded for this module.</p>
+                      ) : selectedVideoMaterials.map((material: any) => (
+                        <Button
+                          key={material.id}
+                          type="button"
+                          variant={selectedVideoMaterial?.id === material.id ? 'default' : 'outline'}
+                          className="h-auto w-full justify-start py-3 text-left"
+                          onClick={() => setSelectedVideoMaterialId(material.id)}
+                        >
+                          <span className="flex min-w-0 flex-col items-start gap-1">
+                            <span className="w-full truncate">{material.fileName}</span>
+                            <span className="text-xs font-normal opacity-80">{selectedVideoClass.moduleCode} · uploaded video</span>
+                          </span>
+                        </Button>
+                      ))}
+                    </>
+                  ) : studentVideoClasses.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">No modules available for your enrolled session.</p>
+                  ) : studentVideoClasses.map((videoClass: any) => (
+                    <Button
+                      key={videoClass.id}
+                      type="button"
+                      variant="outline"
+                      className="h-auto w-full justify-start py-3 text-left"
+                      onClick={() => {
+                        setSelectedVideoClassId(videoClass.id);
+                        setSelectedVideoMaterialId(null);
+                      }}
+                    >
+                      <span className="flex flex-col items-start gap-1">
+                        <span>Class {videoClass.number}: {videoClass.moduleName}</span>
+                        <span className="text-xs font-normal opacity-80">{videoClass.moduleCode} · {videoClass.moduleType}</span>
+                      </span>
+                    </Button>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -504,17 +824,14 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       {/* Hero Welcome Section */}
       <section className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b py-8">
         <div className="container mx-auto px-4">
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back, {student.name}!</h1>
-          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
-            Access your academic resources, syllabus, and study materials here.
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Hello {student.name}, welcome to Student Portal</h1>
         </div>
       </section>
 
       {/* Main Grid Content */}
-      <main className="container mx-auto px-4 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="container mx-auto max-w-7xl px-4 mt-8">
         {/* Left Column: Academic & Center Details */}
-        <div className="space-y-6">
+        <div className="max-w-md space-y-6">
           <Card className="border-none shadow-xl bg-card/60 backdrop-blur-xl">
             <CardHeader>
               <CardTitle className="text-lg">Academic Profile</CardTitle>
@@ -531,6 +848,14 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                       {program.code}
                     </Badge>
                   )}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <BookOpen className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Active Session</p>
+                  <p className="font-semibold text-sm">{enrolledSession?.name || 'Not assigned'}</p>
                 </div>
               </div>
 
@@ -569,101 +894,6 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </div>
 
-        {/* Right Column: Semesters & Materials */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border-none shadow-xl">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <CardTitle>Study Materials</CardTitle>
-                <CardDescription>Select a semester to download files</CardDescription>
-              </div>
-              <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 self-start sm:self-center">
-                Active Session
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {totalSemesters > 0 ? (
-                <Tabs value={selectedSemester} onValueChange={setSelectedSemester} className="space-y-6">
-                  <TabsList className="flex flex-wrap gap-1 bg-muted p-1 h-auto justify-start">
-                    {semesterList.map((sem) => (
-                      <TabsTrigger key={sem} value={sem} className="py-1.5 px-3">
-                        Semester {sem}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-
-                  {semesterList.map((sem) => {
-                    const filteredMaterials = materials.filter(
-                      (m) => m.semesterNumber === sem
-                    );
-
-                    return (
-                      <TabsContent key={sem} value={sem} className="space-y-4 outline-none">
-                        {filteredMaterials.length === 0 ? (
-                          <div className="text-center py-12 border border-dashed rounded-xl bg-muted/10">
-                            <FileDown className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                            <p className="font-semibold text-muted-foreground">No Materials Available</p>
-                            <p className="text-xs text-muted-foreground/80 mt-1 max-w-sm mx-auto">
-                              No study materials, syllabus, or question papers have been uploaded for Semester {sem} yet.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {filteredMaterials.map((m) => (
-                              <div
-                                key={m.id}
-                                className="flex items-start justify-between p-4 border rounded-xl hover:bg-muted/30 transition-all duration-200 group"
-                              >
-                                <div className="flex gap-3">
-                                  <div className="p-2.5 rounded-lg bg-background border mt-0.5">
-                                    {getCategoryIcon(m.category)}
-                                  </div>
-                                  <div className="space-y-1">
-                                    <h4 className="font-semibold text-sm line-clamp-1 leading-snug">
-                                      {m.title}
-                                    </h4>
-                                    {m.description && (
-                                      <p className="text-xs text-muted-foreground line-clamp-1">
-                                        {m.description}
-                                      </p>
-                                    )}
-                                    <div className="flex flex-wrap gap-2 pt-1.5">
-                                      <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
-                                        {getCategoryLabel(m.category)}
-                                      </Badge>
-                                      {m.uploader?.name && (
-                                        <span className="text-[10px] text-muted-foreground">
-                                          By {m.uploader.name}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDownload(m)}
-                                  className="rounded-full opacity-60 hover:opacity-100 group-hover:bg-primary/10 group-hover:text-primary transition-all shrink-0"
-                                  title="Download File"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </TabsContent>
-                    );
-                  })}
-                </Tabs>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground text-sm">No semesters found in your program structure.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
       </main>
       </>
       )}

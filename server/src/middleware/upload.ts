@@ -42,3 +42,25 @@ export const upload = multer({
   },
   fileFilter,
 });
+
+const videoFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  const allowedExtensions = new Set(['.mp4', '.webm', '.mov', '.m4v']);
+  const allowedMimeTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v']);
+  const extension = path.extname(file.originalname).toLowerCase();
+
+  if (allowedExtensions.has(extension) && allowedMimeTypes.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+  cb(new Error('Invalid video type. Upload an MP4, WebM, MOV, or M4V video.'));
+};
+
+export const uploadVideo = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: videoFileFilter,
+});
