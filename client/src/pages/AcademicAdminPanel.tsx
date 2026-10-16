@@ -32,6 +32,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [moduleForm, setModuleForm] = useState({ moduleCode: '', moduleName: '', moduleType: '' });
+  const [ebookModule, setEbookModule] = useState<any | null>(null);
+  const [ebookMaterials, setEbookMaterials] = useState<any[]>([]);
+  const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const [ebookLoading, setEbookLoading] = useState(false);
+  const [ebookUploading, setEbookUploading] = useState(false);
+  const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
+  const [allEbooks, setAllEbooks] = useState<any[]>([]);
+  const [allEbooksLoading, setAllEbooksLoading] = useState(false);
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
@@ -69,6 +77,102 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       return {};
     }
   });
+
+  const moduleEbookTag = (module: any) => `Module: ${module.id} - ${module.moduleName}`;
+
+  const openEbookDialog = async (module: any) => {
+    setEbookModule(module);
+    setEbookFile(null);
+    setEbookEditingMaterialId(null);
+    setEbookMaterials([]);
+    setEbookLoading(true);
+    try {
+      const response = await api.get(`/operations/programs/${module.programId}/materials`);
+      const moduleTag = moduleEbookTag(module);
+      setEbookMaterials((response.data.data || []).filter((material: any) => (
+        material.category === 'ebook' && material.description === moduleTag
+      )));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Failed to load this module's E-Books");
+    } finally {
+      setEbookLoading(false);
+    }
+  };
+
+  const fetchAllEbooks = async () => {
+    setAllEbooksLoading(true);
+    try {
+      const response = await api.get('/operations/ebooks');
+      setAllEbooks(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load E-Books');
+    } finally {
+      setAllEbooksLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialTab === 'academic-ebooks') fetchAllEbooks();
+  }, [initialTab]);
+
+  const uploadModuleEbook = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!ebookModule || !ebookFile) {
+      toast.error('Select a PDF document to upload');
+      return;
+    }
+    if (ebookFile.type !== 'application/pdf' && !ebookFile.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Only PDF documents are allowed');
+      return;
+    }
+
+    setEbookUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('title', ebookFile.name);
+      formData.append('description', moduleEbookTag(ebookModule));
+      formData.append('category', 'ebook');
+      formData.append('file', ebookFile);
+      const endpoint = `/operations/programs/${ebookModule.programId}/materials`;
+      const response = ebookEditingMaterialId
+        ? await api.put(`${endpoint}/${ebookEditingMaterialId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+        : await api.post(endpoint, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (ebookEditingMaterialId) {
+        setEbookMaterials(current => current.map(material => material.id === ebookEditingMaterialId ? response.data.data : material));
+        toast.success('E-Book updated successfully');
+      } else {
+        setEbookMaterials(current => [response.data.data, ...current]);
+        toast.success('E-Book uploaded successfully');
+      }
+      setEbookEditingMaterialId(null);
+      setEbookFile(null);
+      if (initialTab === 'academic-ebooks') fetchAllEbooks();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save E-Book');
+    } finally {
+      setEbookUploading(false);
+    }
+  };
+
+  const deleteModuleEbook = async (material: any) => {
+    const programId = ebookModule?.programId || material.programId;
+    if (!programId || !window.confirm(`Delete "${material.fileName}"?`)) return;
+    try {
+      await api.delete(`/operations/programs/${programId}/materials/${material.id}`);
+      setEbookMaterials(current => current.filter(item => item.id !== material.id));
+      setAllEbooks(current => current.filter(item => item.id !== material.id));
+      setEbookEditingMaterialId(current => current === material.id ? null : current);
+      toast.success('E-Book deleted');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete E-Book');
+    }
+  };
+
+  const editAllEbook = async (material: any) => {
+    if (!material.module) return;
+    await openEbookDialog({ ...material.module, programId: material.programId });
+    setEbookEditingMaterialId(material.id);
+  };
 
   const fetchSessions = async () => {
     try {
@@ -649,9 +753,60 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : 'Manage programs by academic session'}</p>
+        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : 'Manage programs by academic session'}</p>
       </div>
+
+      {initialTab === 'academic-ebooks' && (
+        <Card>
+          <CardContent className="pt-6">
+            {allEbooksLoading ? (
+              <p className="py-8 text-center text-muted-foreground">Loading E-Books...</p>
+            ) : allEbooks.length === 0 ? (
+              <p className="py-8 text-center text-muted-foreground">No E-Books uploaded.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="p-3 text-left">Program</th>
+                      <th className="p-3 text-left">Session</th>
+                      <th className="p-3 text-left">Module</th>
+                      <th className="p-3 text-left">E-Book File</th>
+                      <th className="p-3 text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allEbooks.map(material => {
+                      const fileUrl = material.fileUrl.startsWith('http')
+                        ? material.fileUrl
+                        : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${material.fileUrl}`;
+                      return (
+                        <tr key={material.id} className="border-t">
+                          <td className="p-3">{material.program?.name || '-'}</td>
+                          <td className="p-3">{material.session?.name || '-'}</td>
+                          <td className="p-3">{material.module?.moduleName || '-'}</td>
+                          <td className="p-3">
+                            <a href={fileUrl} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
+                              {material.fileName}
+                            </a>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => editAllEbook(material)}>Update</Button>
+                              <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteModuleEbook(material)}>Delete</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {initialTab === 'academic-study-material' && (
         <Card>
@@ -803,7 +958,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {initialTab === 'academic-modules' && (
         <Card>
           <CardHeader><CardTitle>All Modules ({modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).length})</CardTitle><p className="text-sm text-muted-foreground">Filter modules by academic session, program, and semester</p></CardHeader>
-          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><Button type="button" variant="outline" size="sm">Add Study Material</Button></div>)}</div></div></CardContent>
+          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button></div>)}</div></div></CardContent>
         </Card>
       )}
 
@@ -837,7 +992,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                       <Badge variant="outline">{module.moduleType}</Badge>
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <Button type="button" variant="outline" size="sm">Add Study Material</Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => handleEditModule(module)}><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
                       <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteModule(module)}><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
                     </div>
@@ -994,6 +1149,64 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               </div>
             </div>
           ) : <p className="text-sm text-muted-foreground">No examination selected.</p>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(ebookModule)} onOpenChange={open => { if (!open && !ebookUploading) setEbookModule(null); }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{ebookEditingMaterialId ? 'Update E-Book' : 'Add E-Book'} - {ebookModule?.moduleName}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={uploadModuleEbook} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ebookPdf">{ebookEditingMaterialId ? 'Replacement PDF document' : 'PDF document'}</Label>
+              <Input
+                key={ebookEditingMaterialId || 'new-ebook'}
+                id="ebookPdf"
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={event => setEbookFile(event.target.files?.[0] || null)}
+                required
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={!ebookFile || ebookUploading}>
+                {ebookUploading ? 'Saving...' : ebookEditingMaterialId ? 'Update E-Book' : 'Upload E-Book'}
+              </Button>
+              {ebookEditingMaterialId && <Button type="button" variant="outline" onClick={() => { setEbookEditingMaterialId(null); setEbookFile(null); }}>Cancel Update</Button>}
+              <Button type="button" variant="outline" onClick={() => setEbookModule(null)} disabled={ebookUploading}>Close</Button>
+            </div>
+          </form>
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold">Uploaded Files</h3>
+            {ebookLoading ? (
+              <p className="text-sm text-muted-foreground">Loading E-Books...</p>
+            ) : ebookMaterials.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No E-Books uploaded for this module.</p>
+            ) : (
+              <div className="max-h-64 space-y-2 overflow-y-auto">
+                {ebookMaterials.map(material => {
+                  const fileUrl = material.fileUrl.startsWith('http')
+                    ? material.fileUrl
+                    : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${material.fileUrl}`;
+                  return (
+                    <div key={material.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <a href={fileUrl} target="_blank" rel="noreferrer" className="truncate text-sm font-medium text-primary hover:underline">
+                          {material.fileName}
+                        </a>
+                        <Badge variant="outline">{ebookModule?.moduleName}</Badge>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setEbookEditingMaterialId(material.id); setEbookFile(null); }}>Update</Button>
+                        <Button type="button" size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteModuleEbook(material)}>Delete</Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
