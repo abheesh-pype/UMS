@@ -340,7 +340,7 @@ function App() {
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
         { id: 'academic-ebooks', label: 'E-Book' },
-        { id: 'academic-study-material', label: 'Study Material' },
+        { id: 'academic-video-classes', label: 'Video Classes' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
         {
           id: 'academic-examination',
