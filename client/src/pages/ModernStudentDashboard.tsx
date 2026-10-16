@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { 
   BookOpen, 
   Download, 
@@ -15,6 +16,10 @@ import {
   LogOut, 
   MapPin, 
   School,
+  Video,
+  Calendar,
+  Clock,
+  ExternalLink,
   Maximize,
   Minimize
 } from 'lucide-react';
@@ -59,8 +64,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [selectedVideoMaterialId, setSelectedVideoMaterialId] = useState<string | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes' | 'e-books' | 'results' | 'documents'>(
-    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
       ? initialTab
       : 'portal'
   );
@@ -87,7 +92,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
   useEffect(() => {
     setActiveSection(
-      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
         ? initialTab
         : 'portal'
     );
@@ -326,32 +331,70 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const program = student.program;
   const enrolledSessionId = student.sessionId || student.activeSession?.id || program?.academicSessionId;
   const enrolledSession = student.activeSession || program?.academicSession;
-  const enrolledSemesters = (program?.semesterRecords || []).filter(
-    (semester: any) => semester.academicSessionId === enrolledSessionId
-  );
+  const enrolledSemesters = (program?.semesterRecords || [])
+    .filter((semester: any) => semester.academicSessionId === enrolledSessionId)
+    .sort((a, b) => a.semesterNumber - b.semesterNumber);
   const semesterList = enrolledSemesters.map((semester: any) => String(semester.semesterNumber));
   const activeSemester = semesterList.includes(selectedSemester) ? selectedSemester : semesterList[0];
   const enrolledModules = (program?.modules || []).filter(
     (module: any) => module.academicSessionId === enrolledSessionId
   );
-  const studentVideoClasses = enrolledModules.map((module: any, index: number) => ({
-    ...module,
-    number: index + 1,
-    section: module.moduleName,
-  }));
-  const selectedVideoClass = studentVideoClasses.find((videoClass: any) => videoClass.id === selectedVideoClassId) || null;
-  const selectedVideoMaterials = materials.filter(
-    material => material.category === 'video'
-      && selectedVideoClass
-      && material.description === `Module: ${selectedVideoClass.id} - ${selectedVideoClass.moduleName}`
-  );
-  const selectedVideoMaterial = selectedVideoMaterials.find(material => material.id === selectedVideoMaterialId) || null;
+  const getVideoMetadata = (material: { category: string; description?: string | null }) => {
+    if (material.category === 'video_class') {
+      try {
+        const metadata = JSON.parse(material.description || '{}');
+        return {
+          moduleId: metadata.moduleId || '',
+          sessionId: metadata.sessionId || '',
+        };
+      } catch {
+        return { moduleId: '', sessionId: '' };
+      }
+    }
+    return {
+      moduleId: material.description?.match(/^Module: ([\w-]+) - /)?.[1] || '',
+      sessionId: '',
+    };
+  };
+  const getYouTubeEmbedUrl = (url: string) => {
+    try {
+      const parsedUrl = new URL(url);
+      const host = parsedUrl.hostname.toLowerCase().replace(/^www\./, '');
+      let videoId = '';
+      if (host === 'youtu.be') {
+        videoId = parsedUrl.pathname.split('/').filter(Boolean)[0] || '';
+      } else if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+        videoId = parsedUrl.searchParams.get('v') || parsedUrl.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/)?.[1] || '';
+      }
+      return /^[\w-]{11}$/.test(videoId) ? `https://www.youtube.com/embed/${videoId}` : '';
+    } catch {
+      return '';
+    }
+  };
+  const getVideosForModule = (module: { id: string }) => materials.filter(material => {
+    if (material.category !== 'video_class' && material.category !== 'video') return false;
+    const metadata = getVideoMetadata(material);
+    return metadata.moduleId === module.id
+      && (!metadata.sessionId || metadata.sessionId === enrolledSessionId);
+  });
   const videoApiBase = import.meta.env.VITE_API_URL || '/api/v1';
-  const selectedVideoUrl = selectedVideoMaterial
-    ? selectedVideoMaterial.fileUrl.startsWith('http')
-      ? selectedVideoMaterial.fileUrl
-      : `${videoApiBase.replace('/api/v1', '')}${selectedVideoMaterial.fileUrl}`
-    : '';
+  const sampleMeetingLinks = [
+    'https://meet.google.com/abc-defg-hij',
+    'https://meet.google.com/jkl-mnop-qrs',
+    'https://meet.google.com/tuv-wxyz-abc',
+  ];
+  const scheduledClassSamples = [0, 1, 2].map(index => {
+    const module = enrolledModules[index % Math.max(enrolledModules.length, 1)];
+    const semester = enrolledSemesters.find(item => item.id === module?.semesterId);
+    const startsAt = new Date(Date.now() + (index + 1) * 60 * 60 * 1000);
+    return {
+      id: `sample-scheduled-class-${index + 1}`,
+      startsAt,
+      moduleName: module?.moduleName || `Sample Module ${index + 1}`,
+      semesterName: semester?.semesterName || `Semester ${index + 1}`,
+      meetingUrl: sampleMeetingLinks[index],
+    };
+  });
   const selectedEbookModule = enrolledModules.find((module: any) => module.id === selectedEbookModuleId);
   const selectedModuleEbooks = materials.filter(
     material => material.category === 'ebook'
@@ -604,15 +647,15 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
               ) : (
                 <Tabs value={activeSemester} onValueChange={value => { setSelectedSemester(value); setSelectedEbookModuleId(null); }} className="space-y-6">
                   <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted p-1">
-                    {enrolledSemesters.map((semester: any) => (
+                    {enrolledSemesters.map(semester => (
                       <TabsTrigger key={semester.id} value={String(semester.semesterNumber)} className="px-3 py-1.5">
                         {semester.semesterName}
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                  {enrolledSemesters.map((semester: any) => {
+                  {enrolledSemesters.map(semester => {
                     const semesterModules = enrolledModules.filter(
-                      (module: any) => module.semesterId === semester.id
+                      module => module.semesterId === semester.id
                     );
                     return (
                       <TabsContent key={semester.id} value={String(semester.semesterNumber)} className="space-y-5 outline-none">
@@ -673,151 +716,255 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
             </CardContent>
           </Card>
         </main>
+      ) : activeSection === 'scheduled-classes' ? (
+        <main className="container mx-auto max-w-5xl px-4 py-8">
+          <div className="mb-6">
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+              <Calendar className="h-6 w-6 text-primary" />
+              Scheduled Classes
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Upcoming live classes for {program?.name || 'your program'} · {enrolledSession?.name || 'your session'}.
+            </p>
+          </div>
+          <div className="mb-5 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-muted-foreground">
+            These are sample schedule notifications. Class times and meeting links are for demonstration only.
+          </div>
+          <div className="space-y-4">
+            {scheduledClassSamples.map((scheduledClass, index) => (
+              <Card key={scheduledClass.id}>
+                <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-4">
+                    <div className="rounded-full bg-primary/10 p-3 text-primary">
+                      <Video className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="font-semibold">{scheduledClass.moduleName} Live Class</h2>
+                        <Badge variant="secondary">Upcoming</Badge>
+                        <Badge variant="outline">Demo</Badge>
+                      </div>
+                      <div className="grid gap-x-6 gap-y-1 text-sm text-muted-foreground sm:grid-cols-2">
+                        <p><span className="font-medium text-foreground">Session:</span> {enrolledSession?.name || 'Current session'}</p>
+                        <p><span className="font-medium text-foreground">Program:</span> {program?.name || 'Your program'}</p>
+                        <p><span className="font-medium text-foreground">Semester:</span> {scheduledClass.semesterName}</p>
+                        <p><span className="font-medium text-foreground">Module:</span> {scheduledClass.moduleName}</p>
+                      </div>
+                      <p className="flex items-center gap-2 text-sm font-medium text-primary">
+                        <Clock className="h-4 w-4" />
+                        Starts in {index + 1} {index === 0 ? 'hour' : 'hours'} · {scheduledClass.startsAt.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    className="shrink-0"
+                    onClick={() => window.open(scheduledClass.meetingUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    Join Class
+                    <ExternalLink className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </main>
       ) : activeSection === 'video-classes' ? (
-        <main className="container mx-auto px-4 py-8 max-w-7xl">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-6">
-              {selectedVideoClass ? (
-                <>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{selectedVideoMaterial?.fileName || selectedVideoClass.moduleName}</CardTitle>
-                      <CardDescription>{selectedVideoClass.moduleCode} · {selectedVideoClass.moduleType}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
-                        {selectedVideoMaterial ? (
-                          <video
-                            key={selectedVideoMaterial.id}
-                            className="h-full w-full"
-                            src={selectedVideoUrl}
-                            title={selectedVideoMaterial.fileName}
-                            controls
-                            playsInline
-                            preload="metadata"
-                          />
+        <main className="container mx-auto max-w-screen-2xl px-4 py-10">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Video className="h-5 w-5 text-primary" />
+                Video Classes
+              </CardTitle>
+              <CardDescription>
+                {program?.name || 'Your program'} · {enrolledSession?.name || 'Current session'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {semesterList.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No semesters are available for your enrolled session.
+                </p>
+              ) : (
+                <Tabs
+                  value={activeSemester}
+                  onValueChange={value => {
+                    setSelectedSemester(value);
+                    setSelectedVideoClassId(null);
+                    setSelectedVideoMaterialId(null);
+                  }}
+                  className="space-y-5"
+                >
+                  <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted p-1">
+                    {enrolledSemesters.map((semester: any) => (
+                      <TabsTrigger key={semester.id} value={String(semester.semesterNumber)} className="px-4 py-2">
+                        {semester.semesterName}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {enrolledSemesters.map((semester: any) => {
+                    const semesterModules = enrolledModules.filter(
+                      (module: any) => module.semesterId === semester.id
+                    );
+                    const semesterVideos = semesterModules.flatMap(module =>
+                      getVideosForModule(module).map(material => ({ module, material }))
+                    );
+                    const selectedSemesterVideo = semesterVideos.find(
+                      ({ material }) => material.id === selectedVideoMaterialId
+                    );
+                    const selectedVideoUrl = selectedSemesterVideo
+                      ? selectedSemesterVideo.material.fileUrl.startsWith('http')
+                        ? selectedSemesterVideo.material.fileUrl
+                        : `${videoApiBase.replace('/api/v1', '')}${selectedSemesterVideo.material.fileUrl}`
+                      : '';
+                    const selectedVideoEmbedUrl = selectedVideoUrl ? getYouTubeEmbedUrl(selectedVideoUrl) : '';
+                    return (
+                      <TabsContent key={semester.id} value={String(semester.semesterNumber)} className="outline-none">
+                        {semesterModules.length === 0 ? (
+                          <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+                            No modules are available for {semester.semesterName}.
+                          </p>
                         ) : (
-                          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-white/80">
-                            Select a video from this module to start playback.
+                          <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+                            <Card className="min-w-0 overflow-hidden">
+                              {selectedSemesterVideo ? (
+                                <>
+                                  <CardHeader>
+                                    <CardTitle className="truncate">
+                                      {selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
+                                    </CardTitle>
+                                    <CardDescription>
+                                      {selectedSemesterVideo.module.moduleName}
+                                      {selectedSemesterVideo.module.moduleCode ? ` · ${selectedSemesterVideo.module.moduleCode}` : ''}
+                                    </CardDescription>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
+                                      {selectedVideoEmbedUrl ? (
+                                        <iframe
+                                          key={selectedSemesterVideo.material.id}
+                                          className="h-full w-full"
+                                          src={selectedVideoEmbedUrl}
+                                          title={selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
+                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                          allowFullScreen
+                                        />
+                                      ) : (
+                                        <video
+                                          key={selectedSemesterVideo.material.id}
+                                          className="h-full w-full"
+                                          src={selectedVideoUrl}
+                                          title={selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
+                                          controls
+                                          playsInline
+                                          preload="metadata"
+                                        />
+                                      )}
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="secondary"
+                                        className="absolute bottom-3 right-3 z-10"
+                                        aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                                        title={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                                        onClick={() => {
+                                          const container = videoContainerRef.current;
+                                          if (!container) return;
+                                          if (document.fullscreenElement === container) {
+                                            document.exitFullscreen().catch(() => toast.error('Unable to exit full screen'));
+                                            return;
+                                          }
+                                          if (!container.requestFullscreen) {
+                                            toast.error('Full screen is not supported by this browser');
+                                            return;
+                                          }
+                                          container.requestFullscreen().catch(() => toast.error('Unable to open full screen'));
+                                        }}
+                                      >
+                                        {isVideoFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                                      </Button>
+                                    </div>
+                                  </CardContent>
+                                </>
+                              ) : (
+                                <CardContent className="flex aspect-video flex-col items-center justify-center gap-3 p-8 text-center">
+                                  <Video className="h-10 w-10 text-muted-foreground" />
+                                  <div>
+                                    <p className="font-medium">Choose a video to start watching</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      Select a class from {semester.semesterName} on the right.
+                                    </p>
+                                  </div>
+                                </CardContent>
+                              )}
+                            </Card>
+                            <Card className="min-w-0 lg:sticky lg:top-20">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Upcoming videos</CardTitle>
+                                <CardDescription>{program?.name || 'Your program'} · {semester.semesterName}</CardDescription>
+                              </CardHeader>
+                              <CardContent className="max-h-[78vh] overflow-y-auto pt-0">
+                                <Accordion
+                                  type="single"
+                                  collapsible
+                                  value={selectedVideoClassId || ''}
+                                  onValueChange={value => {
+                                    setSelectedVideoClassId(value || null);
+                                    setSelectedVideoMaterialId(null);
+                                  }}
+                                  className="divide-y"
+                                >
+                                  {semesterModules.map(module => {
+                                    const moduleVideos = getVideosForModule(module);
+                                    return (
+                                      <AccordionItem key={module.id} value={module.id}>
+                                        <AccordionTrigger className="gap-2 py-3 text-left hover:no-underline">
+                                          <span className="min-w-0 flex-1">
+                                            <span className="block truncate font-medium">{module.moduleName}</span>
+                                            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                              {module.moduleCode}{module.moduleType ? ` · ${module.moduleType}` : ''}
+                                            </span>
+                                          </span>
+                                          <Badge variant="secondary" className="shrink-0">
+                                            {moduleVideos.length}
+                                          </Badge>
+                                        </AccordionTrigger>
+                                        <AccordionContent className="space-y-2 pb-3">
+                                          {moduleVideos.length === 0 ? (
+                                            <p className="px-2 py-2 text-xs text-muted-foreground">
+                                              No videos uploaded for this module yet.
+                                            </p>
+                                          ) : moduleVideos.map(material => (
+                                            <Button
+                                              key={material.id}
+                                              type="button"
+                                              variant={selectedVideoMaterialId === material.id ? 'default' : 'ghost'}
+                                              className="h-auto w-full justify-start whitespace-normal px-2 py-2 text-left"
+                                              onClick={() => setSelectedVideoMaterialId(material.id)}
+                                            >
+                                              <Video className="mr-2 h-4 w-4 shrink-0" />
+                                              <span className="line-clamp-2">
+                                                {material.title || material.fileName}
+                                              </span>
+                                            </Button>
+                                          ))}
+                                        </AccordionContent>
+                                      </AccordionItem>
+                                    );
+                                  })}
+                                </Accordion>
+                              </CardContent>
+                            </Card>
                           </div>
                         )}
-                        {selectedVideoMaterial && (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="secondary"
-                            className="absolute bottom-3 right-3 z-10"
-                            aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
-                            title={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
-                            onClick={() => {
-                              const container = videoContainerRef.current;
-                              if (!container) return;
-                              if (document.fullscreenElement === container) {
-                                document.exitFullscreen().catch(() => {
-                                  toast.error('Unable to exit full screen');
-                                });
-                                return;
-                              }
-                              if (!container.requestFullscreen) {
-                                toast.error('Full screen is not supported by this browser');
-                                return;
-                              }
-                              container.requestFullscreen().catch(() => {
-                                toast.error('Unable to open full screen');
-                              });
-                            }}
-                          >
-                            {isVideoFullscreen
-                              ? <Minimize className="h-4 w-4" />
-                              : <Maximize className="h-4 w-4" />}
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{selectedVideoClass.moduleName}</CardTitle>
-                      <CardDescription>Selected topic and academic details</CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                      <p><span className="text-muted-foreground">Topic:</span> {selectedVideoClass.moduleName}</p>
-                      <p><span className="text-muted-foreground">Module Code:</span> {selectedVideoClass.moduleCode}</p>
-                      <p><span className="text-muted-foreground">Module Type:</span> {selectedVideoClass.moduleType}</p>
-                      <p><span className="text-muted-foreground">Semester:</span> {selectedVideoClass.semester?.semesterName || 'Not assigned'}</p>
-                      <p><span className="text-muted-foreground">Program:</span> {program?.name || 'Not assigned'}</p>
-                      <p><span className="text-muted-foreground">Session:</span> {enrolledSession?.name || 'Not assigned'}</p>
-                    </CardContent>
-                  </Card>
-                </>
-              ) : (
-                <Card>
-                  <CardContent className="py-16 text-center text-sm text-muted-foreground">
-                    Select a module from the classes list to see its uploaded videos.
-                  </CardContent>
-                </Card>
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
               )}
-            </div>
-            <Card className="h-fit self-start lg:sticky lg:top-20">
-              <CardHeader>
-                <CardTitle>{selectedVideoClass ? 'Videos' : 'Modules'}</CardTitle>
-                <CardDescription>{selectedVideoClass ? selectedVideoClass.moduleName : 'Topics from your enrolled program'}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[360px] overflow-y-auto space-y-2 pr-1">
-                  {selectedVideoClass ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="w-full justify-start"
-                        onClick={() => {
-                          setSelectedVideoClassId(null);
-                          setSelectedVideoMaterialId(null);
-                        }}
-                      >
-                        ← Back to modules
-                      </Button>
-                      {selectedVideoMaterials.length === 0 ? (
-                        <p className="py-8 text-center text-sm text-muted-foreground">No videos uploaded for this module.</p>
-                      ) : selectedVideoMaterials.map((material: any) => (
-                        <Button
-                          key={material.id}
-                          type="button"
-                          variant={selectedVideoMaterial?.id === material.id ? 'default' : 'outline'}
-                          className="h-auto w-full justify-start py-3 text-left"
-                          onClick={() => setSelectedVideoMaterialId(material.id)}
-                        >
-                          <span className="flex min-w-0 flex-col items-start gap-1">
-                            <span className="w-full truncate">{material.fileName}</span>
-                            <span className="text-xs font-normal opacity-80">{selectedVideoClass.moduleCode} · uploaded video</span>
-                          </span>
-                        </Button>
-                      ))}
-                    </>
-                  ) : studentVideoClasses.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">No modules available for your enrolled session.</p>
-                  ) : studentVideoClasses.map((videoClass: any) => (
-                    <Button
-                      key={videoClass.id}
-                      type="button"
-                      variant="outline"
-                      className="h-auto w-full justify-start py-3 text-left"
-                      onClick={() => {
-                        setSelectedVideoClassId(videoClass.id);
-                        setSelectedVideoMaterialId(null);
-                      }}
-                    >
-                      <span className="flex flex-col items-start gap-1">
-                        <span>Class {videoClass.number}: {videoClass.moduleName}</span>
-                        <span className="text-xs font-normal opacity-80">{videoClass.moduleCode} · {videoClass.moduleType}</span>
-                      </span>
-                    </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+            </CardContent>
+          </Card>
         </main>
       ) : (
       <>
