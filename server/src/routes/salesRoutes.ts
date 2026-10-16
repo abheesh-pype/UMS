@@ -31,6 +31,7 @@ import {
   getSalesEnrollmentSessions,
   checkSalesEnrollmentEmail,
   createSalesStudentEnrollment,
+  updateSalesStudentEnrollment,
 } from '../controllers/salesEnrollmentController.js';
 
 const router = express.Router();
@@ -63,6 +64,8 @@ router.get('/enrollment-programs', authorize('sales_admin', 'sales_sub_admin', '
 router.get('/enrollment-sessions', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), getSalesEnrollmentSessions);
 router.post('/enrollment-check-email', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), checkSalesEnrollmentEmail);
 router.post('/enroll-student', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), createSalesStudentEnrollment);
+router.put('/enroll-student/:id', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), updateSalesStudentEnrollment);
+router.put('/student-applications/:id/resubmit', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), updateSalesStudentEnrollment);
 
 // My study centers (via invite links — self + subordinates)
 router.get('/my-centers', getMyCenters);

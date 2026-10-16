@@ -190,3 +190,222 @@ export const deleteProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
   }
   res.json({ success: true, data: {} });
 });
+
+export const getAllVideoClasses = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const materials = await prisma.programMaterial.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      category: 'video_class',
+      isActive: true,
+    },
+    include: {
+      program: {
+        select: {
+          id: true,
+          name: true,
+          academicSessionId: true,
+          academicSession: { select: { id: true, name: true, startDate: true, endDate: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const data = materials.map(item => {
+    let meta: any = {};
+    try {
+      meta = JSON.parse(item.description || '{}');
+    } catch {
+      meta = { text: item.description };
+    }
+    return {
+      id: item.id,
+      title: item.title,
+      description: meta.text !== undefined ? meta.text : (item.description || ''),
+      sessionId: meta.sessionId || item.program?.academicSessionId || '',
+      sessionName: meta.sessionName || item.program?.academicSession?.name || '',
+      programId: item.programId,
+      programName: meta.programName || item.program?.name || '',
+      semesterId: meta.semesterId || '',
+      semesterName: meta.semesterName || '',
+      moduleId: meta.moduleId || '',
+      moduleName: meta.moduleName || '',
+      fileUrl: item.fileUrl,
+      fileName: item.fileName,
+      youtubeUrl: meta.youtubeUrl || (item.fileUrl?.startsWith('http') ? item.fileUrl : ''),
+      createdAt: item.createdAt,
+    };
+  });
+
+  res.json({ success: true, count: data.length, data });
+});
+
+export const createVideoClass = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    title,
+    description,
+    sessionId,
+    sessionName,
+    programId,
+    programName,
+    semesterId,
+    semesterName,
+    moduleId,
+    moduleName,
+    youtubeUrl,
+  } = req.body;
+
+  if (!title?.trim()) {
+    res.status(400).json({ success: false, message: 'Video title is required' });
+    return;
+  }
+  if (!programId) {
+    res.status(400).json({ success: false, message: 'Program is required' });
+    return;
+  }
+
+  let fileUrl = '';
+  let fileName = '';
+
+  if (req.file) {
+    fileUrl = `/uploads/${req.file.filename}`;
+    fileName = req.file.originalname;
+  } else if (youtubeUrl?.trim()) {
+    fileUrl = youtubeUrl.trim();
+    fileName = 'YouTube Video';
+  } else {
+    res.status(400).json({ success: false, message: 'Please upload a video file or provide a YouTube video link' });
+    return;
+  }
+
+  const meta = {
+    text: description || '',
+    sessionId: sessionId || '',
+    sessionName: sessionName || '',
+    programId,
+    programName: programName || '',
+    semesterId: semesterId || '',
+    semesterName: semesterName || '',
+    moduleId: moduleId || '',
+    moduleName: moduleName || '',
+    youtubeUrl: youtubeUrl || '',
+  };
+
+  const material = await prisma.programMaterial.create({
+    data: {
+      title: title.trim(),
+      description: JSON.stringify(meta),
+      category: 'video_class',
+      semesterNumber: semesterId || null,
+      fileUrl,
+      fileName,
+      isActive: true,
+      program: { connect: { id: programId } },
+      organization: { connect: { id: req.user.organizationId } },
+      uploader: { connect: { id: req.user.id } },
+    },
+  });
+
+  res.status(201).json({ success: true, data: material });
+});
+
+export const updateVideoClass = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const {
+    title,
+    description,
+    sessionId,
+    sessionName,
+    programId,
+    programName,
+    semesterId,
+    semesterName,
+    moduleId,
+    moduleName,
+    youtubeUrl,
+  } = req.body;
+
+  const existing = await prisma.programMaterial.findFirst({
+    where: {
+      id,
+      organizationId: req.user.organizationId,
+      category: 'video_class',
+      isActive: true,
+    },
+  });
+
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Video class not found' });
+    return;
+  }
+
+  let fileUrl = existing.fileUrl;
+  let fileName = existing.fileName;
+
+  if (req.file) {
+    fileUrl = `/uploads/${req.file.filename}`;
+    fileName = req.file.originalname;
+  } else if (youtubeUrl !== undefined && youtubeUrl.trim()) {
+    fileUrl = youtubeUrl.trim();
+    fileName = 'YouTube Video';
+  }
+
+  let prevMeta: any = {};
+  try {
+    prevMeta = JSON.parse(existing.description || '{}');
+  } catch {
+    prevMeta = {};
+  }
+
+  const meta = {
+    text: description !== undefined ? description : (prevMeta.text || ''),
+    sessionId: sessionId || prevMeta.sessionId || '',
+    sessionName: sessionName || prevMeta.sessionName || '',
+    programId: programId || existing.programId,
+    programName: programName || prevMeta.programName || '',
+    semesterId: semesterId !== undefined ? semesterId : (prevMeta.semesterId || ''),
+    semesterName: semesterName !== undefined ? semesterName : (prevMeta.semesterName || ''),
+    moduleId: moduleId !== undefined ? moduleId : (prevMeta.moduleId || ''),
+    moduleName: moduleName !== undefined ? moduleName : (prevMeta.moduleName || ''),
+    youtubeUrl: youtubeUrl !== undefined ? youtubeUrl : (prevMeta.youtubeUrl || ''),
+  };
+
+  const updated = await prisma.programMaterial.update({
+    where: { id },
+    data: {
+      ...(title ? { title: title.trim() } : {}),
+      description: JSON.stringify(meta),
+      fileUrl,
+      fileName,
+      ...(programId && programId !== existing.programId ? { programId } : {}),
+      ...(semesterId !== undefined ? { semesterNumber: semesterId || null } : {}),
+    },
+  });
+
+  res.json({ success: true, data: updated });
+});
+
+export const deleteVideoClass = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const existing = await prisma.programMaterial.findFirst({
+    where: {
+      id,
+      organizationId: req.user.organizationId,
+      category: 'video_class',
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Video class not found' });
+    return;
+  }
+
+  await prisma.programMaterial.update({
+    where: { id },
+    data: { isActive: false },
+  });
+
+  res.json({ success: true, message: 'Video class deleted successfully' });
+});

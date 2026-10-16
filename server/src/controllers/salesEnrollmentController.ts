@@ -600,10 +600,23 @@ export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, 
     where: {
       organizationId: organizationId,
       salesUserId: { in: [...salesUserIds] },
-      ...(req.query.status === 'ops_rejected' ? { status: 'ops_rejected' } : {}),
+      ...(req.query.status === 'ops_rejected'
+        ? { status: { in: ['ops_rejected', 'department_rejected'] } }
+        : req.query.status && req.query.status !== 'all'
+          ? { status: String(req.query.status) }
+          : {}),
     },
     include: {
-      program: { select: { id: true, name: true, code: true, courseType: true } },
+      program: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          courseType: true,
+          specialisations: true,
+          university: { select: { id: true, name: true, code: true } }
+        }
+      },
       studyCenter: { select: { id: true, name: true, code: true } },
       session: { select: { id: true, name: true } },
       departmentReviewer: { select: { id: true, name: true, email: true } },
@@ -916,3 +929,262 @@ export const rejectSalesEnrollment = asyncHandler(async (req: AuthRequest, res: 
 
   res.status(200).json({ success: true, data: updated });
 });
+
+// ─── Sales: Edit & Re-submit Operations-Rejected Enrollment ─────────────────
+
+export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!await requireSalesDepartmentStaff(req, res)) return;
+
+  const { id } = req.params;
+  const {
+    studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
+    specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee,
+  } = req.body;
+
+  // 1. Fetch enrollment
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id },
+    include: { student: true }
+  });
+
+  if (!enrollment || enrollment.organizationId !== req.user.organizationId) {
+    res.status(404).json({ success: false, message: 'Enrollment not found' });
+    return;
+  }
+
+  // 2. Security restriction: only enrollments created by sales department can be edited & re-submitted by sales
+  if (!enrollment.salesUserId) {
+    res.status(403).json({ success: false, message: 'Only student enrollments created by the Sales department can be edited and re-submitted' });
+    return;
+  }
+
+  // Role scoping: sales employees can only edit their own or their team's enrollments
+  if (!['sales_admin', 'ceo', 'org_admin'].includes(req.user.role)) {
+    if (enrollment.salesUserId !== req.user.id) {
+      const subordinates = await prisma.user.findMany({
+        where: { organizationId: req.user.organizationId, reportingTo: req.user.id },
+        select: { id: true }
+      });
+      const subIds = new Set(subordinates.map(s => s.id));
+      if (!subIds.has(enrollment.salesUserId)) {
+        res.status(403).json({ success: false, message: 'You only have permission to edit and re-submit your own or team student enrollments' });
+        return;
+      }
+    }
+  }
+
+  // 3. Status check: must be rejected by operations department
+  const isOpsRejected = ['ops_rejected', 'department_rejected'].includes(enrollment.status);
+  if (!isOpsRejected) {
+    res.status(400).json({ success: false, message: 'Only enrollments rejected by the Operations department can be edited and re-submitted' });
+    return;
+  }
+
+  // 4. Validate fields
+  if (studentName !== undefined && !studentName.trim()) {
+    res.status(400).json({ success: false, message: 'Student name is required' });
+    return;
+  }
+  if (studentEmail !== undefined && !studentEmail.trim()) {
+    res.status(400).json({ success: false, message: 'Student email is required' });
+    return;
+  }
+  if (studentPhone !== undefined && !studentPhone.trim()) {
+    res.status(400).json({ success: false, message: 'Student phone is required' });
+    return;
+  }
+  if (studentAddress !== undefined && !studentAddress.trim()) {
+    res.status(400).json({ success: false, message: 'Student address is required' });
+    return;
+  }
+  if ((abcId && !/^\d{12}$/.test(abcId)) || (debId && !/^\d{12}$/.test(debId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must be exactly 12 digits' });
+    return;
+  }
+
+  const targetProgramId = programId || enrollment.programId;
+  const targetSessionId = sessionId || enrollment.sessionId;
+  const targetEmail = (studentEmail || enrollment.studentEmail).trim();
+
+  // Validate program if changed
+  if (programId && programId !== enrollment.programId) {
+    const program = await prisma.program.findFirst({
+      where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
+      select: { id: true, universityId: true }
+    });
+    if (!program) {
+      res.status(400).json({ success: false, message: 'Selected program is invalid or inactive' });
+      return;
+    }
+  }
+
+  // Validate session if changed
+  if (sessionId && sessionId !== enrollment.sessionId) {
+    const session = await prisma.admissionSession.findFirst({
+      where: { id: sessionId, organizationId: req.user.organizationId, status: 'active' },
+      select: { id: true, programId: true, universityId: true }
+    });
+    if (!session) {
+      res.status(400).json({ success: false, message: 'Selected admission session is invalid or inactive' });
+      return;
+    }
+  }
+
+  // Check email uniqueness if email, program, or session changed
+  const duplicate = await prisma.enrollment.findFirst({
+    where: {
+      studentEmail: targetEmail,
+      programId: targetProgramId,
+      sessionId: targetSessionId,
+      organizationId: req.user.organizationId,
+      id: { not: id }
+    },
+    select: { id: true }
+  });
+  if (duplicate) {
+    res.status(409).json({ success: false, message: 'Another application with this email already exists for this program and session' });
+    return;
+  }
+
+  const now = new Date();
+  const history = Array.isArray(enrollment.statusHistory) ? [...enrollment.statusHistory] : [];
+  history.push({
+    status: 'document_review',
+    actorId: req.user.id,
+    actorName: req.user.name,
+    actorRole: req.user.role,
+    timestamp: now.toISOString(),
+    note: 'Application corrected and re-submitted by Sales department to Operations for verification'
+  });
+
+  // 5. Update in interactive transaction
+  const updatedEnrollment = await prisma.$transaction(async (tx) => {
+    // Sync Student record if exists
+    if (enrollment.studentId) {
+      await tx.student.update({
+        where: { id: enrollment.studentId },
+        data: {
+          name: studentName !== undefined ? studentName.trim() : undefined,
+          email: targetEmail,
+          phone: studentPhone !== undefined ? studentPhone.trim() : undefined,
+          address: studentAddress !== undefined ? studentAddress.trim() : undefined,
+          programId: targetProgramId,
+          sessionId: targetSessionId,
+          specialisation: specialisation !== undefined ? (specialisation || null) : undefined,
+          abcId: abcId !== undefined ? (abcId || null) : undefined,
+          debId: debId !== undefined ? (debId || null) : undefined,
+          dob: dob !== undefined ? (dob || null) : undefined,
+          religion: religion !== undefined ? (religion || null) : undefined,
+          caste: caste !== undefined ? (caste || null) : undefined,
+          fatherName: fatherName !== undefined ? (fatherName || null) : undefined,
+          motherName: motherName !== undefined ? (motherName || null) : undefined,
+          parentMobile: parentMobile !== undefined ? (parentMobile || null) : undefined,
+          studentPhoto: studentPhoto !== undefined ? (studentPhoto || null) : undefined,
+          pincode: pincode !== undefined ? (pincode || null) : undefined,
+          alternativePhone: alternativePhone !== undefined ? (alternativePhone || null) : undefined,
+          maritalStatus: maritalStatus !== undefined ? (maritalStatus || null) : undefined,
+          currentlyWorking: currentlyWorking !== undefined ? (currentlyWorking || null) : undefined,
+          status: 'pending',
+        }
+      });
+    }
+
+    // Sync User record name/email if user exists
+    const userToUpdate = await tx.user.findFirst({
+      where: { email: enrollment.studentEmail, organizationId: req.user.organizationId, role: 'student' }
+    });
+    if (userToUpdate) {
+      await tx.user.update({
+        where: { id: userToUpdate.id },
+        data: {
+          name: studentName !== undefined ? studentName.trim() : undefined,
+          email: targetEmail,
+        }
+      });
+    }
+
+    // Update Enrollment details & reset status to document_review for Operations review
+    return tx.enrollment.update({
+      where: { id },
+      data: {
+        studentName: studentName !== undefined ? studentName.trim() : enrollment.studentName,
+        studentEmail: targetEmail,
+        studentPhone: studentPhone !== undefined ? studentPhone.trim() : enrollment.studentPhone,
+        studentAddress: studentAddress !== undefined ? studentAddress.trim() : enrollment.studentAddress,
+        programId: targetProgramId,
+        sessionId: targetSessionId,
+        specialisation: specialisation !== undefined ? (specialisation || null) : enrollment.specialisation,
+        abcId: abcId !== undefined ? (abcId || null) : enrollment.abcId,
+        debId: debId !== undefined ? (debId || null) : enrollment.debId,
+        dob: dob !== undefined ? (dob || null) : enrollment.dob,
+        religion: religion !== undefined ? (religion || null) : enrollment.religion,
+        caste: caste !== undefined ? (caste || null) : enrollment.caste,
+        fatherName: fatherName !== undefined ? (fatherName || null) : enrollment.fatherName,
+        motherName: motherName !== undefined ? (motherName || null) : enrollment.motherName,
+        parentMobile: parentMobile !== undefined ? (parentMobile || null) : enrollment.parentMobile,
+        studentPhoto: studentPhoto !== undefined ? (studentPhoto || null) : enrollment.studentPhoto,
+        pincode: pincode !== undefined ? (pincode || null) : enrollment.pincode,
+        alternativePhone: alternativePhone !== undefined ? (alternativePhone || null) : enrollment.alternativePhone,
+        maritalStatus: maritalStatus !== undefined ? (maritalStatus || null) : enrollment.maritalStatus,
+        currentlyWorking: currentlyWorking !== undefined ? (currentlyWorking || null) : enrollment.currentlyWorking,
+        admissionDate: admissionDate ? new Date(admissionDate) : enrollment.admissionDate,
+        documents: documents ? (typeof documents === 'string' ? JSON.parse(documents) : documents) : enrollment.documents,
+        educationalDetails: educationalDetails ? (typeof educationalDetails === 'string' ? JSON.parse(educationalDetails) : educationalDetails) : enrollment.educationalDetails,
+        paymentMethod: paymentMethod || enrollment.paymentMethod,
+        totalFee: totalFee !== undefined ? (totalFee ? Number(totalFee) : null) : enrollment.totalFee,
+        status: 'document_review', // Return to Operations review queue
+        departmentRemarks: null, // Clear the rejection remarks on resubmission
+        statusHistory: history,
+      },
+      include: {
+        program: { select: { id: true, name: true, code: true, courseType: true, specialisations: true } },
+        studyCenter: { select: { id: true, name: true, code: true } },
+        session: { select: { id: true, name: true } },
+        departmentReviewer: { select: { id: true, name: true, email: true } },
+        financeReviewer: { select: { id: true, name: true, email: true } },
+        salesUser: { select: { id: true, name: true, email: true } },
+      }
+    });
+  });
+
+  // 6. Notify Operations Users of the re-submission
+  try {
+    const opsUsers = await prisma.user.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        status: 'active' as any,
+        OR: [
+          { role: { in: ['ops_admin', 'ops_sub_admin'] } as any },
+          ...(enrollment.departmentReviewedBy ? [{ id: enrollment.departmentReviewedBy }] : []),
+          ...(enrollment.assignedOpsUserId ? [{ id: enrollment.assignedOpsUserId }] : [])
+        ]
+      },
+      select: { id: true }
+    });
+
+    const uniqueOpsIds = Array.from(new Set(opsUsers.map(u => u.id)));
+    if (uniqueOpsIds.length > 0) {
+      await prisma.notification.createMany({
+        data: uniqueOpsIds.map(userId => ({
+          organizationId: req.user.organizationId,
+          userId,
+          title: '📄 Enrollment Re-submitted by Sales',
+          message: `Enrollment for ${updatedEnrollment.studentName} was updated and re-submitted by Sales (${req.user.name}). Ready for Operations review.`,
+          type: 'general' as any,
+          priority: 'medium' as any,
+          link: 'enrollment_review'
+        }))
+      });
+    }
+  } catch (notifErr) {
+    console.error('Notification dispatch failed:', notifErr);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Enrollment updated and re-submitted to Operations successfully',
+    data: updatedEnrollment
+  });
+});
+

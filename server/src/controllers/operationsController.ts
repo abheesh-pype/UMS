@@ -143,13 +143,26 @@ export const activateUniversity = asyncHandler(async (req: AuthRequest, res: Res
 
 // Programs
 export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const where: any = {
+    organizationId: req.user.organizationId,
+    isDeleted: false,
+    university: { singletonKey: 'primary' },
+  };
+  if (req.query.academicSessionId && req.query.academicSessionId !== 'all') {
+    where.academicSessionId = String(req.query.academicSessionId);
+  }
   const programs = await prisma.program.findMany({ 
-    where: {
-      organizationId: req.user.organizationId,
-      isDeleted: false,
-      university: { singletonKey: 'primary' },
+    where,
+    include: {
+      university: true,
+      _count: {
+        select: {
+          semesterRecords: true,
+          modules: true,
+        },
+      },
     },
-    include: { university: true } 
+    orderBy: { name: 'asc' },
   });
   const mapped = programs.map(p => ({
     ...p,
@@ -181,7 +194,7 @@ export const createProgram = asyncHandler(async (req: AuthRequest, res: Response
   }
   const university = await prisma.university.findFirst({
     where: {
-      id: req.user.universityId,
+      ...(req.user.universityId ? { id: req.user.universityId } : {}),
       organizationId: req.user.organizationId,
       singletonKey: 'primary',
     },
@@ -209,8 +222,228 @@ export const createProgram = asyncHandler(async (req: AuthRequest, res: Response
     return;
   }
   const program = await prisma.program.create({ data });
+
+  // Optional: copy semesters and modules if copyFromProgramId is provided
+  if (req.body.copyFromProgramId) {
+    const src = await prisma.program.findFirst({
+      where: { id: req.body.copyFromProgramId, organizationId: req.user.organizationId, isDeleted: false },
+      include: {
+        semesterRecords: { include: { modules: true } },
+        modules: { where: { semesterId: null } },
+      },
+    });
+    if (src) {
+      for (const sem of src.semesterRecords) {
+        const newSemester = await prisma.semester.create({
+          data: {
+            organizationId: req.user.organizationId,
+            programId: program.id,
+            academicSessionId: req.body.academicSessionId || src.academicSessionId || '',
+            semesterName: sem.semesterName,
+            semesterNumber: sem.semesterNumber,
+            startDate: sem.startDate,
+            endDate: sem.endDate,
+            status: sem.status,
+          },
+        });
+        for (const mod of sem.modules) {
+          await prisma.module.create({
+            data: {
+              organizationId: req.user.organizationId,
+              programId: program.id,
+              academicSessionId: req.body.academicSessionId || src.academicSessionId || '',
+              semesterId: newSemester.id,
+              moduleCode: mod.moduleCode,
+              moduleName: mod.moduleName,
+              moduleType: mod.moduleType,
+            },
+          });
+        }
+      }
+      for (const mod of src.modules) {
+        await prisma.module.create({
+          data: {
+            organizationId: req.user.organizationId,
+            programId: program.id,
+            academicSessionId: req.body.academicSessionId || src.academicSessionId || '',
+            moduleCode: mod.moduleCode,
+            moduleName: mod.moduleName,
+            moduleType: mod.moduleType,
+          },
+        });
+      }
+    }
+  }
+
   program.courseType = mapPrismaToFrontendCourseType(program.courseType);
   res.status(201).json({ success: true, data: { ...program, _id: program.id } });
+});
+
+export const importProgramsFromSession = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    sourceSessionId,
+    targetSessionId,
+    programIds,
+    selectedSemesterIds,
+    includeSemestersAndModules = true
+  } = req.body;
+
+  if (!sourceSessionId || !targetSessionId || !Array.isArray(programIds) || programIds.length === 0) {
+    res.status(400).json({ success: false, message: 'Source session, target session, and selected programs are required' });
+    return;
+  }
+
+  if (sourceSessionId === targetSessionId) {
+    res.status(400).json({ success: false, message: 'Source and target academic sessions cannot be the same' });
+    return;
+  }
+
+  const [targetSession, sourceSession] = await Promise.all([
+    prisma.admissionSession.findFirst({
+      where: { id: targetSessionId, organizationId: req.user.organizationId },
+    }),
+    prisma.admissionSession.findFirst({
+      where: { id: sourceSessionId, organizationId: req.user.organizationId },
+    }),
+  ]);
+
+  if (!targetSession) {
+    res.status(404).json({ success: false, message: 'Target academic session not found' });
+    return;
+  }
+  if (!sourceSession) {
+    res.status(404).json({ success: false, message: 'Source academic session not found' });
+    return;
+  }
+
+  const university = await prisma.university.findFirst({
+    where: {
+      ...(req.user.universityId ? { id: req.user.universityId } : {}),
+      organizationId: req.user.organizationId,
+      singletonKey: 'primary',
+    },
+    select: { id: true },
+  });
+
+  const sourcePrograms = await prisma.program.findMany({
+    where: {
+      id: { in: programIds },
+      academicSessionId: sourceSessionId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+    },
+    include: {
+      semesterRecords: {
+        include: {
+          modules: true,
+        },
+        orderBy: { semesterNumber: 'asc' },
+      },
+      modules: {
+        where: { semesterId: null },
+      },
+    },
+  });
+
+  if (sourcePrograms.length === 0) {
+    res.status(404).json({ success: false, message: 'No matching programs found in the source session' });
+    return;
+  }
+
+  const targetYear = new Date(targetSession.startDate).getFullYear() || new Date().getFullYear();
+  const createdPrograms: any[] = [];
+
+  for (const srcProg of sourcePrograms) {
+    const baseCode = (srcProg.code || srcProg.name).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24);
+    const code = `${baseCode}-${targetYear}`.slice(0, 30);
+
+    // Determine which semesters to import for this program
+    let semestersToImport = srcProg.semesterRecords;
+    if (selectedSemesterIds) {
+      if (typeof selectedSemesterIds === 'object' && !Array.isArray(selectedSemesterIds)) {
+        const allowedSemIds = (selectedSemesterIds as Record<string, string[]>)[srcProg.id];
+        if (Array.isArray(allowedSemIds)) {
+          semestersToImport = srcProg.semesterRecords.filter(sem => allowedSemIds.includes(sem.id));
+        }
+      } else if (Array.isArray(selectedSemesterIds)) {
+        semestersToImport = srcProg.semesterRecords.filter(sem => (selectedSemesterIds as string[]).includes(sem.id));
+      }
+    }
+
+    const newProgram = await prisma.program.create({
+      data: {
+        organization: { connect: { id: req.user.organizationId } },
+        university: { connect: { id: srcProg.universityId || university?.id } },
+        academicSession: { connect: { id: targetSessionId } },
+        name: srcProg.name,
+        courseName: srcProg.courseName,
+        description: srcProg.description,
+        code,
+        courseType: srcProg.courseType,
+        duration: srcProg.duration,
+        hasSemesters: semestersToImport.length > 0 ? true : srcProg.hasSemesters,
+        semesters: semestersToImport.length > 0 ? semestersToImport.map(s => s.semesterName) : (srcProg.semesters as any),
+        specialisations: srcProg.specialisations as any,
+        status: srcProg.status || 'active',
+      },
+    });
+
+    if (includeSemestersAndModules) {
+      for (const sem of semestersToImport) {
+        const newSemester = await prisma.semester.create({
+          data: {
+            organizationId: req.user.organizationId,
+            programId: newProgram.id,
+            academicSessionId: targetSessionId,
+            semesterName: sem.semesterName,
+            semesterNumber: sem.semesterNumber,
+            startDate: sem.startDate || targetSession.startDate,
+            endDate: sem.endDate || targetSession.endDate,
+            status: sem.status || 'active',
+          },
+        });
+
+        for (const mod of sem.modules) {
+          await prisma.module.create({
+            data: {
+              organizationId: req.user.organizationId,
+              programId: newProgram.id,
+              academicSessionId: targetSessionId,
+              semesterId: newSemester.id,
+              moduleCode: mod.moduleCode,
+              moduleName: mod.moduleName,
+              moduleType: mod.moduleType,
+            },
+          });
+        }
+      }
+
+      for (const mod of srcProg.modules) {
+        await prisma.module.create({
+          data: {
+            organizationId: req.user.organizationId,
+            programId: newProgram.id,
+            academicSessionId: targetSessionId,
+            moduleCode: mod.moduleCode,
+            moduleName: mod.moduleName,
+            moduleType: mod.moduleType,
+          },
+        });
+      }
+    }
+
+    createdPrograms.push({
+      ...newProgram,
+      _id: newProgram.id,
+      courseType: mapPrismaToFrontendCourseType(newProgram.courseType),
+    });
+  }
+
+  res.status(201).json({
+    success: true,
+    message: `Successfully imported ${createdPrograms.length} program(s) into ${targetSession.name || 'target session'}`,
+    data: createdPrograms,
+  });
 });
 export const updateProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (req.body.courseType) {

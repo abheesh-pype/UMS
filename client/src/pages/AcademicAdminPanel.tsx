@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+<<<<<<< HEAD
 import { BookOpen, Calendar, Check, Edit, GraduationCap, Plus, Trash2, Video } from 'lucide-react';
+=======
+import { ArrowDownToLine, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Edit, GraduationCap, Loader2, Plus, Search, Trash2, Video } from 'lucide-react';
+>>>>>>> 798e2b0c449b2b8db96f9ed9ecd512bce66926b0
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -27,6 +32,20 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [programLoading, setProgramLoading] = useState(false);
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [programForm, setProgramForm] = useState({ name: '', courseName: '', duration: '', status: 'active', description: '' });
+  const [programSearch, setProgramSearch] = useState('');
+  const [programFormSessionId, setProgramFormSessionId] = useState('');
+  const [programTemplateId, setProgramTemplateId] = useState('');
+  const [programCopySemesters, setProgramCopySemesters] = useState(true);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importSourceSessionId, setImportSourceSessionId] = useState('');
+  const [importSelectedProgramIds, setImportSelectedProgramIds] = useState<string[]>([]);
+  const [importProgramSemesters, setImportProgramSemesters] = useState<Record<string, any[]>>({});
+  const [importSelectedSemesterIds, setImportSelectedSemesterIds] = useState<Record<string, string[]>>({});
+  const [importSemestersLoading, setImportSemestersLoading] = useState<Record<string, boolean>>({});
+  const [importExpandedProgramIds, setImportExpandedProgramIds] = useState<string[]>([]);
+  const [importIncludeDetails, setImportIncludeDetails] = useState(true);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSearch, setImportSearch] = useState('');
   const [modules, setModules] = useState<any[]>([]);
   const [moduleLoading, setModuleLoading] = useState(false);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
@@ -40,18 +59,38 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
   const [allEbooks, setAllEbooks] = useState<any[]>([]);
   const [allEbooksLoading, setAllEbooksLoading] = useState(false);
+<<<<<<< HEAD
   const [videoModule, setVideoModule] = useState<any | null>(null);
   const [videoMaterials, setVideoMaterials] = useState<any[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
+=======
+  const [videoClasses, setVideoClasses] = useState<any[]>([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoSaving, setVideoSaving] = useState(false);
+  const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [videoForm, setVideoForm] = useState({
+    sessionId: '',
+    programId: '',
+    semesterId: '',
+    moduleId: '',
+    title: '',
+    description: '',
+    youtubeUrl: '',
+  });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoSemesters, setVideoSemesters] = useState<any[]>([]);
+  const [videoModules, setVideoModules] = useState<any[]>([]);
+  const [videoSemestersLoading, setVideoSemestersLoading] = useState(false);
+  const [videoModulesLoading, setVideoModulesLoading] = useState(false);
+>>>>>>> 798e2b0c449b2b8db96f9ed9ecd512bce66926b0
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
   const [semesterDialogOpen, setSemesterDialogOpen] = useState(false);
   const [editingSemesterId, setEditingSemesterId] = useState<string | null>(null);
   const [semesterForm, setSemesterForm] = useState({ semesterName: '', semesterNumber: '', startDate: '', endDate: '', status: 'active' });
-  const [programSessionFilter, setProgramSessionFilter] = useState('all');
   const [semesterSessionFilter, setSemesterSessionFilter] = useState('all');
   const [semesterProgramFilter, setSemesterProgramFilter] = useState('all');
   const [moduleSessionFilter, setModuleSessionFilter] = useState('all');
@@ -186,7 +225,226 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   useEffect(() => {
     if (initialTab === 'academic-ebooks') fetchAllEbooks();
+    if (initialTab === 'academic-video-classes') fetchVideoClasses();
   }, [initialTab]);
+
+  const fetchVideoClasses = async () => {
+    setVideoLoading(true);
+    try {
+      const response = await api.get('/operations/video-classes');
+      setVideoClasses(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load video classes');
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  const handleVideoSessionChange = (sessionId: string) => {
+    setVideoForm(prev => ({
+      ...prev,
+      sessionId,
+      programId: '',
+      semesterId: '',
+      moduleId: '',
+    }));
+    setVideoSemesters([]);
+    setVideoModules([]);
+  };
+
+  const handleVideoProgramChange = async (programId: string) => {
+    setVideoForm(prev => ({
+      ...prev,
+      programId,
+      semesterId: '',
+      moduleId: '',
+    }));
+    setVideoSemesters([]);
+    setVideoModules([]);
+    if (!programId) return;
+    setVideoSemestersLoading(true);
+    try {
+      const res = await api.get(`/operations/programs/${programId}/semesters`);
+      setVideoSemesters(res.data.data || []);
+    } catch {
+      toast.error('Failed to load semesters for program');
+    } finally {
+      setVideoSemestersLoading(false);
+    }
+  };
+
+  const handleVideoSemesterChange = async (semesterId: string) => {
+    setVideoForm(prev => ({
+      ...prev,
+      semesterId,
+      moduleId: '',
+    }));
+    setVideoModules([]);
+    if (!semesterId || !videoForm.programId) return;
+    setVideoModulesLoading(true);
+    try {
+      const res = await api.get(`/operations/programs/${videoForm.programId}/modules`, {
+        params: { semesterId },
+      });
+      setVideoModules(res.data.data || []);
+    } catch {
+      toast.error('Failed to load modules for semester');
+    } finally {
+      setVideoModulesLoading(false);
+    }
+  };
+
+  const resetVideoForm = () => {
+    setEditingVideoId(null);
+    setVideoFile(null);
+    setVideoForm({
+      sessionId: '',
+      programId: '',
+      semesterId: '',
+      moduleId: '',
+      title: '',
+      description: '',
+      youtubeUrl: '',
+    });
+    setVideoSemesters([]);
+    setVideoModules([]);
+  };
+
+  const handleVideoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoForm.sessionId) {
+      toast.error('Please select an academic session');
+      return;
+    }
+    if (!videoForm.programId) {
+      toast.error('Please select an academic program');
+      return;
+    }
+    if (!videoForm.semesterId) {
+      toast.error('Please select a semester');
+      return;
+    }
+    if (!videoForm.moduleId) {
+      toast.error('Please select a module');
+      return;
+    }
+    if (!videoForm.title.trim()) {
+      toast.error('Please enter a video title');
+      return;
+    }
+    if (!editingVideoId && !videoFile && !videoForm.youtubeUrl.trim()) {
+      toast.error('Please upload a video file or provide a YouTube video link');
+      return;
+    }
+
+    setVideoSaving(true);
+    try {
+      const selectedSession = sessions.find(s => s.id === videoForm.sessionId);
+      const selectedProgram = programs.find(p => p.id === videoForm.programId);
+      const selectedSem = videoSemesters.find(s => s.id === videoForm.semesterId);
+      const selectedMod = videoModules.find(m => m.id === videoForm.moduleId);
+
+      const formData = new FormData();
+      formData.append('title', videoForm.title.trim());
+      formData.append('description', videoForm.description.trim());
+      formData.append('sessionId', videoForm.sessionId);
+      formData.append('sessionName', selectedSession ? displaySession(selectedSession.id) : '');
+      formData.append('programId', videoForm.programId);
+      formData.append('programName', selectedProgram?.name || '');
+      formData.append('semesterId', videoForm.semesterId);
+      formData.append('semesterName', selectedSem?.semesterName || '');
+      formData.append('moduleId', videoForm.moduleId);
+      formData.append('moduleName', selectedMod?.moduleName || '');
+      if (videoForm.youtubeUrl.trim()) {
+        formData.append('youtubeUrl', videoForm.youtubeUrl.trim());
+      }
+      if (videoFile) {
+        formData.append('file', videoFile);
+      }
+
+      if (editingVideoId) {
+        await api.put(`/operations/video-classes/${editingVideoId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('Video class updated successfully');
+      } else {
+        await api.post('/operations/video-classes', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        toast.success('Video class saved successfully');
+      }
+
+      resetVideoForm();
+      fetchVideoClasses();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to save video class');
+    } finally {
+      setVideoSaving(false);
+    }
+  };
+
+  const handleEditVideo = async (item: any) => {
+    setEditingVideoId(item.id);
+    setVideoFile(null);
+    setVideoForm({
+      sessionId: item.sessionId || '',
+      programId: item.programId || '',
+      semesterId: item.semesterId || '',
+      moduleId: item.moduleId || '',
+      title: item.title || '',
+      description: item.description || '',
+      youtubeUrl: item.youtubeUrl || '',
+    });
+
+    if (item.programId) {
+      setVideoSemestersLoading(true);
+      try {
+        const semRes = await api.get(`/operations/programs/${item.programId}/semesters`);
+        setVideoSemesters(semRes.data.data || []);
+      } catch {
+        // silent
+      } finally {
+        setVideoSemestersLoading(false);
+      }
+
+      if (item.semesterId) {
+        setVideoModulesLoading(true);
+        try {
+          const modRes = await api.get(`/operations/programs/${item.programId}/modules`, {
+            params: { semesterId: item.semesterId },
+          });
+          setVideoModules(modRes.data.data || []);
+        } catch {
+          // silent
+        } finally {
+          setVideoModulesLoading(false);
+        }
+      }
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteVideo = async (item: any) => {
+    if (!window.confirm(`Delete video class "${item.title}"?`)) return;
+    try {
+      await api.delete(`/operations/video-classes/${item.id}`);
+      toast.success('Video class deleted successfully');
+      if (editingVideoId === item.id) {
+        resetVideoForm();
+      }
+      fetchVideoClasses();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete video class');
+    }
+  };
+
+  const getYouTubeEmbedUrl = (url?: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return match && match[2].length === 11 ? `https://www.youtube.com/embed/${match[2]}` : null;
+  };
 
   const uploadModuleEbook = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -274,7 +532,6 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   }, [sessions]);
 
   const fetchPrograms = async () => {
-    if (!selectedSessionId) return;
     setProgramLoading(true);
     try {
       const response = await api.get('/operations/programs');
@@ -286,16 +543,26 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }
   };
 
-  useEffect(() => { fetchPrograms(); }, [selectedSessionId]);
+  useEffect(() => { fetchPrograms(); }, []);
 
   useEffect(() => {
     const section = initialTab === 'academic-semesters' ? 'semesters' : initialTab === 'academic-modules' ? 'modules' : initialTab === 'academic-programs' ? 'programs' : 'programs';
     setActiveSection(section);
   }, [initialTab]);
 
-  const displayedPrograms = programSessionFilter === 'all'
-    ? programs
-    : programs.filter(program => program.academicSessionId === programSessionFilter);
+  const displayedPrograms = selectedSessionId
+    ? programs.filter(program => program.academicSessionId === selectedSessionId)
+    : programs;
+
+  const filteredPrograms = displayedPrograms.filter(program => {
+    if (!programSearch.trim()) return true;
+    const query = programSearch.toLowerCase();
+    return (
+      program.name?.toLowerCase().includes(query) ||
+      (program.courseName || '').toLowerCase().includes(query) ||
+      (program.code || '').toLowerCase().includes(query)
+    );
+  });
 
   const displaySession = (sessionId: string | null | undefined) => {
     const session = sessions.find(item => item.id === sessionId);
@@ -642,18 +909,170 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }
   };
 
+  const openCreateProgram = (templateProg?: any) => {
+    setEditingId(null);
+    setProgramFormSessionId(selectedSessionId || (sessions[0]?.id || ''));
+    if (templateProg) {
+      setProgramTemplateId(templateProg.id);
+      setProgramCopySemesters(true);
+      setProgramForm({
+        name: `${templateProg.name} (Copy)`,
+        courseName: templateProg.courseName || '',
+        duration: String(templateProg.duration || '1'),
+        status: templateProg.status || 'active',
+        description: templateProg.description || '',
+      });
+    } else {
+      setProgramTemplateId('');
+      setProgramCopySemesters(true);
+      setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' });
+    }
+    setProgramDialogOpen(true);
+  };
+
+  const openImportDialog = () => {
+    const currentTargetId = selectedSessionId || (sessions[0]?.id || '');
+    if (!selectedSessionId && sessions[0]?.id) {
+      setSelectedSessionId(sessions[0].id);
+    }
+    const otherSessions = sessions.filter(s => s.id !== currentTargetId);
+    setImportSourceSessionId(otherSessions[0]?.id || '');
+    setImportSelectedProgramIds([]);
+    setImportProgramSemesters({});
+    setImportSelectedSemesterIds({});
+    setImportSemestersLoading({});
+    setImportExpandedProgramIds([]);
+    setImportIncludeDetails(true);
+    setImportSearch('');
+    setImportDialogOpen(true);
+  };
+
+  const fetchSemestersForImportProgram = async (programId: string) => {
+    if (importProgramSemesters[programId] !== undefined) {
+      return importProgramSemesters[programId];
+    }
+    setImportSemestersLoading(prev => ({ ...prev, [programId]: true }));
+    try {
+      const response = await api.get(`/operations/programs/${programId}/semesters`);
+      const sems = response.data.data || [];
+      setImportProgramSemesters(prev => ({ ...prev, [programId]: sems }));
+      setImportSelectedSemesterIds(prev => ({
+        ...prev,
+        [programId]: prev[programId] !== undefined ? prev[programId] : sems.map((s: any) => s.id),
+      }));
+      return sems;
+    } catch {
+      toast.error('Failed to load semesters for program');
+      return [];
+    } finally {
+      setImportSemestersLoading(prev => ({ ...prev, [programId]: false }));
+    }
+  };
+
+  const toggleImportProgram = async (programId: string) => {
+    const isSelected = importSelectedProgramIds.includes(programId);
+    if (isSelected) {
+      setImportSelectedProgramIds(prev => prev.filter(id => id !== programId));
+    } else {
+      setImportSelectedProgramIds(prev => [...prev, programId]);
+      setImportExpandedProgramIds(prev => (prev.includes(programId) ? prev : [...prev, programId]));
+      await fetchSemestersForImportProgram(programId);
+    }
+  };
+
+  const toggleExpandImportProgram = async (programId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const isExpanded = importExpandedProgramIds.includes(programId);
+    if (isExpanded) {
+      setImportExpandedProgramIds(prev => prev.filter(id => id !== programId));
+    } else {
+      setImportExpandedProgramIds(prev => [...prev, programId]);
+      await fetchSemestersForImportProgram(programId);
+    }
+  };
+
+  const toggleImportSemester = (programId: string, semesterId: string) => {
+    setImportSelectedSemesterIds(prev => {
+      const sems = importProgramSemesters[programId] || [];
+      const currentList = prev[programId] !== undefined ? prev[programId] : sems.map(s => s.id);
+      const updated = currentList.includes(semesterId)
+        ? currentList.filter(id => id !== semesterId)
+        : [...currentList, semesterId];
+      return { ...prev, [programId]: updated };
+    });
+  };
+
+  const selectAllSemestersForProgram = (programId: string) => {
+    const sems = importProgramSemesters[programId] || [];
+    setImportSelectedSemesterIds(prev => ({
+      ...prev,
+      [programId]: sems.map(s => s.id),
+    }));
+  };
+
+  const deselectAllSemestersForProgram = (programId: string) => {
+    setImportSelectedSemesterIds(prev => ({
+      ...prev,
+      [programId]: [],
+    }));
+  };
+
+  const handleImportPrograms = async () => {
+    const targetId = selectedSessionId || sessions[0]?.id;
+    if (!targetId) {
+      toast.error('No target academic session selected');
+      return;
+    }
+    if (!importSourceSessionId) {
+      toast.error('Please select a source academic session');
+      return;
+    }
+    if (importSelectedProgramIds.length === 0) {
+      toast.error('Please select at least one program to import');
+      return;
+    }
+    setImportLoading(true);
+    try {
+      const res = await api.post('/operations/programs/import-from-session', {
+        sourceSessionId: importSourceSessionId,
+        targetSessionId: targetId,
+        programIds: importSelectedProgramIds,
+        selectedSemesterIds: importSelectedSemesterIds,
+        includeSemestersAndModules: importIncludeDetails,
+      });
+      toast.success(res.data.message || `Successfully imported ${importSelectedProgramIds.length} programs`);
+      setImportDialogOpen(false);
+      setImportSelectedProgramIds([]);
+      setImportProgramSemesters({});
+      setImportSelectedSemesterIds({});
+      setImportExpandedProgramIds([]);
+      await fetchPrograms();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to import programs');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleProgramSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedSessionId) return;
+    const targetSession = programFormSessionId || selectedSessionId || (sessions[0]?.id || '');
+    if (!targetSession) {
+      toast.error('Academic session is required');
+      return;
+    }
     try {
-      const payload = {
-        academicSessionId: selectedSessionId,
+      const payload: any = {
+        academicSessionId: targetSession,
         name: programForm.name,
         courseName: programForm.courseName,
         duration: Number(programForm.duration),
         status: programForm.status,
         description: programForm.description,
       };
+      if (!editingId && programTemplateId && programCopySemesters) {
+        payload.copyFromProgramId = programTemplateId;
+      }
       if (editingId) {
         await api.put(`/operations/programs/${editingId}`, payload);
         toast.success('Program updated');
@@ -663,6 +1082,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
       setProgramDialogOpen(false);
       setEditingId(null);
+      setProgramTemplateId('');
       setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' });
       fetchPrograms();
     } catch (error: any) {
@@ -672,6 +1092,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const handleEditProgram = (program: any) => {
     setEditingId(program.id);
+    setProgramTemplateId('');
+    setProgramFormSessionId(program.academicSessionId || selectedSessionId || '');
     setProgramForm({
       name: program.name || '',
       courseName: program.courseName || '',
@@ -826,9 +1248,329 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : 'Manage programs by academic session'}</p>
+        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-video-classes' ? 'Video Classes' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : initialTab === 'academic-video-classes' ? 'Upload and manage video classes for academic modules' : 'Manage programs by academic session'}</p>
       </div>
+
+      {initialTab === 'academic-video-classes' && (
+        <div className="space-y-6">
+          {/* Form Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Video className="h-5 w-5 text-primary" />
+                {editingVideoId ? 'Update Video Class' : 'Add New Video Class'}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {editingVideoId
+                  ? 'Update the video class details below.'
+                  : 'Fill in the details below to upload a new video class or provide a YouTube link.'}
+              </p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleVideoSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Session Dropdown */}
+                  <div className="space-y-2">
+                    <Label htmlFor="video-session">Academic Session *</Label>
+                    <Select
+                      value={videoForm.sessionId}
+                      onValueChange={handleVideoSessionChange}
+                    >
+                      <SelectTrigger id="video-session">
+                        <SelectValue placeholder="Select Session" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sessions.map(s => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {displaySession(s.id)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Programs Dropdown (based on selected session) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="video-program">Program *</Label>
+                    <Select
+                      value={videoForm.programId}
+                      onValueChange={handleVideoProgramChange}
+                      disabled={!videoForm.sessionId}
+                    >
+                      <SelectTrigger id="video-program">
+                        <SelectValue
+                          placeholder={
+                            !videoForm.sessionId ? 'First select a session' : 'Select Program'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {programs
+                          .filter(p => p.academicSessionId === videoForm.sessionId)
+                          .map(p => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Semester Dropdown (based on selected program) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="video-semester">Semester *</Label>
+                    <Select
+                      value={videoForm.semesterId}
+                      onValueChange={handleVideoSemesterChange}
+                      disabled={!videoForm.programId || videoSemestersLoading}
+                    >
+                      <SelectTrigger id="video-semester">
+                        <SelectValue
+                          placeholder={
+                            videoSemestersLoading
+                              ? 'Loading semesters...'
+                              : !videoForm.programId
+                              ? 'First select a program'
+                              : 'Select Semester'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {videoSemesters.map(s => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.semesterName || `Semester ${s.semesterNumber}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Module Dropdown (based on selected semester) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="video-module">Module *</Label>
+                    <Select
+                      value={videoForm.moduleId}
+                      onValueChange={val => setVideoForm(prev => ({ ...prev, moduleId: val }))}
+                      disabled={!videoForm.semesterId || videoModulesLoading}
+                    >
+                      <SelectTrigger id="video-module">
+                        <SelectValue
+                          placeholder={
+                            videoModulesLoading
+                              ? 'Loading modules...'
+                              : !videoForm.semesterId
+                              ? 'First select a semester'
+                              : 'Select Module'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {videoModules.map(m => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.moduleCode ? `${m.moduleCode} - ${m.moduleName}` : m.moduleName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Video Title Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="video-title">Video Title *</Label>
+                  <Input
+                    id="video-title"
+                    placeholder="Enter video title"
+                    value={videoForm.title}
+                    onChange={e => setVideoForm(prev => ({ ...prev, title: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                {/* Video Description Field */}
+                <div className="space-y-2">
+                  <Label htmlFor="video-description">Video Description</Label>
+                  <textarea
+                    id="video-description"
+                    className="flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Enter video description..."
+                    value={videoForm.description}
+                    onChange={e => setVideoForm(prev => ({ ...prev, description: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
+
+                {/* File Upload Field for upload (videos, YouTube video link) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  <div className="space-y-2">
+                    <Label htmlFor="video-file">Upload Video File</Label>
+                    <Input
+                      id="video-file"
+                      type="file"
+                      accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/*"
+                      onChange={e => setVideoFile(e.target.files?.[0] || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">Supported formats: MP4, WebM, OGG, MOV (up to 100MB)</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="video-youtube">Or YouTube Video Link</Label>
+                    <Input
+                      id="video-youtube"
+                      type="url"
+                      placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                      value={videoForm.youtubeUrl}
+                      onChange={e => setVideoForm(prev => ({ ...prev, youtubeUrl: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">Paste full YouTube video or share URL</p>
+                  </div>
+                </div>
+
+                {/* Save / Update Button */}
+                <div className="flex items-center gap-2 pt-2">
+                  <Button type="submit" disabled={videoSaving}>
+                    {videoSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {editingVideoId ? 'Update Video Class' : 'Save Video Class'}
+                  </Button>
+                  {editingVideoId && (
+                    <Button type="button" variant="outline" onClick={resetVideoForm} disabled={videoSaving}>
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Uploaded Videos Grid */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold tracking-tight">
+                Uploaded Video Classes ({videoClasses.length})
+              </h3>
+            </div>
+
+            {videoLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : videoClasses.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  No video classes uploaded yet. Use the form above to add your first video class.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {videoClasses.map(item => {
+                  const embedUrl = getYouTubeEmbedUrl(item.youtubeUrl);
+                  const resolvedFileUrl = item.fileUrl
+                    ? (item.fileUrl.startsWith('http')
+                        ? item.fileUrl
+                        : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${item.fileUrl}`)
+                    : null;
+
+                  return (
+                    <Card key={item.id} className="flex flex-col overflow-hidden border">
+                      <div className="aspect-video w-full bg-black relative flex items-center justify-center overflow-hidden">
+                        {embedUrl ? (
+                          <iframe
+                            src={embedUrl}
+                            title={item.title}
+                            className="w-full h-full border-0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        ) : resolvedFileUrl ? (
+                          <video
+                            src={resolvedFileUrl}
+                            controls
+                            className="w-full h-full object-contain"
+                            preload="metadata"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
+                            <Video className="h-10 w-10 mb-2 opacity-50" />
+                            <span className="text-xs">No video stream</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <CardContent className="flex-1 p-4 space-y-3">
+                        <div>
+                          <h4 className="font-semibold text-base line-clamp-1" title={item.title}>
+                            {item.title}
+                          </h4>
+                          {item.description && (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2" title={item.description}>
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          {item.sessionName && (
+                            <Badge variant="outline" className="text-[11px] py-0 px-2">
+                              {item.sessionName}
+                            </Badge>
+                          )}
+                          {item.programName && (
+                            <Badge variant="secondary" className="text-[11px] py-0 px-2">
+                              {item.programName}
+                            </Badge>
+                          )}
+                          {item.semesterName && (
+                            <Badge variant="outline" className="text-[11px] py-0 px-2">
+                              {item.semesterName}
+                            </Badge>
+                          )}
+                          {item.moduleName && (
+                            <Badge variant="default" className="text-[11px] py-0 px-2 bg-primary/80">
+                              {item.moduleName}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.youtubeUrl && !embedUrl && (
+                          <a
+                            href={item.youtubeUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-primary hover:underline line-clamp-1 block"
+                          >
+                            {item.youtubeUrl}
+                          </a>
+                        )}
+                      </CardContent>
+
+                      <div className="p-4 pt-0 border-t flex justify-end gap-2 mt-auto bg-muted/20 py-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditVideo(item)}
+                        >
+                          <Edit className="h-3.5 w-3.5 mr-1" />
+                          Update
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteVideo(item)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {initialTab === 'academic-ebooks' && (
         <Card>
@@ -932,7 +1674,19 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {(!initialTab || initialTab === 'academic-session') && <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" />Select Academic Session</CardTitle>
-          <Button type="button" onClick={() => { setEditingId(null); setFormData({ startDate: '', endDate: '', status: 'inactive' }); setDialogOpen(true); }}><Plus className="w-4 h-4 mr-2" />Add Session</Button>
+          <div className="flex items-center gap-2">
+            {selectedSessionId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedSessionId(null)}
+              >
+                All Sessions
+              </Button>
+            )}
+            <Button type="button" onClick={() => { setEditingId(null); setFormData({ startDate: '', endDate: '', status: 'inactive' }); setDialogOpen(true); }}><Plus className="w-4 h-4 mr-2" />Add Session</Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? <p className="py-6 text-center text-muted-foreground">Loading sessions...</p> : sessions.length === 0 ? (
@@ -991,27 +1745,193 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </CardContent>
       </Card>}
 
-      {activeSection === 'programs' && (!initialTab || initialTab === 'academic-programs') && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
+      {activeSection === 'programs' && (!initialTab || initialTab === 'academic-programs' || initialTab === 'academic-session') && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div><CardTitle>Programs ({programs.length})</CardTitle><p className="text-sm text-muted-foreground mt-1">Programs for the selected academic session</p></div>
-            <div className="flex items-center gap-3"><Select value={programSessionFilter} onValueChange={setProgramSessionFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Button type="button" onClick={() => { setEditingId(null); setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' }); setProgramDialogOpen(true); }}><Plus className="w-4 h-4 mr-2" />Create Program</Button></div>
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>
+                  {selectedSessionId
+                    ? `Programs under Academic Session: ${displaySession(selectedSessionId)} (${filteredPrograms.length})`
+                    : `All Programs (${filteredPrograms.length})`}
+                </CardTitle>
+                {selectedSessionId && (() => {
+                  const currSession = sessions.find(s => s.id === selectedSessionId);
+                  return currSession ? (
+                    <Badge variant="outline" className={currSession.status === 'active' ? 'text-green-600 border-green-300' : ''}>
+                      {currSession.status === 'active' ? 'Active' : 'Inactive'}
+                    </Badge>
+                  ) : null;
+                })()}
+                {selectedSessionId && initialTab !== 'academic-session' && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedSessionId(null)}
+                  >
+                    View All Programs
+                  </Button>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {selectedSessionId
+                  ? `Manage, create, or import academic programs for ${displaySession(selectedSessionId)}`
+                  : 'Manage academic programs across all sessions'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openImportDialog}
+                disabled={sessions.length < 2}
+                title="Import programs from another academic session"
+              >
+                <ArrowDownToLine className="w-4 h-4 mr-2" />
+                Import Programs
+              </Button>
+              <Button
+                type="button"
+                onClick={() => openCreateProgram()}
+                title="Create a new academic program"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Program
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            {programLoading ? <p className="py-8 text-center text-muted-foreground">Loading programs...</p> : displayedPrograms.length === 0 ? <p className="py-8 text-center text-muted-foreground">No programs found.</p> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {displayedPrograms.map(program => (
-                  <div key={program.id} className="rounded-lg border p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{program.name}</h3><p className="text-sm text-muted-foreground">{program.courseName || 'Course name not provided'}</p></div><Badge variant={program.status === 'active' ? 'default' : 'outline'}>{program.status === 'active' ? 'Active' : 'Not Active'}</Badge></div>
-                    <p className="text-sm text-muted-foreground">Duration: {program.duration} Years</p>
-                    {program.description && <p className="text-sm text-muted-foreground line-clamp-3">{program.description}</p>}
-                    <div className="flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => openProgramModules(program.id)}>Open</Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => handleEditProgram(program)} title="Edit program"><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
-                      <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteProgram(program)} title="Delete program"><Trash2 className="w-3.5 h-3.5" /></Button>
-                    </div>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search programs by name, code, or course..."
+                  value={programSearch}
+                  onChange={e => setProgramSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              {programSearch && (
+                <Button variant="ghost" size="sm" onClick={() => setProgramSearch('')}>
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {programLoading ? (
+              <p className="py-8 text-center text-muted-foreground">Loading programs...</p>
+            ) : filteredPrograms.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <GraduationCap className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-base">
+                    {programSearch ? 'No matching programs found' : 'No programs in this section'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                    {programSearch
+                      ? `No programs matched "${programSearch}". Try clearing your search.`
+                      : initialTab === 'academic-session' && selectedSessionId
+                        ? `There are no academic programs configured under ${displaySession(selectedSessionId)} yet. You can import existing programs from another session or create a new one.`
+                        : 'No academic programs created yet. You can create a new program or import from an academic session.'}
+                  </p>
+                </div>
+                {!programSearch && (
+                  <div className="flex justify-center gap-2 pt-2">
+                    <Button variant="outline" size="sm" onClick={openImportDialog} disabled={sessions.length < 2}>
+                      <ArrowDownToLine className="w-4 h-4 mr-2" />
+                      Import from Another Session
+                    </Button>
+                    <Button size="sm" onClick={() => openCreateProgram()}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Program
+                    </Button>
                   </div>
-                ))}
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredPrograms.map(program => {
+                  const progSession = sessions.find(s => s.id === program.academicSessionId);
+                  const semesterCount = program._count?.semesterRecords ?? (Array.isArray(program.semesters) ? program.semesters.length : undefined);
+                  const moduleCount = program._count?.modules;
+
+                  return (
+                    <div key={program.id} className="rounded-lg border p-4 flex flex-col justify-between gap-3 hover:border-primary/50 transition-colors bg-card">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <h3 className="font-semibold leading-tight">{program.name}</h3>
+                            <p className="text-sm text-muted-foreground">{program.courseName || 'Course name not provided'}</p>
+                          </div>
+                          <Badge variant={program.status === 'active' ? 'default' : 'outline'}>
+                            {program.status === 'active' ? 'Active' : 'Not Active'}
+                          </Badge>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-1">
+                          <Badge variant="secondary" className="font-normal">
+                            Duration: {program.duration} {program.duration === 1 ? 'Year' : 'Years'}
+                          </Badge>
+                          {progSession && (
+                            <Badge variant="outline" className="font-normal">
+                              {displaySession(progSession.id)}
+                            </Badge>
+                          )}
+                          {semesterCount !== undefined && (
+                            <Badge variant="outline" className="font-normal">
+                              {semesterCount} {semesterCount === 1 ? 'Semester' : 'Semesters'}
+                            </Badge>
+                          )}
+                          {moduleCount !== undefined && (
+                            <Badge variant="outline" className="font-normal">
+                              {moduleCount} {moduleCount === 1 ? 'Module' : 'Modules'}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {program.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 pt-1">{program.description}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-3 border-t">
+                        <Button type="button" variant="outline" size="sm" onClick={() => openProgramModules(program.id)}>
+                          <BookOpen className="w-3.5 h-3.5 mr-1" />
+                          Open
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openCreateProgram(program)}
+                          title="Create a new program based on this existing program"
+                        >
+                          <Copy className="w-3.5 h-3.5 mr-1" />
+                          Clone
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => handleEditProgram(program)} title="Edit program">
+                          <Edit className="w-3.5 h-3.5 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive ml-auto"
+                          onClick={() => handleDeleteProgram(program)}
+                          title="Delete program"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -1082,7 +2002,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div><CardTitle>Semester Management ({semesters.length})</CardTitle><p className="text-sm text-muted-foreground mt-1">Semesters for {programs.find(program => program.id === selectedProgramId)?.name || 'the selected program'}</p></div>
-            <Button type="button" onClick={openCreateSemester} disabled={!selectedProgramId}><Plus className="w-4 h-4 mr-2" />Create Semester</Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setActiveSection('programs')}>
+                <ChevronLeft className="w-4 h-4 mr-1" />Back to Programs
+              </Button>
+              <Button type="button" onClick={openCreateSemester} disabled={!selectedProgramId}><Plus className="w-4 h-4 mr-2" />Create Semester</Button>
+            </div>
           </CardHeader>
           <CardContent>
             {semesterLoading ? <p className="py-8 text-center text-muted-foreground">Loading semesters...</p> : semesters.length === 0 ? <p className="py-8 text-center text-muted-foreground">No semesters created for this program.</p> : (
@@ -1106,17 +2031,501 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </DialogContent>
       </Dialog>
 
-      <Dialog open={programDialogOpen} onOpenChange={setProgramDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editingId ? 'Edit Program' : 'Add Program'}</DialogTitle></DialogHeader>
-          <form onSubmit={handleProgramSubmit} className="space-y-4">
-            <div className="space-y-2"><Label>Program</Label><Input value={programForm.name} onChange={e => setProgramForm({ ...programForm, name: e.target.value })} placeholder="e.g. B.Tech Computer Science" required /></div>
-            <div className="space-y-2"><Label>Course Name</Label><Input value={programForm.courseName} onChange={e => setProgramForm({ ...programForm, courseName: e.target.value })} required /></div>
-            <div className="space-y-2"><Label>Duration (Years)</Label><Input type="number" min="1" value={programForm.duration} onChange={e => setProgramForm({ ...programForm, duration: e.target.value })} required /></div>
-            <div className="space-y-2"><Label>Status</Label><Select value={programForm.status} onValueChange={status => setProgramForm({ ...programForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Not Active</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>Description</Label><textarea value={programForm.description} onChange={e => setProgramForm({ ...programForm, description: e.target.value })} className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
-            <div className="flex gap-2"><Button type="submit" className="flex-1">{editingId ? 'Update Program' : 'Add Program'}</Button><Button type="button" variant="outline" onClick={() => { setProgramDialogOpen(false); setEditingId(null); }}>Cancel</Button></div>
+      <Dialog open={programDialogOpen} onOpenChange={(open) => {
+        setProgramDialogOpen(open);
+        if (!open) {
+          setEditingId(null);
+          setProgramTemplateId('');
+          setProgramFormSessionId('');
+          setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' });
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId ? 'Edit Program' : programTemplateId ? 'Create Program from Template' : 'Create New Program'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingId
+                ? 'Update academic program information and assigned academic session'
+                : 'Configure a new academic program under an academic session'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleProgramSubmit} className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label>Academic Session *</Label>
+              <Select
+                value={programFormSessionId || selectedSessionId || (sessions[0]?.id || '')}
+                onValueChange={setProgramFormSessionId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select academic session" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessions.map(session => (
+                    <SelectItem key={session.id} value={session.id}>
+                      {displaySession(session.id)} {session.status === 'active' ? '(Active)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!editingId && programs.length > 0 && (
+              <div className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Start from Existing Program (Optional Template)
+                </Label>
+                <Select
+                  value={programTemplateId || 'none'}
+                  onValueChange={(val) => {
+                    if (val === 'none') {
+                      setProgramTemplateId('');
+                      return;
+                    }
+                    const tmpl = programs.find(p => p.id === val);
+                    if (tmpl) {
+                      setProgramTemplateId(tmpl.id);
+                      setProgramForm({
+                        name: `${tmpl.name} (Copy)`,
+                        courseName: tmpl.courseName || '',
+                        duration: String(tmpl.duration || '1'),
+                        status: tmpl.status || 'active',
+                        description: tmpl.description || '',
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select existing program to clone..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-- Start from blank (No Template) --</SelectItem>
+                    {programs.map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} ({p.duration}y) · {displaySession(p.academicSessionId)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {programTemplateId && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer pt-1">
+                    <Checkbox
+                      checked={programCopySemesters}
+                      onCheckedChange={checked => setProgramCopySemesters(Boolean(checked))}
+                    />
+                    <span>Also duplicate semesters and course modules from this program</span>
+                  </label>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Program Name *</Label>
+              <Input
+                value={programForm.name}
+                onChange={e => setProgramForm({ ...programForm, name: e.target.value })}
+                placeholder="e.g. B.Tech Computer Science"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Course Name *</Label>
+              <Input
+                value={programForm.courseName}
+                onChange={e => setProgramForm({ ...programForm, courseName: e.target.value })}
+                placeholder="e.g. Computer Science & Engineering"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Duration (Years) *</Label>
+              <Input
+                type="number"
+                min="1"
+                value={programForm.duration}
+                onChange={e => setProgramForm({ ...programForm, duration: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={programForm.status} onValueChange={status => setProgramForm({ ...programForm, status })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Not Active</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <textarea
+                value={programForm.description}
+                onChange={e => setProgramForm({ ...programForm, description: e.target.value })}
+                className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Brief description of this program..."
+              />
+            </div>
+            <div className="flex gap-2 pt-2 border-t">
+              <Button type="submit" className="flex-1">
+                {editingId ? 'Update Program' : 'Create Program'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setProgramDialogOpen(false);
+                  setEditingId(null);
+                  setProgramTemplateId('');
+                  setProgramFormSessionId('');
+                  setProgramForm({ name: '', courseName: '', duration: '', status: 'active', description: '' });
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownToLine className="w-5 h-5 text-primary" />
+              Import Programs from Another Session
+            </DialogTitle>
+            <DialogDescription>
+              Select an academic session to import programs from, then choose the specific programs you want to add to{' '}
+              <span className="font-semibold text-foreground">{displaySession(selectedSessionId)}</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-muted/40 border">
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Target Session *</Label>
+                {initialTab === 'academic-session' ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="font-semibold text-sm">{displaySession(selectedSessionId)}</span>
+                    <Badge variant="outline" className="text-xs">Target</Badge>
+                  </div>
+                ) : (
+                  <Select
+                    value={selectedSessionId || ''}
+                    onValueChange={(val) => {
+                      setSelectedSessionId(val);
+                      if (importSourceSessionId === val) {
+                        const otherSessions = sessions.filter(s => s.id !== val);
+                        setImportSourceSessionId(otherSessions[0]?.id || '');
+                        setImportSelectedProgramIds([]);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue placeholder="Select target session" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sessions.map(session => (
+                        <SelectItem key={session.id} value={session.id}>
+                          {displaySession(session.id)} {session.status === 'active' ? '(Active)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">Source Academic Session *</Label>
+                <Select
+                  value={importSourceSessionId}
+                  onValueChange={(val) => {
+                    setImportSourceSessionId(val);
+                    setImportSelectedProgramIds([]);
+                  }}
+                >
+                  <SelectTrigger className="mt-1 h-9">
+                    <SelectValue placeholder="Select source session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.filter(s => s.id !== selectedSessionId).map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        {displaySession(session.id)} {session.status === 'active' ? '(Active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {importSourceSessionId ? (() => {
+              const sourceSessionPrograms = programs.filter(p => p.academicSessionId === importSourceSessionId);
+              const targetSessionProgramNames = new Set(
+                programs
+                  .filter(p => p.academicSessionId === selectedSessionId)
+                  .map(p => p.name.trim().toLowerCase())
+              );
+              const filteredSource = sourceSessionPrograms.filter(p => {
+                if (!importSearch.trim()) return true;
+                const q = importSearch.toLowerCase();
+                return p.name?.toLowerCase().includes(q) || (p.courseName || '').toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q);
+              });
+              const allFilteredSelected = filteredSource.length > 0 && filteredSource.every(p => importSelectedProgramIds.includes(p.id));
+
+              const toggleSelectAll = () => {
+                if (allFilteredSelected) {
+                  setImportSelectedProgramIds(current => current.filter(id => !filteredSource.some(p => p.id === id)));
+                } else {
+                  const toAdd = filteredSource.map(p => p.id);
+                  setImportSelectedProgramIds(current => Array.from(new Set([...current, ...toAdd])));
+                  setImportExpandedProgramIds(current => Array.from(new Set([...current, ...toAdd])));
+                  toAdd.forEach(pid => {
+                    fetchSemestersForImportProgram(pid);
+                  });
+                }
+              };
+
+              return (
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="search"
+                        placeholder="Search programs to import..."
+                        value={importSearch}
+                        onChange={e => setImportSearch(e.target.value)}
+                        className="pl-8 h-9 text-sm"
+                      />
+                    </div>
+                    {filteredSource.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleSelectAll}
+                        className="shrink-0 h-9"
+                      >
+                        {allFilteredSelected ? 'Deselect All' : 'Select All'}
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                    <span>
+                      Available in session: {sourceSessionPrograms.length} program(s)
+                    </span>
+                    <Badge variant="secondary" className="font-normal">
+                      {importSelectedProgramIds.length} Selected
+                    </Badge>
+                  </div>
+
+                  {filteredSource.length === 0 ? (
+                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                      {sourceSessionPrograms.length === 0
+                        ? 'No programs found under the selected source session.'
+                        : `No programs matched "${importSearch}".`}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border divide-y max-h-[380px] overflow-y-auto">
+                      {filteredSource.map(prog => {
+                        const isChecked = importSelectedProgramIds.includes(prog.id);
+                        const isExpanded = importExpandedProgramIds.includes(prog.id);
+                        const alreadyExists = targetSessionProgramNames.has(prog.name.trim().toLowerCase());
+                        const sems = importProgramSemesters[prog.id] || [];
+                        const isLoadingSems = Boolean(importSemestersLoading[prog.id]);
+                        const selectedSemIds = importSelectedSemesterIds[prog.id] !== undefined
+                          ? importSelectedSemesterIds[prog.id]
+                          : sems.map(s => s.id);
+                        const selectedCount = selectedSemIds.length;
+                        const semCount = prog._count?.semesterRecords ?? (Array.isArray(prog.semesters) ? prog.semesters.length : undefined);
+                        const modCount = prog._count?.modules;
+
+                        return (
+                          <div key={prog.id} className={`transition-colors ${isChecked ? 'bg-primary/5' : ''}`}>
+                            <div
+                              onClick={() => toggleImportProgram(prog.id)}
+                              className="flex items-start gap-3 p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                            >
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={() => toggleImportProgram(prog.id)}
+                                className="mt-1"
+                                onClick={e => e.stopPropagation()}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap justify-between">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-sm leading-tight">{prog.name}</span>
+                                    {alreadyExists && (
+                                      <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/20 text-[10px] py-0">
+                                        Exists in Target
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {isChecked && (
+                                      <Badge variant="secondary" className="text-xs font-normal">
+                                        {selectedCount} of {sems.length > 0 ? sems.length : (semCount ?? 0)} Semesters
+                                      </Badge>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                      title={isExpanded ? 'Collapse semesters' : 'Expand semesters'}
+                                      onClick={(e) => toggleExpandImportProgram(prog.id, e)}
+                                    >
+                                      <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                                  {prog.courseName || 'Course name not provided'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
+                                  <span>Duration: {prog.duration} Year(s)</span>
+                                  {semCount !== undefined && <span>· {semCount} Semesters</span>}
+                                  {modCount !== undefined && <span>· {modCount} Modules</span>}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Show available semesters when program is expanded */}
+                            {isExpanded && (
+                              <div className="bg-muted/30 border-t px-4 py-3 space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-primary" />
+                                    Available Semesters under {prog.name}
+                                  </span>
+                                  {sems.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="link"
+                                        size="sm"
+                                        className="h-auto p-0 text-xs text-primary font-medium"
+                                        onClick={(e) => { e.stopPropagation(); selectAllSemestersForProgram(prog.id); }}
+                                      >
+                                        Select All
+                                      </Button>
+                                      <span className="text-muted-foreground">·</span>
+                                      <Button
+                                        type="button"
+                                        variant="link"
+                                        size="sm"
+                                        className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => { e.stopPropagation(); deselectAllSemestersForProgram(prog.id); }}
+                                      >
+                                        Clear
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {isLoadingSems ? (
+                                  <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                                    <span>Loading available semesters...</span>
+                                  </div>
+                                ) : sems.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground italic py-1">
+                                    No semesters configured for this program. Base program will be imported.
+                                  </p>
+                                ) : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                                    {sems.map((sem: any) => {
+                                      const isSemChecked = selectedSemIds.includes(sem.id);
+                                      return (
+                                        <div
+                                          key={sem.id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleImportSemester(prog.id, sem.id);
+                                          }}
+                                          className={`flex items-center gap-2.5 p-2 rounded-md border text-xs cursor-pointer transition-colors ${
+                                            isSemChecked
+                                              ? 'border-primary/50 bg-background shadow-xs font-medium text-foreground'
+                                              : 'border-border/60 bg-muted/40 text-muted-foreground opacity-75 hover:opacity-100'
+                                          }`}
+                                        >
+                                          <Checkbox
+                                            checked={isSemChecked}
+                                            onCheckedChange={() => toggleImportSemester(prog.id, sem.id)}
+                                            onClick={e => e.stopPropagation()}
+                                          />
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-1">
+                                              <span className="truncate">{sem.semesterName}</span>
+                                              <Badge variant="outline" className="text-[10px] py-0 font-normal shrink-0">
+                                                Sem {sem.semesterNumber}
+                                              </Badge>
+                                            </div>
+                                            {sem.startDate && (
+                                              <p className="text-[10px] text-muted-foreground mt-0.5 truncate font-normal">
+                                                {new Date(sem.startDate).toLocaleDateString()} - {new Date(sem.endDate).toLocaleDateString()}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer pt-1">
+                    <Checkbox
+                      checked={importIncludeDetails}
+                      onCheckedChange={checked => setImportIncludeDetails(Boolean(checked))}
+                    />
+                    <span>Include semester records and modules when importing</span>
+                  </label>
+                </div>
+              );
+            })() : (
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Please select a source academic session above to view its programs.
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between items-center pt-3 border-t gap-2">
+            <span className="text-xs text-muted-foreground">
+              {importSelectedProgramIds.length > 0 ? (() => {
+                const totalSems = importSelectedProgramIds.reduce((sum, pid) => {
+                  const sems = importProgramSemesters[pid] || [];
+                  const sel = importSelectedSemesterIds[pid] !== undefined ? importSelectedSemesterIds[pid].length : sems.length;
+                  return sum + sel;
+                }, 0);
+                return `${importSelectedProgramIds.length} program(s) and ${totalSems} semester(s) selected`;
+              })() : 'Select programs to import'}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={importSelectedProgramIds.length === 0 || importLoading}
+                onClick={handleImportPrograms}
+              >
+                {importLoading ? 'Importing...' : `Import Selected (${importSelectedProgramIds.length})`}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

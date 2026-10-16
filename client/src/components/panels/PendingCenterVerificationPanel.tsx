@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { UniversityEnrollmentReviewPanel } from '@/components/panels/UniversityEnrollmentReviewPanel';
+import { EditSalesStudentDialog } from '@/components/dialogs/EditSalesStudentDialog';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -51,6 +52,7 @@ export function PendingCenterVerificationPanel({ mode }: PendingCenterVerificati
   const [loading, setLoading] = useState(true);
   const [resubmitCenter, setResubmitCenter] = useState<StudyCenter | null>(null);
   const [resubmitting, setResubmitting] = useState(false);
+  const [selectedStudentToEdit, setSelectedStudentToEdit] = useState<any | null>(null);
   const [form, setForm] = useState({
     name: '',
     code: '',
@@ -281,9 +283,19 @@ export function PendingCenterVerificationPanel({ mode }: PendingCenterVerificati
                             {application.studyCenter?.name ? ` · ${application.studyCenter.name}` : ''}
                           </p>
                         </div>
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          {new Date(application.createdAt).toLocaleDateString()}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(application.createdAt).toLocaleDateString()}
+                          </span>
+                          <Button
+                            size="sm"
+                            className="bg-amber-600 text-white hover:bg-amber-700 font-medium"
+                            onClick={() => setSelectedStudentToEdit(application)}
+                          >
+                            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                            Edit &amp; Re-submit
+                          </Button>
+                        </div>
                       </div>
                       {application.departmentRemarks && (
                         <div className="mt-3 flex items-start gap-2 rounded-md border border-red-300/60 bg-red-100/60 p-2 text-sm dark:bg-red-950/30">
@@ -357,6 +369,18 @@ export function PendingCenterVerificationPanel({ mode }: PendingCenterVerificati
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {mode === 'sales' && (
+        <EditSalesStudentDialog
+          open={!!selectedStudentToEdit}
+          onOpenChange={(open) => !open && setSelectedStudentToEdit(null)}
+          enrollment={selectedStudentToEdit}
+          onSuccess={() => {
+            setSelectedStudentToEdit(null);
+            fetchCenters();
+          }}
+        />
       )}
     </>
   );
