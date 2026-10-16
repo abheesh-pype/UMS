@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-<<<<<<< HEAD
-import { BookOpen, Calendar, Check, Edit, GraduationCap, Plus, Trash2, Video } from 'lucide-react';
-=======
 import { ArrowDownToLine, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Edit, GraduationCap, Loader2, Plus, Search, Trash2, Video } from 'lucide-react';
->>>>>>> 798e2b0c449b2b8db96f9ed9ecd512bce66926b0
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -59,13 +55,11 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
   const [allEbooks, setAllEbooks] = useState<any[]>([]);
   const [allEbooksLoading, setAllEbooksLoading] = useState(false);
-<<<<<<< HEAD
   const [videoModule, setVideoModule] = useState<any | null>(null);
   const [videoMaterials, setVideoMaterials] = useState<any[]>([]);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [videoUploading, setVideoUploading] = useState(false);
-=======
+  const [moduleVideoFile, setModuleVideoFile] = useState<File | null>(null);
+  const [moduleVideoLoading, setModuleVideoLoading] = useState(false);
+  const [moduleVideoUploading, setModuleVideoUploading] = useState(false);
   const [videoClasses, setVideoClasses] = useState<any[]>([]);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoSaving, setVideoSaving] = useState(false);
@@ -84,7 +78,6 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [videoModules, setVideoModules] = useState<any[]>([]);
   const [videoSemestersLoading, setVideoSemestersLoading] = useState(false);
   const [videoModulesLoading, setVideoModulesLoading] = useState(false);
->>>>>>> 798e2b0c449b2b8db96f9ed9ecd512bce66926b0
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
@@ -127,9 +120,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const openVideoDialog = async (module: any) => {
     setVideoModule(module);
-    setVideoFile(null);
+    setModuleVideoFile(null);
     setVideoMaterials([]);
-    setVideoLoading(true);
+    setModuleVideoLoading(true);
     try {
       const response = await api.get(`/operations/programs/${module.programId}/materials`);
       const moduleTag = moduleVideoTag(module);
@@ -139,45 +132,45 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     } catch (error: any) {
       toast.error(error.response?.data?.message || "Failed to load this module's videos");
     } finally {
-      setVideoLoading(false);
+      setModuleVideoLoading(false);
     }
   };
 
   const uploadModuleVideo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!videoModule || !videoFile) {
+    if (!videoModule || !moduleVideoFile) {
       toast.error('Select a video file to upload');
       return;
     }
-    if (videoFile.size > 10 * 1024 * 1024) {
+    if (moduleVideoFile.size > 10 * 1024 * 1024) {
       toast.error('Video must be 10 MB or smaller');
       return;
     }
     const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
     const allowedVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v'];
-    const extension = videoFile.name.slice(videoFile.name.lastIndexOf('.')).toLowerCase();
-    if (!allowedVideoTypes.includes(videoFile.type) || !allowedVideoExtensions.includes(extension)) {
+    const extension = moduleVideoFile.name.slice(moduleVideoFile.name.lastIndexOf('.')).toLowerCase();
+    if (!allowedVideoTypes.includes(moduleVideoFile.type) || !allowedVideoExtensions.includes(extension)) {
       toast.error('Only MP4, WebM, MOV, or M4V videos are allowed');
       return;
     }
 
-    setVideoUploading(true);
+    setModuleVideoUploading(true);
     try {
       const formData = new FormData();
       formData.append('moduleId', videoModule.id);
-      formData.append('file', videoFile);
+      formData.append('file', moduleVideoFile);
       const response = await api.post(
         `/operations/programs/${videoModule.programId}/videos`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
       setVideoMaterials(current => [response.data.data, ...current]);
-      setVideoFile(null);
+      setModuleVideoFile(null);
       toast.success('Video uploaded successfully');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to upload video');
     } finally {
-      setVideoUploading(false);
+      setModuleVideoUploading(false);
     }
   };
 
@@ -2693,7 +2686,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(videoModule)} onOpenChange={open => { if (!open && !videoUploading) setVideoModule(null); }}>
+      <Dialog open={Boolean(videoModule)} onOpenChange={open => { if (!open && !moduleVideoUploading) setVideoModule(null); }}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Videos - {videoModule?.moduleName}</DialogTitle>
@@ -2705,20 +2698,20 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 id="moduleVideo"
                 type="file"
                 accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
-                onChange={event => setVideoFile(event.target.files?.[0] || null)}
+                onChange={event => setModuleVideoFile(event.target.files?.[0] || null)}
                 required
               />
             </div>
             <div className="flex gap-2">
-              <Button type="submit" disabled={!videoFile || videoUploading}>
-                {videoUploading ? 'Uploading...' : 'Upload Video'}
+              <Button type="submit" disabled={!moduleVideoFile || moduleVideoUploading}>
+                {moduleVideoUploading ? 'Uploading...' : 'Upload Video'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => setVideoModule(null)} disabled={videoUploading}>Close</Button>
+              <Button type="button" variant="outline" onClick={() => setVideoModule(null)} disabled={moduleVideoUploading}>Close</Button>
             </div>
           </form>
           <div className="space-y-3 border-t pt-4">
             <h3 className="text-sm font-semibold">Uploaded Videos</h3>
-            {videoLoading ? (
+            {moduleVideoLoading ? (
               <p className="text-sm text-muted-foreground">Loading videos...</p>
             ) : videoMaterials.length === 0 ? (
               <p className="text-sm text-muted-foreground">No videos uploaded for this module.</p>
