@@ -54,7 +54,31 @@ NODE_ENV=development
 PORT=5000
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public
 JWT_SECRET=your-secret-key
+INTEGRATION_ENCRYPTION_KEY=use-a-stable-random-secret-at-least-32-characters-long
 CORS_ORIGIN=http://localhost:5173
+```
+
+`INTEGRATION_ENCRYPTION_KEY` encrypts university exam-portal API keys at rest.
+Keep it stable; changing it makes previously saved integration keys unreadable
+and they must be entered again. If it is omitted, `JWT_SECRET` is used instead.
+
+## Exam Portal Integration
+
+University Admins can configure an external portal endpoint and API key under
+**Integration**. The server sends a `POST` request to that endpoint with the API
+key in an `Authorization: Bearer` header and a JSON body containing
+`event: "exam_launch"`, the active student's identity, the examination,
+program/session/semester information, and the student's registration. The
+external portal should respond with JSON containing a one-time `launchUrl`
+(HTTPS, except localhost during development). The API key is never returned to
+the browser.
+
+Students can launch an examination only after registration and while the
+examination schedule is open. Apply the Prisma migration before using the
+integration settings:
+
+```bash
+npx prisma migrate deploy
 ```
 
 ## Database Setup

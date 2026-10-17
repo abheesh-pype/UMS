@@ -82,10 +82,14 @@ import {
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadVideo } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
+import { getExamPortalIntegration, saveExamPortalIntegration } from '../controllers/examIntegrationController.js';
 
 const router = express.Router();
 
 router.use(protect);
+
+router.get('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalIntegration);
+router.put('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), saveExamPortalIntegration);
 
 // Universities — write access restricted to org_admin / superadmin & operations admin
 router.route('/universities').get(getUniversities).post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), createUniversity);

@@ -225,6 +225,7 @@ function App() {
       return [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'pending_center_verification', label: 'Pending Verification' },
+        { id: 'integration', label: 'Integration' },
       ];
     }
     

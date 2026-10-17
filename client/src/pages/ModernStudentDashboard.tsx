@@ -36,18 +36,6 @@ interface StudentAssessmentResult {
   evaluated_at: string;
 }
 
-const readStudentExamPortals = () => {
-  try {
-    const createdPortals = JSON.parse(localStorage.getItem('academic-created-exam-portals') || '{}');
-    const portals = Object.values(createdPortals).filter((portal: any) => portal.isOpen !== false);
-    if (portals.length > 0) return portals;
-    const activePortal = JSON.parse(localStorage.getItem('active-student-exam-portal') || 'null');
-    return activePortal && activePortal.isOpen !== false ? [activePortal] : [];
-  } catch {
-    return [];
-  }
-};
-
 interface ModernStudentDashboardProps {
   initialTab?: string;
 }
@@ -76,7 +64,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [registrationExamination, setRegistrationExamination] = useState<any>(null);
   const [registeredExaminationIds, setRegisteredExaminationIds] = useState<string[]>([]);
-  const [studentExamPortals, setStudentExamPortals] = useState<any[]>(readStudentExamPortals);
+  const [studentExaminations, setStudentExaminations] = useState<any[]>([]);
+  const [studentExaminationsLoading, setStudentExaminationsLoading] = useState(false);
+  const [launchingExaminationId, setLaunchingExaminationId] = useState<string | null>(null);
+  const examPortalLoaded = useRef(false);
   const [registrationForm, setRegistrationForm] = useState({
     fullName: '',
     enrollmentNo: '',
@@ -172,20 +163,51 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       .finally(() => setScheduledClassesLoading(false));
   }, [activeSection]);
 
+  const fetchStudentExaminations = useCallback(async () => {
+    if (!examPortalLoaded.current) setStudentExaminationsLoading(true);
+    try {
+      const response = await api.get('/students/examinations');
+      setStudentExaminations(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load examinations');
+    } finally {
+      setStudentExaminationsLoading(false);
+      examPortalLoaded.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'examination-portal') return;
+    fetchStudentExaminations();
+    const refreshTimer = window.setInterval(fetchStudentExaminations, 60000);
+    return () => window.clearInterval(refreshTimer);
+  }, [activeSection, fetchStudentExaminations]);
+
+  const launchExamination = async (examinationId: string) => {
+    const launchWindow = window.open('about:blank', '_blank');
+    if (!launchWindow) {
+      toast.error('Allow pop-ups to open the examination portal');
+      return;
+    }
+    setLaunchingExaminationId(examinationId);
+    try {
+      const response = await api.post(`/students/examinations/${examinationId}/launch`);
+      launchWindow.opener = null;
+      launchWindow.location.href = response.data.data.launchUrl;
+    } catch (error: any) {
+      launchWindow.close();
+      toast.error(error.response?.data?.message || 'Failed to launch examination');
+    } finally {
+      setLaunchingExaminationId(null);
+    }
+  };
+
   useEffect(() => {
     const updateFullscreenState = () => {
       setIsVideoFullscreen(document.fullscreenElement === videoContainerRef.current);
     };
     document.addEventListener('fullscreenchange', updateFullscreenState);
     return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
-  }, []);
-
-  useEffect(() => {
-    const refreshExamPortal = () => {
-      setStudentExamPortals(readStudentExamPortals());
-    };
-    window.addEventListener('storage', refreshExamPortal);
-    return () => window.removeEventListener('storage', refreshExamPortal);
   }, []);
 
   const fetchStudentData = async () => {
@@ -677,27 +699,40 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           <Card>
             <CardHeader>
               <CardTitle>Examination Portal</CardTitle>
-              <CardDescription>Access your examination portal.</CardDescription>
+              <CardDescription>Registered examinations for your active program and session.</CardDescription>
             </CardHeader>
             <CardContent>
-              {studentExamPortals.length > 0 ? (
+              {studentExaminationsLoading ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">Loading examinations...</p>
+              ) : studentExaminations.length > 0 ? (
                 <div className="space-y-4">
-                  {studentExamPortals.map((portal: any) => (
-                    <div key={portal.examinationId || portal.code} className="rounded-lg border p-4 space-y-4">
-                      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                        <div><span className="text-muted-foreground">Examination</span><p className="font-medium">{portal.examinationName}</p></div>
-                        <div><span className="text-muted-foreground">Type</span><p className="font-medium">{portal.examinationType}</p></div>
-                        <div><span className="text-muted-foreground">Program</span><p className="font-medium">{portal.programName}</p></div>
-                        <div><span className="text-muted-foreground">Date</span><p className="font-medium">{portal.examDate}</p></div>
-                        <div><span className="text-muted-foreground">Session</span><p className="font-medium">{portal.examSession}</p></div>
-                        <div><span className="text-muted-foreground">Time</span><p className="font-medium">{portal.examTime}</p></div>
-                        <div><span className="text-muted-foreground">Exam Code</span><p className="font-medium font-mono">{portal.code}</p></div>
+                  {studentExaminations.map((examination: any) => (
+                    <div key={examination.id} className="rounded-lg border p-4 space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">{examination.examinationName}</h3>
+                          <p className="text-sm text-muted-foreground">{examination.examinationType}</p>
+                        </div>
+                        <Badge variant={examination.readyToLaunch ? 'default' : 'secondary'}>
+                          {examination.readyToLaunch ? 'Ready to write' : examination.registered ? 'Not open yet' : 'Registration required'}
+                        </Badge>
                       </div>
-                      <Button onClick={() => toast.info('Open Portal is not available yet.')}>Open Portal</Button>
+                      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        <div><span className="text-muted-foreground">Session</span><p className="font-medium">{examination.academicSession?.name || '—'}</p></div>
+                        <div><span className="text-muted-foreground">Program</span><p className="font-medium">{examination.program?.name || '—'}</p></div>
+                        <div><span className="text-muted-foreground">Semester</span><p className="font-medium">{examination.semester?.semesterName || '—'}</p></div>
+                        <div><span className="text-muted-foreground">Exam period</span><p className="font-medium">{new Date(examination.startDate).toLocaleDateString()} – {new Date(examination.endDate).toLocaleDateString()}</p></div>
+                      </div>
+                      <Button
+                        onClick={() => launchExamination(examination.id)}
+                        disabled={!examination.readyToLaunch || launchingExaminationId === examination.id}
+                      >
+                        {launchingExaminationId === examination.id ? 'Connecting...' : 'Open Exam Portal'}
+                      </Button>
                     </div>
                   ))}
                 </div>
-              ) : <p className="py-8 text-center text-sm text-muted-foreground">No examination portal has been opened yet.</p>}
+              ) : <p className="py-8 text-center text-sm text-muted-foreground">No examinations are currently assigned to your active program and session.</p>}
             </CardContent>
           </Card>
         </main>
