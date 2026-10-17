@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { createNotification, broadcastNotification } from './notificationController.js';
+import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 
 export const getStudents = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId };
@@ -317,7 +318,7 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
         name: finalName,
         role: 'student',
         organizationId: req.user.organizationId,
-        status: 'active'
+        status: 'inactive'
       }
     });
   }
@@ -335,10 +336,11 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
     if (firstProg) finalProgramId = firstProg.id;
   }
 
-  const allowedFields = ['sessionId', 'status', 'joinDate', 'enrolledAt', 'reregStatus', 'referredBy', 'phone', 'address'];
+  const allowedFields = ['sessionId', 'dob', 'joinDate', 'enrolledAt', 'reregStatus', 'referredBy', 'phone', 'address'];
   const dbData: any = {
     name: finalName,
     enrollmentNo: finalEnrollmentNo,
+    status: 'pending',
     organization: { connect: { id: req.user.organizationId } },
     center: finalCenterId ? { connect: { id: finalCenterId } } : undefined,
     user: { connect: { email: email } }
@@ -364,6 +366,33 @@ export const updateStudent = asyncHandler(async (req: AuthRequest, res: Response
     res.status(404).json({ success: false, message: 'Student not found' });
     return;
   }
+
+  if (req.body.status === 'active') {
+    const password = getStudentPortalPassword(req.body.dob ?? studentExists.dob);
+    if (!password) {
+      res.status(400).json({
+        success: false,
+        message: 'A valid date of birth in YYYY-MM-DD format is required before activating the student',
+      });
+      return;
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const student = await prisma.$transaction(async (tx) => {
+      const updatedStudent = await tx.student.update({
+        where: { id: req.params.id },
+        data: { ...req.body, dob: password },
+      });
+      await activateStudentPortalAccount(tx, {
+        email: updatedStudent.email,
+        name: updatedStudent.name,
+        organizationId: updatedStudent.organizationId,
+      }, passwordHash);
+      return updatedStudent;
+    });
+    res.status(200).json({ success: true, data: student });
+    return;
+  }
+
   const student = await prisma.student.update({
     where: { id: req.params.id },
     data: req.body
@@ -395,9 +424,26 @@ export const approveStudent = asyncHandler(async (req: AuthRequest, res: Respons
     res.status(404).json({ success: false, message: 'Student not found' });
     return;
   }
-  const student = await prisma.student.update({
-    where: { id: req.params.id },
-    data: { status: 'active' as any }
+  const password = getStudentPortalPassword(studentExists.dob);
+  if (!password) {
+    res.status(400).json({
+      success: false,
+      message: 'A valid date of birth in YYYY-MM-DD format is required before activating the student',
+    });
+    return;
+  }
+  const passwordHash = await bcrypt.hash(password, 12);
+  const student = await prisma.$transaction(async (tx) => {
+    const activatedStudent = await tx.student.update({
+      where: { id: req.params.id },
+      data: { status: 'active' as any, dob: password },
+    });
+    await activateStudentPortalAccount(tx, {
+      email: activatedStudent.email,
+      name: activatedStudent.name,
+      organizationId: activatedStudent.organizationId,
+    }, passwordHash);
+    return activatedStudent;
   });
   res.status(200).json({ success: true, data: student });
 });
@@ -682,6 +728,219 @@ export const getStudentInstallments = asyncHandler(async (req: AuthRequest, res:
   }
 
   res.status(200).json({ success: true, installments });
+});
+
+export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const student = await prisma.student.findFirst({
+    where: {
+      organizationId: req.user.organizationId,
+      email: { equals: req.user.email, mode: 'insensitive' },
+    },
+    include: {
+      program: true,
+      enrollments: {
+        include: {
+          session: { select: { id: true, name: true } },
+          studentFeeReceipts: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+      invoices: {
+        include: {
+          payments: { orderBy: { receivedAt: 'desc' } },
+        },
+        orderBy: { createdAt: 'desc' },
+      },
+      universityFeePayments: { orderBy: { createdAt: 'desc' } },
+    },
+  });
+
+  if (!student) {
+    res.status(404).json({ success: false, message: 'Student record not found' });
+    return;
+  }
+
+  const sessionId = student.sessionId || student.enrollments[0]?.sessionId || null;
+  const feeCandidates = await prisma.programFeeStructure.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      OR: [
+        { programId: student.programId },
+        { universityId: student.program.universityId, level: 'university' },
+      ],
+    },
+  });
+  const feeStructure = feeCandidates
+    .map(candidate => {
+      const isProgramFee = candidate.level === 'program' && candidate.programId === student.programId;
+      const isUniversityFee = candidate.level === 'university'
+        && candidate.universityId === student.program.universityId;
+      let score = 0;
+      if (isProgramFee) {
+        score = candidate.admissionSessionId === sessionId
+          ? 100
+          : candidate.admissionSessionId === null ? 80 : 60;
+      } else if (isUniversityFee) {
+        score = candidate.admissionSessionId === sessionId
+          ? 40
+          : candidate.admissionSessionId === null ? 20 : 10;
+      }
+      return { candidate, score };
+    })
+    .sort((a, b) => b.score - a.score)[0]?.candidate;
+
+  const feeItems: { label: string; amount: number }[] = [];
+  const installments: { name: string; amount: number; dueDate: string | null; items: { label: string; amount: number }[] }[] = [];
+  if (feeStructure) {
+    const additionalFees = Array.isArray(feeStructure.additionalFees)
+      ? feeStructure.additionalFees as { label?: string; amount?: number }[]
+      : [];
+    const gstFee = additionalFees.find(fee => fee.label?.toLowerCase() === 'gst');
+    const recurringAdditionalFees = additionalFees.filter(
+      fee => fee.label && fee.label.toLowerCase() !== 'gst',
+    );
+    const globalAdditionalTotal = recurringAdditionalFees.reduce(
+      (sum, fee) => sum + (Number(fee.amount) || 0),
+      0,
+    );
+
+    let breakdown: any[] = [];
+    if (Array.isArray(feeStructure.feeBreakdown)) {
+      breakdown = feeStructure.feeBreakdown;
+    } else if (typeof feeStructure.feeBreakdown === 'string') {
+      try {
+        const parsed = JSON.parse(feeStructure.feeBreakdown);
+        if (Array.isArray(parsed)) breakdown = parsed;
+      } catch {
+        breakdown = [];
+      }
+    }
+
+    if (breakdown.length > 0) {
+      const cycleLabel = feeStructure.billingCycle === 'per_semester'
+        ? 'Semester'
+        : feeStructure.billingCycle === 'per_year' || feeStructure.billingCycle === 'yearly'
+          ? 'Year'
+          : 'Installment';
+      breakdown.forEach((cycle, index) => {
+        const items: { label: string; amount: number }[] = [
+          { label: 'Tuition fee', amount: Number(cycle.baseFee) || 0 },
+          { label: 'Exam fee', amount: Number(cycle.examFee) || 0 },
+          { label: 'University fee', amount: Number(cycle.universityFee) || 0 },
+        ].filter(item => item.amount !== 0);
+
+        if (typeof cycle.additionalFees === 'string' && cycle.additionalFees.trim()) {
+          cycle.additionalFees.split(',').forEach((entry: string) => {
+            const [label, amount] = entry.trim().split(':');
+            const parsedAmount = Number(amount);
+            if (label?.trim() && Number.isFinite(parsedAmount)) {
+              items.push({ label: label.trim(), amount: parsedAmount });
+            }
+          });
+        }
+        if (index === 0) {
+          recurringAdditionalFees.forEach(fee => {
+            if (fee.label && Number(fee.amount)) {
+              items.push({ label: fee.label, amount: Number(fee.amount) });
+            }
+          });
+        }
+
+        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+        const gstAmount = gstFee?.amount
+          ? Math.round((subtotal * Number(gstFee.amount)) / 100)
+          : 0;
+        if (gstAmount) items.push({ label: `GST (${gstFee?.amount}%)`, amount: gstAmount });
+
+        const amount = items.reduce((sum, item) => sum + item.amount, 0);
+        items.forEach(item => {
+          const existingItem = feeItems.find(fee => fee.label === item.label);
+          if (existingItem) existingItem.amount += item.amount;
+          else feeItems.push({ ...item });
+        });
+        installments.push({
+          name: `${cycleLabel} ${cycle.year || index + 1}`,
+          amount,
+          dueDate: cycle.dueDate || null,
+          items,
+        });
+      });
+    } else {
+      const items = [
+        { label: 'Tuition fee', amount: Number(feeStructure.baseFee) || 0 },
+        { label: 'University fee', amount: Number(feeStructure.universityFee) || 0 },
+        ...recurringAdditionalFees
+          .filter(fee => fee.label && Number(fee.amount))
+          .map(fee => ({ label: fee.label!, amount: Number(fee.amount) })),
+      ].filter(item => item.amount !== 0);
+      const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+      const gstAmount = gstFee?.amount
+        ? Math.round((subtotal * Number(gstFee.amount)) / 100)
+        : 0;
+      if (gstAmount) items.push({ label: `GST (${gstFee?.amount}%)`, amount: gstAmount });
+      feeItems.push(...items);
+      installments.push({
+        name: feeStructure.billingCycle === 'total' ? 'Full program' : 'Program fees',
+        amount: items.reduce((sum, item) => sum + item.amount, 0),
+        dueDate: null,
+        items,
+      });
+    }
+  }
+
+  const payments = [
+    ...student.enrollments.flatMap(enrollment => enrollment.studentFeeReceipts.map(receipt => ({
+      id: receipt.id,
+      date: receipt.receiptDate,
+      amount: receipt.amount,
+      method: receipt.paymentMode,
+      referenceNo: receipt.referenceNo,
+      description: enrollment.session?.name
+        ? `Enrollment fee · ${enrollment.session.name}`
+        : 'Enrollment fee',
+      status: 'paid',
+    }))),
+    ...student.invoices.flatMap(invoice => invoice.payments.map(payment => ({
+      id: payment.id,
+      date: payment.receivedAt,
+      amount: payment.amount,
+      method: payment.method,
+      referenceNo: payment.referenceNo,
+      description: invoice.invoiceNo,
+      status: 'paid',
+    }))),
+    ...student.universityFeePayments.map(payment => ({
+      id: payment.id,
+      date: payment.paidAt || payment.createdAt,
+      amount: payment.amount,
+      method: 'University fee',
+      referenceNo: payment.referenceNo,
+      description: payment.semesterOrYear,
+      status: payment.status,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  res.status(200).json({
+    success: true,
+    data: {
+      program: student.program.name,
+      session: student.enrollments[0]?.session?.name || '',
+      currency: feeStructure?.currency || 'INR',
+      billingCycle: feeStructure?.billingCycle || '',
+      feeItems,
+      totalConfigured: feeItems.reduce((sum, item) => sum + item.amount, 0),
+      installments,
+      payments,
+      invoices: student.invoices.map(invoice => ({
+        id: invoice.id,
+        invoiceNo: invoice.invoiceNo,
+        amount: invoice.total,
+        status: invoice.status,
+        dueDate: invoice.dueDate,
+        paidAt: invoice.paidAt,
+      })),
+    },
+  });
 });
 
 export const payStudentInstallment = asyncHandler(async (req: AuthRequest, res: Response) => {

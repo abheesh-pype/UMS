@@ -381,7 +381,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
           name: studentName,
           role: 'student',
           organizationId: organizationId,
-          status: 'active'
+          status: 'inactive'
         }
       });
     }

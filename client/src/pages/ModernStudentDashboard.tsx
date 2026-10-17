@@ -66,8 +66,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [selectedVideoMaterialId, setSelectedVideoMaterialId] = useState<string | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
-    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'payment-info' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
       ? initialTab
       : 'portal'
   );
@@ -91,10 +91,13 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [studentDocuments, setStudentDocuments] = useState<any[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState('');
+  const [studentPaymentInfo, setStudentPaymentInfo] = useState<any>(null);
+  const [paymentInfoLoading, setPaymentInfoLoading] = useState(false);
+  const [paymentInfoError, setPaymentInfoError] = useState('');
 
   useEffect(() => {
     setActiveSection(
-      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
         ? initialTab
         : 'portal'
     );
@@ -139,6 +142,24 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     if (activeSection !== 'documents') return;
     fetchStudentDocuments();
   }, [activeSection, fetchStudentDocuments]);
+
+  const fetchStudentPaymentInfo = useCallback(async () => {
+    setPaymentInfoLoading(true);
+    setPaymentInfoError('');
+    try {
+      const response = await api.get('/students/payment-info');
+      setStudentPaymentInfo(response.data.data || null);
+    } catch (error: any) {
+      setPaymentInfoError(error.response?.data?.message || 'Failed to load payment information.');
+    } finally {
+      setPaymentInfoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'payment-info') return;
+    fetchStudentPaymentInfo();
+  }, [activeSection, fetchStudentPaymentInfo]);
 
   useEffect(() => {
     if (activeSection !== 'scheduled-classes') return;
@@ -309,6 +330,21 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     hour12: true,
   });
 
+  const paymentCurrency = /^[A-Z]{3}$/.test(studentPaymentInfo?.currency || '')
+    ? studentPaymentInfo.currency
+    : 'INR';
+  const formatPaymentAmount = (value: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: paymentCurrency,
+    maximumFractionDigits: 2,
+  }).format(Number(value) || 0);
+  const totalReceived = (studentPaymentInfo?.payments || [])
+    .filter((payment: any) => payment.status === 'paid')
+    .reduce((total: number, payment: any) => total + (Number(payment.amount) || 0), 0);
+  const outstandingInvoices = (studentPaymentInfo?.invoices || [])
+    .filter((invoice: any) => invoice.status !== 'paid')
+    .reduce((total: number, invoice: any) => total + (Number(invoice.amount) || 0), 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -402,7 +438,186 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     <div className="min-h-screen bg-muted/30 pb-12">
       <div className="flex">
         <div className="flex-1 min-w-0">
-        {activeSection === 'notifications' ? (
+        {activeSection === 'payment-info' ? (
+        <main className="container mx-auto max-w-7xl px-4 py-8">
+          <Card className="border-none shadow-xl">
+            <CardHeader>
+              <CardTitle>Payment Information</CardTitle>
+              <CardDescription>
+                {studentPaymentInfo?.program || program?.name || 'Your program'}
+                {studentPaymentInfo?.session ? ` · ${studentPaymentInfo.session}` : ''}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {paymentInfoLoading ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">Loading your payment information...</p>
+              ) : paymentInfoError ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm text-destructive">{paymentInfoError}</p>
+                  <Button className="mt-3" variant="outline" onClick={fetchStudentPaymentInfo}>Try again</Button>
+                </div>
+              ) : !studentPaymentInfo ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">Payment information is not available.</p>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Configured program fees</p>
+                        <p className="mt-1 text-xl font-bold">{formatPaymentAmount(studentPaymentInfo.totalConfigured)}</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Payments received</p>
+                        <p className="mt-1 text-xl font-bold">{formatPaymentAmount(totalReceived)}</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4">
+                        <p className="text-sm text-muted-foreground">Outstanding invoices</p>
+                        <p className="mt-1 text-xl font-bold">{formatPaymentAmount(outstandingInvoices)}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <section className="space-y-3">
+                    <div>
+                      <h3 className="font-semibold">Configured fee breakdown</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {studentPaymentInfo.billingCycle
+                          ? `Billing cycle: ${studentPaymentInfo.billingCycle.replaceAll('_', ' ')}`
+                          : 'Configured fees for your enrolled program'}
+                      </p>
+                    </div>
+                    {studentPaymentInfo.feeItems?.length ? (
+                      <div className="overflow-x-auto rounded-lg border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 text-left">
+                            <tr>
+                              <th className="px-4 py-3 font-medium">Fee</th>
+                              <th className="px-4 py-3 text-right font-medium">Configured amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {studentPaymentInfo.feeItems.map((item: any, index: number) => (
+                              <tr key={`${item.label}-${index}`}>
+                                <td className="px-4 py-3">{item.label}</td>
+                                <td className="px-4 py-3 text-right font-medium">{formatPaymentAmount(item.amount)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-muted/30 font-semibold">
+                              <td className="px-4 py-3">Total configured</td>
+                              <td className="px-4 py-3 text-right">{formatPaymentAmount(studentPaymentInfo.totalConfigured)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No program or university fee structure is configured for this enrollment yet.
+                      </p>
+                    )}
+                  </section>
+
+                  {studentPaymentInfo.installments?.length > 0 && (
+                    <section className="space-y-3">
+                      <h3 className="font-semibold">Scheduled fees</h3>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {studentPaymentInfo.installments.map((installment: any) => (
+                          <Card key={installment.name}>
+                            <CardContent className="space-y-3 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium">{installment.name}</span>
+                                <span className="font-semibold">{formatPaymentAmount(installment.amount)}</span>
+                              </div>
+                              {installment.dueDate && (
+                                <p className="text-xs text-muted-foreground">
+                                  Due: {new Date(installment.dueDate).toLocaleDateString()}
+                                </p>
+                              )}
+                              <div className="space-y-1 border-t pt-2">
+                                {installment.items.map((item: any, index: number) => (
+                                  <div key={`${item.label}-${index}`} className="flex justify-between gap-3 text-xs text-muted-foreground">
+                                    <span>{item.label}</span>
+                                    <span>{formatPaymentAmount(item.amount)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  <section className="space-y-3">
+                    <div>
+                      <h3 className="font-semibold">Payment history</h3>
+                      <p className="text-sm text-muted-foreground">Payments recorded for your enrollment, invoices, and university fees.</p>
+                    </div>
+                    {studentPaymentInfo.payments?.length ? (
+                      <div className="overflow-x-auto rounded-lg border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 text-left">
+                            <tr>
+                              <th className="px-4 py-3 font-medium">Date</th>
+                              <th className="px-4 py-3 font-medium">Description</th>
+                              <th className="px-4 py-3 font-medium">Method</th>
+                              <th className="px-4 py-3 text-right font-medium">Amount</th>
+                              <th className="px-4 py-3 font-medium">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {studentPaymentInfo.payments.map((payment: any) => (
+                              <tr key={payment.id}>
+                                <td className="whitespace-nowrap px-4 py-3">{new Date(payment.date).toLocaleDateString()}</td>
+                                <td className="px-4 py-3">
+                                  <div>{payment.description}</div>
+                                  {payment.referenceNo && <div className="text-xs text-muted-foreground">Ref: {payment.referenceNo}</div>}
+                                </td>
+                                <td className="px-4 py-3">{payment.method || '-'}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-right font-medium">{formatPaymentAmount(payment.amount)}</td>
+                                <td className="px-4 py-3">
+                                  <Badge variant={payment.status === 'paid' ? 'default' : 'secondary'}>{payment.status}</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No payments have been recorded yet.
+                      </p>
+                    )}
+                  </section>
+
+                  {studentPaymentInfo.invoices?.length > 0 && (
+                    <section className="space-y-3">
+                      <h3 className="font-semibold">Invoices</h3>
+                      <div className="space-y-2">
+                        {studentPaymentInfo.invoices.map((invoice: any) => (
+                          <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+                            <div>
+                              <p className="font-medium">{invoice.invoiceNo}</p>
+                              {invoice.dueDate && <p className="text-xs text-muted-foreground">Due {new Date(invoice.dueDate).toLocaleDateString()}</p>}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-medium">{formatPaymentAmount(invoice.amount)}</span>
+                              <Badge variant={invoice.status === 'paid' ? 'default' : 'secondary'}>{invoice.status}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+        ) : activeSection === 'notifications' ? (
         <main className="container mx-auto px-4 py-8 max-w-4xl">
           <Card>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

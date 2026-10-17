@@ -118,6 +118,21 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
     return;
   }
 
+  if (user.role === 'student') {
+    const student = await prisma.student.findFirst({
+      where: {
+        organizationId,
+        email: { equals: user.email, mode: 'insensitive' },
+        status: 'active',
+      },
+      select: { id: true },
+    });
+    if (user.status !== 'active' || !student) {
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return;
+    }
+  }
+
   // Update last login
   const updatedUser = await prisma.user.update({
     where: { id: user.id },

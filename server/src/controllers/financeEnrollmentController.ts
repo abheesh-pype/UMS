@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
+import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 
 const FINANCE_VISIBLE_ENROLLMENT_STATUSES = [
   'pending_finance_review',
@@ -263,6 +264,21 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     return;
   }
 
+  const existingStudent = await prisma.student.findUnique({
+    where: { email: dbEnrollment.studentEmail },
+    select: { dob: true },
+  });
+  const dobPassword = getStudentPortalPassword(dbEnrollment.dob)
+    || getStudentPortalPassword(existingStudent?.dob);
+  if (!dobPassword) {
+    res.status(400).json({
+      success: false,
+      message: 'A valid date of birth in YYYY-MM-DD format is required before approving the enrollment',
+    });
+    return;
+  }
+  const studentPasswordHash = await bcrypt.hash(dobPassword, 12);
+
   // Calculate total fee
   const addFees = Array.isArray(feeStructure.additionalFees) ? feeStructure.additionalFees : [];
   const nonGstFees = addFees.filter((f: any) => f.label !== 'GST');
@@ -301,18 +317,16 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     // Create/find User
     let user = await tx.user.findUnique({ where: { email: dbEnrollment.studentEmail } });
     if (!user) {
-      const rawPassword = 'password123';
-      const hashedPassword = await bcrypt.hash(rawPassword, 10);
       const userId = `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       user = await tx.user.create({
         data: {
           userId,
           email: dbEnrollment.studentEmail,
-          password: hashedPassword,
+          password: studentPasswordHash,
           name: dbEnrollment.studentName,
           role: 'student',
           organizationId: req.user.organizationId,
-          status: 'active'
+          status: 'inactive'
         }
       });
     }
@@ -334,7 +348,7 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
           sessionId: dbEnrollment.sessionId,
           abcId: dbEnrollment.abcId,
           debId: dbEnrollment.debId,
-          dob: dbEnrollment.dob,
+          dob: dobPassword,
           religion: dbEnrollment.religion,
           caste: dbEnrollment.caste,
           fatherName: dbEnrollment.fatherName,
@@ -345,7 +359,7 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
           alternativePhone: dbEnrollment.alternativePhone,
           maritalStatus: dbEnrollment.maritalStatus,
           currentlyWorking: dbEnrollment.currentlyWorking,
-          status: 'active',
+          status: 'pending',
           sessionId: dbEnrollment.sessionId,
           enrolledAt: new Date(),
           organization: { connect: { id: req.user.organizationId } },
@@ -357,14 +371,14 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     } else {
       // Sync fields in case they were updated during the review process
       const updateData: any = {
-        status: 'active',
+        status: 'pending',
         name: dbEnrollment.studentName,
         phone: dbEnrollment.studentPhone,
         address: dbEnrollment.studentAddress,
         specialisation: dbEnrollment.specialisation,
         abcId: dbEnrollment.abcId,
         debId: dbEnrollment.debId,
-        dob: dbEnrollment.dob,
+        dob: dobPassword,
         religion: dbEnrollment.religion,
         caste: dbEnrollment.caste,
         fatherName: dbEnrollment.fatherName,
@@ -385,6 +399,16 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
         data: updateData
       });
     }
+
+    student = await tx.student.update({
+      where: { id: student.id },
+      data: { status: 'active' },
+    });
+    await activateStudentPortalAccount(tx, {
+      email: student.email,
+      name: student.name,
+      organizationId: student.organizationId,
+    }, studentPasswordHash);
 
     // Link enrollment to student
     const updatedEnrollment = await tx.enrollment.update({

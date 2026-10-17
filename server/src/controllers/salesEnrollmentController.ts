@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
+import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
   if (!req.user.organizationId) {
@@ -182,7 +183,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
           name: studentName.trim(),
           role: 'student',
           organizationId: req.user.organizationId,
-          status: 'active',
+          status: 'inactive',
         },
         select: { id: true },
       });
@@ -455,7 +456,7 @@ export const submitStudentApplication = asyncHandler(async (req: Request, res: R
           name: studentName,
           role: 'student',
           organizationId: organizationId,
-          status: 'active'
+          status: 'inactive'
         }
       });
     }
@@ -731,6 +732,21 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
     return;
   }
 
+  const existingStudentForAccess = await prisma.student.findUnique({
+    where: { email: enrollment.studentEmail },
+    select: { dob: true },
+  });
+  const dobPassword = getStudentPortalPassword(enrollment.dob)
+    || getStudentPortalPassword(existingStudentForAccess?.dob);
+  if (!dobPassword) {
+    res.status(400).json({
+      success: false,
+      message: 'A valid date of birth in YYYY-MM-DD format is required before approving the enrollment',
+    });
+    return;
+  }
+  const studentPasswordHash = await bcrypt.hash(dobPassword, 12);
+
   const history = ((enrollment as any).statusHistory as any[]) || [];
   history.push({
     status: 'enrolled' as any,
@@ -744,18 +760,16 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
   // Create/find User
   let user = await prisma.user.findUnique({ where: { email: enrollment.studentEmail } });
   if (!user) {
-    const rawPassword = 'password123';
-    const hashedPassword = await bcrypt.hash(rawPassword, 10);
     const userId = `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     user = await prisma.user.create({
       data: {
         userId,
         email: enrollment.studentEmail,
-        password: hashedPassword,
+        password: studentPasswordHash,
         name: enrollment.studentName,
         role: 'student',
         organizationId: req.user.organizationId,
-        status: 'active'
+        status: 'inactive'
       }
     });
   }
@@ -776,7 +790,7 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
           specialisation: enrollment.specialisation,
           abcId: enrollment.abcId,
           debId: enrollment.debId,
-          dob: enrollment.dob,
+          dob: dobPassword,
           religion: enrollment.religion,
           caste: enrollment.caste,
           fatherName: enrollment.fatherName,
@@ -787,7 +801,7 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
           alternativePhone: enrollment.alternativePhone,
           maritalStatus: enrollment.maritalStatus,
           currentlyWorking: enrollment.currentlyWorking,
-          status: 'active',
+          status: 'pending',
           sessionId: enrollment.sessionId,
           enrolledAt: new Date(),
           organization: { connect: { id: req.user.organizationId } },
@@ -798,14 +812,13 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
       });
     } else {
       const updateData: any = {
-        status: 'active',
         name: enrollment.studentName,
         phone: enrollment.studentPhone,
         address: enrollment.studentAddress,
         specialisation: enrollment.specialisation,
         abcId: enrollment.abcId,
         debId: enrollment.debId,
-        dob: enrollment.dob,
+        dob: dobPassword,
         religion: enrollment.religion,
         caste: enrollment.caste,
         fatherName: enrollment.fatherName,
@@ -827,17 +840,28 @@ export const approveSalesEnrollmentFinance = asyncHandler(async (req: AuthReques
       });
     }
 
-  const updated = await prisma.enrollment.update({
-    where: { id: req.params.id },
-    data: {
-      status: 'enrolled' as any,
-      financeReviewer: { connect: { id: req.user.id } },
-      financeReviewedAt: now,
-      enrolledAt: now,
-      statusHistory: history,
-      student: { connect: { id: student.id } },
-      enrollmentNumber: enrollmentNo
-    } as any,
+  const updated = await prisma.$transaction(async (tx) => {
+    const activatedStudent = await tx.student.update({
+      where: { id: student.id },
+      data: { status: 'active', enrolledAt: student.enrolledAt || now },
+    });
+    await activateStudentPortalAccount(tx, {
+      email: activatedStudent.email,
+      name: activatedStudent.name,
+      organizationId: activatedStudent.organizationId,
+    }, studentPasswordHash);
+    return tx.enrollment.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'enrolled' as any,
+        financeReviewer: { connect: { id: req.user.id } },
+        financeReviewedAt: now,
+        enrolledAt: now,
+        statusHistory: history,
+        student: { connect: { id: student.id } },
+        enrollmentNumber: enrollmentNo
+      } as any,
+    });
   });
 
   // Notify sales user
@@ -1187,4 +1211,3 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     data: updatedEnrollment
   });
 });
-

@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import bcrypt from 'bcryptjs';
+import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 
 // GET /enrollment/university-review
 // Returns all enrollments with status university_review for the requesting university_admin's university
@@ -73,26 +75,59 @@ export const approveUniversityEnrollment = asyncHandler(async (req: AuthRequest,
     return;
   }
 
+  if (!enrollment.studentId) {
+    res.status(409).json({
+      success: false,
+      message: 'A student record must be linked before final enrollment approval',
+    });
+    return;
+  }
+
   const updatedStatusHistory = ((enrollment as any).statusHistory as any[]) || [];
   updatedStatusHistory.push({ status: 'enrolled' as any, actorId: req.user.id, timestamp: now.toISOString() });
 
-  const updatedEnrollment = await prisma.enrollment.update({
-    where: { id: req.params.id },
-    data: {
-      status: 'enrolled' as any,
-      enrolledAt: now,
-      universityReviewedBy: req.user.id,
-      universityReviewedAt: now,
-      statusHistory: updatedStatusHistory,
-    } as any,
+  const studentForAccess = await prisma.student.findUnique({
+    where: { id: enrollment.studentId },
+    select: { dob: true },
   });
-
-  if (updatedEnrollment.studentId) {
-    await prisma.student.update({
-      where: { id: updatedEnrollment.studentId },
-      data: { enrolledAt: now, status: 'active', sessionId: enrollment.sessionId }
+  const dobPassword = getStudentPortalPassword(studentForAccess?.dob)
+    || getStudentPortalPassword(enrollment.dob);
+  if (!dobPassword) {
+    res.status(400).json({
+      success: false,
+      message: 'A valid date of birth in YYYY-MM-DD format is required before approving the enrollment',
     });
+    return;
   }
+  const studentPasswordHash = await bcrypt.hash(dobPassword, 12);
+
+  const updatedEnrollment = await prisma.$transaction(async (tx) => {
+    const updated = await tx.enrollment.update({
+      where: { id: req.params.id },
+      data: {
+        status: 'enrolled' as any,
+        enrolledAt: now,
+        universityReviewedBy: req.user.id,
+        universityReviewedAt: now,
+        statusHistory: updatedStatusHistory,
+      } as any,
+    });
+    const student = await tx.student.update({
+      where: { id: enrollment.studentId },
+      data: {
+        enrolledAt: now,
+        status: 'active',
+        sessionId: enrollment.sessionId,
+        dob: dobPassword,
+      },
+    });
+    await activateStudentPortalAccount(tx, {
+      email: student.email,
+      name: student.name,
+      organizationId: student.organizationId,
+    }, studentPasswordHash);
+    return updated;
+  });
 
   // Notify center_admin users of the partner portal
   try {

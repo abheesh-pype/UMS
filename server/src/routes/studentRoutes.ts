@@ -4,6 +4,7 @@ import {
   getStudents,
   getStudent,
   getStudentResults,
+  getStudentPaymentInfo,
   getStudentDocuments,
   getStudentExamination,
   registerForExamination,
@@ -37,6 +38,7 @@ router.route('/marks/:id').get(getInternalMark).put(authorize('ops_admin', 'empl
 // Installments routes
 router.get('/:id/installments', getStudentInstallments);
 router.post('/:id/pay-installment', authorize('center_admin'), payStudentInstallment);
+router.get('/payment-info', authorize('student'), getStudentPaymentInfo);
 router.get('/results', authorize('student'), getStudentResults);
 router.get('/documents', authorize('student'), getStudentDocuments);
 router.get('/scheduled-classes', authorize('student'), getStudentScheduledClasses);

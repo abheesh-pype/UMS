@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { prisma, connectPostgres } from '../config/postgres.js';
 import bcrypt from 'bcryptjs';
+import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 
 const run = async () => {
   await connectPostgres();
@@ -20,8 +21,7 @@ const run = async () => {
       // 1. Create or find User
       let user = await prisma.user.findUnique({ where: { email: enrollment.studentEmail } });
       if (!user) {
-        const rawPassword = 'password123';
-        const hashedPassword = await bcrypt.hash(rawPassword, 10);
+        const hashedPassword = await bcrypt.hash('unprovisioned-student-account', 12);
         const userId = `STD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         user = await prisma.user.create({
           data: {
@@ -31,10 +31,12 @@ const run = async () => {
             name: enrollment.studentName,
             role: 'student',
             organizationId: enrollment.organizationId,
-            status: 'active'
+            status: 'inactive'
           }
         });
       }
+
+      const dobPassword = getStudentPortalPassword(enrollment.dob);
 
       // 2. Generate unique enrollment number
       const enrollmentNo = enrollment.enrollmentNumber || `ENR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -43,16 +45,35 @@ const run = async () => {
       const student = await prisma.student.create({
         data: {
           name: enrollment.studentName,
+          email: enrollment.studentEmail,
           enrollmentNo,
           phone: enrollment.studentPhone,
           address: enrollment.studentAddress,
-          status: 'active',
+          dob: dobPassword || enrollment.dob,
+          status: 'pending',
           organization: { connect: { id: enrollment.organizationId } },
           center: { connect: { id: enrollment.studyCenterId } },
           user: { connect: { id: user.id } },
           program: { connect: { id: enrollment.programId } }
         }
       });
+
+      if (dobPassword) {
+        const passwordHash = await bcrypt.hash(dobPassword, 12);
+        await prisma.$transaction(async (tx) => {
+          const activatedStudent = await tx.student.update({
+            where: { id: student.id },
+            data: { status: 'active', dob: dobPassword },
+          });
+          await activateStudentPortalAccount(tx, {
+            email: activatedStudent.email,
+            name: activatedStudent.name,
+            organizationId: activatedStudent.organizationId,
+          }, passwordHash);
+        });
+      } else {
+        console.warn(`Student portal access remains disabled for ${enrollment.studentEmail}: valid date of birth is missing.`);
+      }
 
       // 4. Link enrollment
       await prisma.enrollment.update({
