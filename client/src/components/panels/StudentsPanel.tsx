@@ -549,17 +549,23 @@ export function StudentsPanel() {
                       <Calendar className="w-4 h-4 text-primary" />
                       <div>
                         <p className="text-xs text-muted-foreground font-semibold">Date of Birth (DOB)</p>
-                        <p className="font-bold text-foreground">
+                        <p className="font-bold text-foreground font-mono">
                           {(() => {
                             const rawDob = selectedStudent.dob || selectedStudent.enrollments?.[0]?.dob;
                             if (!rawDob) return 'N/A';
+                            const str = String(rawDob).trim();
+                            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+                            const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+                            if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+                            const ymd = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+                            if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
                             try {
-                              const d = new Date(rawDob);
-                              if (isNaN(d.getTime())) return rawDob;
-                              return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                            } catch {
-                              return rawDob;
-                            }
+                              const d = new Date(str);
+                              if (!isNaN(d.getTime())) {
+                                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                              }
+                            } catch {}
+                            return str;
                           })()}
                         </p>
                       </div>

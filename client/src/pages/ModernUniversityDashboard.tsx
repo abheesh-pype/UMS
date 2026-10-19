@@ -150,6 +150,50 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
     if (universityId) fetchStudents();
   }, [search, programFilter, universityId, fetchStudents]);
 
+  const formatDOB = (d?: string | null) => {
+    if (!d) return 'N/A';
+    const str = String(d).trim();
+    if (!str) return 'N/A';
+
+    // If already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+
+    // If DD-MM-YYYY or DD/MM/YYYY
+    const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dmyMatch) {
+      const day = dmyMatch[1].padStart(2, '0');
+      const month = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    // If YYYY/MM/DD
+    const ymdMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, '0');
+      const day = ymdMatch[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // If Date string (e.g. ISO 8601)
+    try {
+      const date = new Date(str);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch {
+      // fallback
+    }
+
+    return str;
+  };
+
   const formatDisplayDate = (d?: string | null) => {
     if (!d) return 'N/A';
     try {
@@ -329,8 +373,8 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
                           <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{e.studentName}</p>
                           <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
                           {studentDob && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded mt-1">
-                              <Calendar className="w-3 h-3 text-primary" /> DOB: {formatDisplayDate(studentDob)}
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded mt-1 font-mono">
+                              <Calendar className="w-3 h-3 text-primary" /> DOB: {formatDOB(studentDob)}
                             </span>
                           )}
                         </td>
@@ -414,14 +458,12 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
                     <Calendar className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
                       <span className="text-xs text-primary font-semibold block uppercase tracking-wider">Date of Birth (DOB)</span>
-                      <span className="font-bold text-foreground text-base">
-                        {formatDisplayDate(selectedStudent.dob || selectedStudent.student?.dob)}
+                      <span className="font-bold text-foreground text-base font-mono">
+                        {formatDOB(selectedStudent.dob || selectedStudent.student?.dob)}
                       </span>
-                      {(selectedStudent.dob || selectedStudent.student?.dob) && (
-                        <span className="text-[11px] text-muted-foreground block">
-                          Recorded: {selectedStudent.dob || selectedStudent.student?.dob}
-                        </span>
-                      )}
+                      <span className="text-[11px] text-muted-foreground block font-mono">
+                        Format: YYYY-MM-DD
+                      </span>
                     </div>
                   </div>
 
