@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { GraduationCap, BookOpen, Building2, TrendingUp, Search, RefreshCw, Users } from 'lucide-react';
+import { GraduationCap, BookOpen, Building2, TrendingUp, Search, RefreshCw, Users, KeyRound, Save, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -125,6 +125,18 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
     );
   }
 
+  if (activeTab === 'integration') {
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div>
+          <h1 className="text-2xl font-bold">{uniName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">University Admin Panel</p>
+        </div>
+        <UniversityExamIntegrationPanel universityId={universityId} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header */}
@@ -238,6 +250,96 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
   );
 }
 
+function UniversityExamIntegrationPanel({ universityId }: { universityId: string }) {
+  const [endpoint, setEndpoint] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api.get(`/operations/universities/${universityId}/exam-portal-integration`)
+      .then(response => {
+        if (!active) return;
+        setEndpoint(response.data.data?.endpoint || '');
+        setHasApiKey(Boolean(response.data.data?.hasApiKey));
+      })
+      .catch((error: any) => {
+        if (active) toast.error(error.response?.data?.message || 'Failed to load exam portal integration');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [universityId]);
+
+  const saveIntegration = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const response = await api.put(`/operations/universities/${universityId}/exam-portal-integration`, { endpoint, apiKey });
+      setEndpoint(response.data.data.endpoint);
+      setHasApiKey(Boolean(response.data.data.hasApiKey));
+      setApiKey('');
+      toast.success('Exam portal integration saved');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save exam portal integration');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5" /> Exam Portal Integration</CardTitle>
+        <CardDescription>Connect an external exam system. The API key is stored encrypted and never sent to the browser after saving.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? <p className="py-6 text-sm text-muted-foreground">Loading integration settings...</p> : (
+          <form onSubmit={saveIntegration} className="max-w-2xl space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="exam-portal-endpoint">Exam portal SSO endpoint</Label>
+              <Input
+                id="exam-portal-endpoint"
+                type="url"
+                placeholder="https://exam.example.com/api/sso/launch"
+                value={endpoint}
+                onChange={event => setEndpoint(event.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">The endpoint receives a server-to-server launch request and must return a one-time launch URL.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="exam-portal-api-key">API key</Label>
+              <Input
+                id="exam-portal-api-key"
+                type="password"
+                autoComplete="new-password"
+                placeholder={hasApiKey ? 'Saved — enter a new key only to replace it' : 'Enter the exam portal API key'}
+                value={apiKey}
+                onChange={event => setApiKey(event.target.value)}
+                required={!hasApiKey}
+              />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <ShieldCheck className="h-4 w-4" />
+                {hasApiKey ? 'API key is configured' : 'API key is not configured'}
+              </p>
+              <Button type="submit" disabled={saving}>
+                <Save className="mr-2 h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Integration'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
   return (
     <Card className="border-none shadow-sm">
@@ -258,5 +360,6 @@ export function getUniversityNavItems() {
     { id: 'overview', label: 'Dashboard' },
     { id: 'pending-review', label: 'Pending Review' },
     { id: 'students', label: 'Enrolled Students' },
+    { id: 'integration', label: 'Integration' },
   ];
 }

@@ -26,6 +26,7 @@ import {
 } from '../controllers/studentController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { getStudentScheduledClasses } from '../controllers/scheduledClassController.js';
+import { getStudentExaminations, launchStudentExam } from '../controllers/examIntegrationController.js';
 
 const router = express.Router();
 
@@ -42,8 +43,10 @@ router.get('/payment-info', authorize('student'), getStudentPaymentInfo);
 router.get('/results', authorize('student'), getStudentResults);
 router.get('/documents', authorize('student'), getStudentDocuments);
 router.get('/scheduled-classes', authorize('student'), getStudentScheduledClasses);
+router.get('/examinations', authorize('student'), getStudentExaminations);
 router.get('/examinations/:examinationId', getStudentExamination);
 router.post('/examinations/:examinationId/register', registerForExamination);
+router.post('/examinations/:examinationId/launch', authorize('student'), launchStudentExam);
 
 // Status change request routes
 router.get('/status-requests', authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin', 'finance_admin', 'center_admin', 'employee'), getStatusChangeRequests);

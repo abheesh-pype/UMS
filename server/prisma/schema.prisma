@@ -68,6 +68,7 @@ model Organization {
   scheduledClasses     ScheduledClass[]
   programAllocations    ProgramAllocation[]
   universityAllocations UniversityAllocation[]
+  examPortalIntegrations UniversityExamIntegration[]
   programFeeStructures  ProgramFeeStructure[]
   referralLinks         ReferralLink[]
   reregRules            ReregRule[]
@@ -365,9 +366,25 @@ model University {
   studyCenters          StudyCenter[]          @relation("UniversityToStudyCenter")
   programFeeStructures  ProgramFeeStructure[]
   universityAllocations UniversityAllocation[]
+  examPortalIntegration UniversityExamIntegration?
 
   @@unique([organizationId, code])
   @@index([organizationId])
+}
+
+model UniversityExamIntegration {
+  id                String     @id @default(uuid())
+  organizationId    String
+  universityId      String     @unique
+  endpoint          String
+  encryptedApiKey   String
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  university        University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("university_exam_integrations")
 }
 
 model Program {
