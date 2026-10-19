@@ -22,6 +22,8 @@ interface ApplicationStatus {
   paymentAmount: number | null;
   canSubmitPayment: boolean;
   paymentProofSubmitted: boolean;
+  canUpdateAndResubmit: boolean;
+  applicationForm: Record<string, any>;
 }
 
 const statusText = (status: string) => status.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
@@ -47,6 +49,7 @@ export default function PublicStudentApplicationPage() {
   });
   const [isStatusView, setIsStatusView] = useState(path === '/application-status' || path.startsWith('/application-status/'));
   const [application, setApplication] = useState<ApplicationStatus | null>(null);
+  const [editingRejectedApplication, setEditingRejectedApplication] = useState(false);
   const [loading, setLoading] = useState(Boolean(token || credentialsFromSignIn));
   const [credentialEmail, setCredentialEmail] = useState(credentialsFromSignIn?.email || '');
   const [credentialPassword, setCredentialPassword] = useState(credentialsFromSignIn?.password || '');
@@ -134,6 +137,12 @@ export default function PublicStudentApplicationPage() {
     window.history.pushState({}, '', '/application-status');
     setLoading(true);
     await fetchStatus({ email: result.studentEmail, password: result.initialPassword });
+  };
+
+  const handleApplicationResubmitted = async () => {
+    setEditingRejectedApplication(false);
+    setLoading(true);
+    await fetchStatus({ email: credentialEmail, password: credentialPassword });
   };
 
   const openStudentPortal = async () => {
@@ -234,6 +243,32 @@ export default function PublicStudentApplicationPage() {
     { label: 'Finance approval', icon: CheckCircle2 },
   ];
 
+  if (editingRejectedApplication) {
+    return (
+      <main className="min-h-screen bg-background px-4 py-8 sm:py-12">
+        <div className="mx-auto max-w-5xl space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold">Update Rejected Application</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Correct the requested details, then resubmit your application to Operations.</p>
+            </div>
+            <Button variant="outline" onClick={() => setEditingRejectedApplication(false)}>Cancel</Button>
+          </div>
+          <EnrollStudentPanel
+            mode="public"
+            initialData={application.applicationForm}
+            resubmitAuthorization={{
+              ...(token ? { token } : {}),
+              email: credentialEmail || application.studentEmail,
+              password: credentialPassword,
+            }}
+            onSubmitted={handleApplicationResubmitted}
+          />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 sm:py-12">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -282,6 +317,11 @@ export default function PublicStudentApplicationPage() {
                 <p className="font-semibold">Application was not approved</p>
                 {(application.departmentRemarks || application.financeRemarks) && (
                   <p className="mt-1 text-muted-foreground">{application.departmentRemarks || application.financeRemarks}</p>
+                )}
+                {application.canUpdateAndResubmit && (
+                  <Button className="mt-3" onClick={() => setEditingRejectedApplication(true)}>
+                    Update and Resubmit
+                  </Button>
                 )}
               </div>
             )}

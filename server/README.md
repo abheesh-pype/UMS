@@ -91,6 +91,8 @@ status at `/application-status` using their email address and date of birth in
 `YYYY-MM-DD` format. The token-based
 `/application-status/<token>` link remains available for existing status links.
 Applicants can submit a payment receipt during Finance review.
+If Operations rejects a direct application, the applicant can use the same
+email and date of birth to update the form and resubmit it to Operations.
 
 Student accounts remain inactive until Finance gives final approval. When
 activated, the student's email is the login ID and the date of birth in

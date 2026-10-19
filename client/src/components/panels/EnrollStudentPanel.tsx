@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GraduationCap, RefreshCw, Upload, Plus, Trash2, FileText, Edit, ShieldAlert, Check } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,9 +55,11 @@ interface EnrollStudentPanelProps {
   mode?: 'center' | 'sales' | 'public';
   onSubmitted?: (result?: any) => void;
   onBack?: () => void;
+  initialData?: Record<string, any>;
+  resubmitAuthorization?: { token?: string; email?: string; password?: string };
 }
 
-export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: EnrollStudentPanelProps) {
+export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initialData, resubmitAuthorization }: EnrollStudentPanelProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,6 +67,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const initializingResubmission = useRef(false);
 
   const [centerConfig, setCenterConfig] = useState<any>(null);
   
@@ -113,6 +116,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
   // Email Validation
   const [emailUnique, setEmailUnique] = useState<boolean | null>(null);
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const isResubmitting = Boolean(initialData && resubmitAuthorization);
 
   const fetchData = async () => {
     setLoading(true);
@@ -171,6 +175,21 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
   }, [selectedProgram?.id, mode]);
 
   useEffect(() => {
+    if (!initialData || programs.length === 0) return;
+    initializingResubmission.current = true;
+    setForm(previous => ({ ...previous, ...initialData }));
+    setSelectedProgram(programs.find(program => program.id === initialData.programId) || null);
+    setSelectedSessionId(initialData.sessionId || '');
+    setDocumentList(Array.isArray(initialData.documents) ? initialData.documents : []);
+    setEducationList(Array.isArray(initialData.educationalDetails) ? initialData.educationalDetails : []);
+    setPaymentMethod(initialData.paymentMethod === 'full_payment' ? 'full_payment' : 'installment');
+  }, [initialData, programs]);
+
+  useEffect(() => {
+    if (initializingResubmission.current) {
+      initializingResubmission.current = false;
+      return;
+    }
     setSelectedSessionId('');
   }, [selectedProgram]);
 
@@ -179,6 +198,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
   }, [form.studentEmail, selectedProgram, selectedSessionId]);
 
   const checkEmail = async () => {
+    if (isResubmitting) return;
     if (!form.studentEmail || !selectedProgram || !selectedSessionId) return;
     setCheckingEmail(true);
     try {
@@ -426,6 +446,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
         </Label>
         <Input
           type={isNumericId ? 'text' : type}
+          readOnly={isResubmitting && (key === 'studentEmail' || key === 'dob')}
+          disabled={isResubmitting && (key === 'studentEmail' || key === 'dob')}
           inputMode={isNumericId || type === 'number' || type === 'tel' ? 'numeric' : undefined}
           maxLength={isNumericId ? 12 : undefined}
           pattern={isNumericId ? '\\d{12}' : undefined}
@@ -504,11 +526,15 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
     setConfirmOpen(false);
     setSubmitting(true);
     try {
-      const enrollmentUrl = mode === 'sales'
-        ? '/sales/enroll-student'
-        : mode === 'public'
-          ? '/public/student-enrollment'
-          : '/enrollment/enroll';
+      const enrollmentUrl = isResubmitting
+        ? resubmitAuthorization?.token
+          ? `/public/student-applications/${resubmitAuthorization.token}/resubmit`
+          : '/public/student-applications/resubmit'
+        : mode === 'sales'
+          ? '/sales/enroll-student'
+          : mode === 'public'
+            ? '/public/student-enrollment'
+            : '/enrollment/enroll';
       const response = await api.post(enrollmentUrl, {
         ...form, 
         programId: selectedProgram.id,
@@ -516,9 +542,12 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
         documents: documentList,
         educationalDetails: educationList,
         paymentMethod: paymentMethod,
-        totalFee: getTotalFee(selectedProgram)
+        totalFee: getTotalFee(selectedProgram),
+        ...(isResubmitting && !resubmitAuthorization?.token
+          ? { email: resubmitAuthorization?.email, password: resubmitAuthorization?.password }
+          : {}),
       });
-      toast.success('Enrollment submitted successfully');
+      toast.success(isResubmitting ? 'Application updated and resubmitted for Operations review' : 'Enrollment submitted successfully');
       if (onSubmitted) {
         onSubmitted({
           ...response.data.data,
@@ -599,7 +628,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
           return false;
         }
       }
-      if (emailUnique === false) {
+      if (!isResubmitting && emailUnique === false) {
         toast.error('An application with this email already exists for the selected program & intake.');
         return false;
       }
@@ -675,7 +704,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
       <div className="bg-white rounded-2xl border p-5 shadow-sm space-y-5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2">
           <div>
-            <h2 className="text-xl font-extrabold text-slate-800">Add New Student Record</h2>
+            <h2 className="text-xl font-extrabold text-slate-800">{isResubmitting ? 'Update and Resubmit Application' : 'Add New Student Record'}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Please fill all required student documents and info step-by-step.</p>
           </div>
           <div className="flex items-center gap-3">
@@ -1263,7 +1292,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
               <Edit className="w-4 h-4" /> Edit Details
             </Button>
             <Button className="premium-gradient text-white flex items-center gap-1.5" onClick={handleEnroll} disabled={submitting}>
-              <Check className="w-4 h-4" /> Confirm & Submit Application
+              <Check className="w-4 h-4" /> {isResubmitting ? 'Update and Resubmit to Operations' : 'Confirm & Submit Application'}
             </Button>
           </DialogFooter>
         </DialogContent>

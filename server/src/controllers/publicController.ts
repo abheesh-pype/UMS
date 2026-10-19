@@ -452,6 +452,185 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   res.status(201).json({ success: true, data: { trackingToken: token, enrollmentId: enrollment.id, status: enrollment.status } });
 });
 
+const resubmitPublicStudentApplication = async (req: Request, res: Response, enrollment: any) => {
+  if (!['department_rejected', 'ops_rejected'].includes(enrollment.status)) {
+    res.status(409).json({ success: false, message: 'Only applications rejected by Operations can be updated and resubmitted' });
+    return;
+  }
+
+  const {
+    studentName, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
+    specialisation, abcId, debId, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod,
+  } = req.body;
+  const studentNameValue = typeof studentName === 'string' ? studentName.trim() : '';
+  const studentPhoneValue = typeof studentPhone === 'string' ? studentPhone.trim() : '';
+  const studentAddressValue = typeof studentAddress === 'string' ? studentAddress.trim() : '';
+  if (!studentNameValue || !studentPhoneValue || !studentAddressValue || !programId || !sessionId) {
+    res.status(400).json({ success: false, message: 'Name, phone, address, program, and admission session are required' });
+    return;
+  }
+  if ((abcId && !/^\d{12}$/.test(abcId)) || (debId && !/^\d{12}$/.test(debId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must be exactly 12 digits' });
+    return;
+  }
+  const { program, session } = await getPublicProgramAndSession(enrollment.organizationId, programId, sessionId);
+  if (!program || !session) {
+    res.status(400).json({ success: false, message: 'Selected program or admission session is invalid' });
+    return;
+  }
+  if (Array.isArray(program.specialisations) && program.specialisations.length > 0 && !program.specialisations.includes(specialisation)) {
+    res.status(400).json({ success: false, message: 'Select a valid program specialisation' });
+    return;
+  }
+
+  const parsedDocuments = parseJsonArray(documents)
+    .filter((document: any) =>
+      document
+      && typeof document.name === 'string'
+      && typeof document.url === 'string'
+      && /^\/uploads\/[A-Za-z0-9._-]+$/.test(document.url)
+      && document.reqName !== 'Student Payment Proof')
+    .map((document: any) => ({
+      name: document.name.trim().slice(0, 255),
+      url: document.url,
+      ...(typeof document.reqName === 'string' ? { reqName: document.reqName.trim().slice(0, 120) } : {}),
+    }));
+  const requiredDocuments = Array.isArray(program.certificateRequirements)
+    ? (program.certificateRequirements as any[]).filter(requirement => requirement?.isMandatory && typeof requirement.name === 'string')
+    : [];
+  const missingDocument = requiredDocuments.find(requirement =>
+    !parsedDocuments.some((document: any) => document.reqName === requirement.name));
+  if (missingDocument) {
+    res.status(400).json({ success: false, message: `Please upload mandatory document: ${missingDocument.name}` });
+    return;
+  }
+
+  const now = new Date();
+  const statusHistory = parseJsonArray(enrollment.statusHistory);
+  statusHistory.push({
+    status: 'pending_doc_review',
+    actorId: 'student',
+    actorName: studentNameValue,
+    timestamp: now.toISOString(),
+    note: 'Application updated and resubmitted for Operations review',
+  });
+  const preservedPaymentProof = parseJsonArray(enrollment.documents).filter((document: any) => document?.reqName === 'Student Payment Proof');
+  const feeStructure = await findFeeStructure(enrollment.organizationId, programId, program.universityId, sessionId);
+  const fee = calculateEnrollmentFee(feeStructure, paymentMethod || 'installment');
+  const dobPassword = getStudentPortalPassword(enrollment.dob);
+
+  await prisma.$transaction(async tx => {
+    await tx.student.update({
+      where: { id: enrollment.studentId },
+      data: {
+        name: studentNameValue,
+        phone: studentPhoneValue,
+        address: studentAddressValue,
+        programId,
+        sessionId,
+        specialisation: specialisation || null,
+        abcId: abcId || null,
+        debId: debId || null,
+        religion: religion || null,
+        caste: caste || null,
+        fatherName: fatherName || null,
+        motherName: motherName || null,
+        parentMobile: parentMobile || null,
+        studentPhoto: studentPhoto || null,
+        pincode: pincode || null,
+        alternativePhone: alternativePhone || null,
+        maritalStatus: maritalStatus || null,
+        currentlyWorking: currentlyWorking || null,
+      },
+    });
+    await tx.enrollment.update({
+      where: { id: enrollment.id },
+      data: {
+        studentName: studentNameValue,
+        studentPhone: studentPhoneValue,
+        studentAddress: studentAddressValue,
+        programId,
+        sessionId,
+        specialisation: specialisation || null,
+        abcId: abcId || null,
+        debId: debId || null,
+        dob: dobPassword,
+        religion: religion || null,
+        caste: caste || null,
+        fatherName: fatherName || null,
+        motherName: motherName || null,
+        parentMobile: parentMobile || null,
+        studentPhoto: studentPhoto || null,
+        admissionDate: admissionDate ? new Date(admissionDate) : enrollment.admissionDate,
+        pincode: pincode || null,
+        alternativePhone: alternativePhone || null,
+        maritalStatus: maritalStatus || null,
+        currentlyWorking: currentlyWorking || null,
+        documents: [...parsedDocuments, ...preservedPaymentProof],
+        educationalDetails: parseJsonArray(educationalDetails),
+        paymentMethod: paymentMethod || 'installment',
+        totalFee: fee,
+        status: 'pending_doc_review',
+        departmentRemarks: null,
+        departmentReviewedBy: null,
+        departmentReviewedAt: null,
+        assignedOpsUserId: null,
+        statusHistory,
+      },
+    });
+  });
+
+  try {
+    const opsUsers = await prisma.user.findMany({
+      where: {
+        organizationId: enrollment.organizationId,
+        status: 'active',
+        OR: [
+          { role: { in: ['ops_admin', 'ops_sub_admin'] } },
+          { role: 'employee', department: { type: 'operations' } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (opsUsers.length > 0) {
+      await prisma.notification.createMany({
+        data: opsUsers.map(user => ({
+          organizationId: enrollment.organizationId,
+          userId: user.id,
+          title: 'Updated Direct Student Application',
+          message: `${studentNameValue} updated and resubmitted an application for ${program.name}; Operations review is required.`,
+          type: 'general',
+          priority: 'medium',
+          link: 'enrollment_review',
+        })),
+      });
+    }
+  } catch (error) {
+    console.error('Failed to notify Operations about a resubmitted student application:', error);
+  }
+
+  res.json({ success: true, message: 'Application updated and resubmitted for Operations review' });
+};
+
+export const resubmitPublicStudentApplicationByToken = asyncHandler(async (req: Request, res: Response) => {
+  const enrollment = await getTrackingEnrollment(req.params.token);
+  if (!enrollment) {
+    res.status(404).json({ success: false, message: 'Student application status link is invalid' });
+    return;
+  }
+  await resubmitPublicStudentApplication(req, res, enrollment);
+});
+
+export const resubmitPublicStudentApplicationByCredentials = asyncHandler(async (req: Request, res: Response) => {
+  const enrollment = await getCredentialEnrollment(req.body.email, req.body.password);
+  if (!enrollment) {
+    res.status(401).json({ success: false, message: 'Application not found. Check your email and date of birth.' });
+    return;
+  }
+  await resubmitPublicStudentApplication(req, res, enrollment);
+});
+
 const getTrackingEnrollment = async (token: string) => {
   if (!/^[a-f0-9]{64}$/i.test(token)) return null;
   const publicTrackingTokenHash = createHash('sha256').update(token).digest('hex');
@@ -507,6 +686,34 @@ const sendPublicStudentApplicationStatus = (enrollment: any, res: Response) => {
       paymentAmount: enrollment.totalFee,
       canSubmitPayment,
       paymentProofSubmitted: isPaymentProofSubmitted(enrollment.documents),
+      canUpdateAndResubmit: ['department_rejected', 'ops_rejected'].includes(enrollment.status)
+        && Boolean(enrollment.publicTrackingTokenHash),
+      applicationForm: {
+        studentName: enrollment.studentName,
+        studentEmail: enrollment.studentEmail,
+        studentPhone: enrollment.studentPhone,
+        studentAddress: enrollment.studentAddress,
+        programId: enrollment.programId,
+        sessionId: enrollment.sessionId,
+        specialisation: enrollment.specialisation || '',
+        abcId: enrollment.abcId || '',
+        debId: enrollment.debId || '',
+        dob: getStudentPortalPassword(enrollment.dob) || '',
+        religion: enrollment.religion || '',
+        caste: enrollment.caste || '',
+        fatherName: enrollment.fatherName || '',
+        motherName: enrollment.motherName || '',
+        parentMobile: enrollment.parentMobile || '',
+        studentPhoto: enrollment.studentPhoto || '',
+        admissionDate: enrollment.admissionDate?.toISOString?.().slice(0, 10) || '',
+        pincode: enrollment.pincode || '',
+        alternativePhone: enrollment.alternativePhone || '',
+        maritalStatus: enrollment.maritalStatus || '',
+        currentlyWorking: enrollment.currentlyWorking || '',
+        paymentMethod: enrollment.paymentMethod || 'installment',
+        documents: parseJsonArray(enrollment.documents).filter((document: any) => document?.reqName !== 'Student Payment Proof'),
+        educationalDetails: parseJsonArray(enrollment.educationalDetails),
+      },
     },
   });
 };
