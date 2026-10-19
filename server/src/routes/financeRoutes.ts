@@ -1,8 +1,6 @@
 // @ts-nocheck
 import express from 'express';
 import {
-  getInvoices,
-  getInvoice,
   createInvoice,
   updateInvoice,
   deleteInvoice,
@@ -82,6 +80,13 @@ import {
   markBatchPaymentInProgress,
   completeBatchPayment,
 } from '../controllers/payrollController.js';
+import {
+  getInvoices,
+  getInvoice,
+  recordInvoicePayment,
+  autoGenerateInvoices,
+  recalculateInvoice
+} from '../controllers/financeInvoiceController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -90,10 +95,13 @@ router.use(protect);
 
 // Invoices
 router.route('/invoices').get(getInvoices).post(createInvoice);
+router.post('/invoices/auto-generate', autoGenerateInvoices);
 router.route('/invoices/:id')
   .get(getInvoice)
   .put(updateInvoice)
   .delete(authorize('finance_admin'), deleteInvoice);
+router.post('/invoices/:id/payments', recordInvoicePayment);
+router.post('/invoices/:id/recalculate', recalculateInvoice);
 router.put('/invoices/:id/approve', authorize('finance_admin'), approveInvoice);
 
 // Payments

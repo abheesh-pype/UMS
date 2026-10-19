@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
+import { generateInvoiceForEnrollment } from '../services/invoiceService.js';
 
 const FINANCE_VISIBLE_ENROLLMENT_STATUSES = [
   'pending_finance_review',
@@ -487,6 +488,13 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
         }
       }
     }
+  }
+
+  // Automatically generate official invoice for the newly approved enrollment
+  try {
+    await generateInvoiceForEnrollment(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Invoice generation failed during enrollment approval:', invoiceErr);
   }
 
   // Create notifications

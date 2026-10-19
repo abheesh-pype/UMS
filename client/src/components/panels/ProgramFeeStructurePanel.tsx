@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 interface ProgramFee {
@@ -51,6 +52,7 @@ interface AdmissionSession {
 }
 
 export function ProgramFeeStructurePanel() {
+  const { user } = useAuth();
   const [fees, setFees] = useState<ProgramFee[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
@@ -138,7 +140,7 @@ export function ProgramFeeStructurePanel() {
     });
   };
 
-const fetchAllData = useCallback(async () => {
+  const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
       const [feesRes, progsRes, unisRes, sessionsRes, subDeptsRes] = await Promise.all([
@@ -148,33 +150,56 @@ const fetchAllData = useCallback(async () => {
         api.get('/operations/sessions').catch(() => ({ data: { data: [] } })),
         api.get('/sub-departments').catch(() => ({ data: { data: [] } })),
       ]);
-      setFees(feesRes.data.data || []);
-      setPrograms(progsRes.data.data || []);
-      setUniversities(unisRes.data.data || []);
-      setSessions(sessionsRes.data.data || []);
-      setSubDepartments(subDeptsRes.data.data || []);
+      const fetchedFees = feesRes.data.data || [];
+      const fetchedPrograms = progsRes.data.data || [];
+      const fetchedUnis: University[] = unisRes.data.data || [];
+      const fetchedSessions = sessionsRes.data.data || [];
+      const fetchedSubDepts = subDeptsRes.data.data || [];
+
+      setFees(fetchedFees);
+      setPrograms(fetchedPrograms);
+      setUniversities(fetchedUnis);
+      setSessions(fetchedSessions);
+      setSubDepartments(fetchedSubDepts);
       
-      const unis = unisRes.data.data || [];
-      if (unis.length > 0 && !selectedUniversityId) {
-        // We will leave it unselected to force user to click
+      const userUniId = (user as any)?.universityId;
+      const targetUni = (userUniId && fetchedUnis.some(u => u.id === userUniId))
+        ? userUniId
+        : (fetchedUnis[0]?.id || '');
+      if (targetUni) {
+        setSelectedUniversityId(prev => prev || targetUni);
       }
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [selectedUniversityId]);
+  }, [user]);
 
   useEffect(() => {
     fetchAllData();
   }, [fetchAllData]);
 
+  // Keep university auto-selected once universities are loaded
+  useEffect(() => {
+    if (universities.length > 0 && !selectedUniversityId) {
+      const userUniId = (user as any)?.universityId;
+      const targetUni = (userUniId && universities.some(u => u.id === userUniId))
+        ? userUniId
+        : universities[0].id;
+      if (targetUni) {
+        setSelectedUniversityId(targetUni);
+      }
+    }
+  }, [universities, selectedUniversityId, user]);
+
   const openCreate = () => {
     setEditing(null);
+    const activeUniId = selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
     setForm({ 
       level: 'program',
       programId: selectedProgramId, 
-      universityId: selectedUniversityId,
+      universityId: activeUniId,
       admissionSessionId: '',
       billingCycle: 'per_year', 
       currency: 'INR', 
@@ -197,6 +222,7 @@ const fetchAllData = useCallback(async () => {
     const progId = typeof fee.programId === 'object' ? fee.programId?.id : fee.programId;
     const uniId = typeof fee.universityId === 'object' ? fee.universityId?.id : fee.universityId;
     const sessId = typeof fee.admissionSessionId === 'object' ? fee.admissionSessionId?.id : fee.admissionSessionId;
+    const activeUniId = uniId || selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
 
     let parsedBreakdown = fee.feeBreakdown || [];
     if (typeof parsedBreakdown === 'string') {
@@ -217,7 +243,7 @@ const fetchAllData = useCallback(async () => {
     setForm({
       level: fee.level || 'program',
       programId: progId || '',
-      universityId: uniId || '',
+      universityId: activeUniId,
       admissionSessionId: sessId || '',
       billingCycle: fee.billingCycle || 'per_year',
       currency: fee.currency || 'INR',
@@ -270,10 +296,11 @@ const fetchAllData = useCallback(async () => {
          };
       });
 
+      const finalUniId = form.universityId || selectedUniversityId || undefined;
       const payload = {
         level: form.level,
         programId: form.level === 'program' ? form.programId : undefined,
-        universityId: form.universityId || undefined,
+        universityId: finalUniId,
         admissionSessionId: form.admissionSessionId || undefined,
         baseFee: totalBaseFee,
         fullProgramFee: Number(form.fullProgramFee || 0),
@@ -378,6 +405,17 @@ const fetchAllData = useCallback(async () => {
     });
   }, [fees, selectedProgramId]);
 
+  // Auto-select first program when university's programs are available
+  useEffect(() => {
+    if (filteredPrograms.length > 0) {
+      if (!selectedProgramId || !filteredPrograms.some(p => p.id === selectedProgramId)) {
+        setSelectedProgramId(filteredPrograms[0].id);
+      }
+    } else {
+      setSelectedProgramId('');
+    }
+  }, [filteredPrograms, selectedProgramId]);
+
   // Filter programs based on selected university in the dialog form
   const dialogFilteredPrograms = programs.filter(p => {
     const pUniId = typeof p.universityId === 'object' ? p.universityId?.id : p.universityId;
@@ -422,18 +460,23 @@ const fetchAllData = useCallback(async () => {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <div className="flex gap-2">
+          {universities.length > 0 && (
+            <div className="flex flex-col gap-1 min-w-[200px]">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">University</span>
+              <select
+                className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 cursor-not-allowed font-medium select-none shadow-sm"
+                value={selectedUniversityId}
+                disabled
+              >
+                {universities.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="flex gap-2 items-end">
             <Button variant="outline" className="h-10 w-10 p-0 border-slate-200 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800" onClick={fetchAllData} disabled={loading} title="Refresh Data">
               <RefreshCw className={`w-4 h-4 text-slate-600 dark:text-slate-400 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button className="h-10 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all hover:shadow-md" onClick={() => {
-              setNewProgramForm(prev => ({
-                ...prev,
-                universityId: selectedUniversityId
-              }));
-              setProgramDialogOpen(true);
-            }} disabled={!selectedUniversityId}>
-              <Plus className="w-4 h-4 mr-2" /> Program
             </Button>
             <Button className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all hover:shadow-md" onClick={openCreate} disabled={!selectedProgramId}>
               <Plus className="w-4 h-4 mr-2" /> Fee Config
@@ -442,42 +485,11 @@ const fetchAllData = useCallback(async () => {
         </div>
       </div>
 
-      {/* Main content grid - 3 Tiers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main content grid - Programs & Fee Structures */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Tier 1: Universities */}
-        <div className="space-y-4">
-          <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden h-full">
-            <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-indigo-500" /> Universities
-              </CardTitle>
-              <CardDescription>Select a university</CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
-              {loading ? (
-                <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}</div>
-              ) : universities.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">No universities found.</div>
-              ) : (
-                universities.map(u => (
-                  <div 
-                    key={u.id} 
-                    onClick={() => { setSelectedUniversityId(u.id); setSelectedProgramId(''); }}
-                    className={`p-3 border rounded-xl cursor-pointer transition-all group ${selectedUniversityId === u.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm'}`}
-                  >
-                    <div className="flex justify-between items-center gap-2">
-                      <h4 className="font-semibold text-sm leading-none">{u.name}</h4>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tier 2: Programs List */}
-        <div className="space-y-4">
+        {/* Programs List */}
+        <div className="lg:col-span-4 space-y-4">
           <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden h-full">
             <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -513,8 +525,8 @@ const fetchAllData = useCallback(async () => {
           </Card>
         </div>
 
-        {/* Tier 3: Fee Structures */}
-        <div className="space-y-4">
+        {/* Fee Structures */}
+        <div className="lg:col-span-8 space-y-4">
           <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden">
             <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -623,6 +635,17 @@ const fetchAllData = useCallback(async () => {
           </DialogHeader>
           <form onSubmit={handleCreateProgram} className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
             
+            <div className="space-y-1">
+              <Label>University <span className="text-destructive">*</span></Label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm bg-muted/60 text-muted-foreground cursor-not-allowed opacity-90 font-medium select-none shadow-sm"
+                value={newProgramForm.universityId || selectedUniversityId}
+                disabled
+              >
+                {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label>Program Name <span className="text-destructive">*</span></Label>
@@ -746,12 +769,11 @@ const fetchAllData = useCallback(async () => {
             <div className="space-y-1">
               <Label>University <span className="text-destructive">*</span></Label>
               <select
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                value={form.universityId}
-                onChange={e => setForm(f => ({ ...f, universityId: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-muted/60 text-muted-foreground cursor-not-allowed opacity-90 font-medium select-none shadow-sm"
+                value={form.universityId || selectedUniversityId}
+                disabled
                 required
               >
-                <option value="">Select university first</option>
                 {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
