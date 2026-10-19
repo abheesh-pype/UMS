@@ -107,6 +107,110 @@ export const getDeptReviewEnrollments = asyncHandler(async (req: AuthRequest, re
   res.json({ success: true, count: enrollments.length, data: enrollments });
 });
 
+export const updateDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const enrollment = await prisma.enrollment.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      status: { in: ['pending_doc_review', 'document_review', 'finance_rejected'] },
+      ...(req.user.role === 'employee' ? { assignedOpsUserId: req.user.id } : {}),
+    },
+  });
+  if (!enrollment) {
+    res.status(404).json({ success: false, message: 'Operations enrollment not found or is no longer editable' });
+    return;
+  }
+
+  const fields = [
+    'studentName', 'studentEmail', 'studentPhone', 'studentAddress', 'dob', 'fatherName',
+    'motherName', 'parentMobile', 'alternativePhone', 'pincode', 'religion', 'caste',
+    'maritalStatus', 'currentlyWorking', 'specialisation', 'abcId', 'debId',
+  ];
+  const data: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (req.body[field] !== undefined) {
+      data[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+    }
+  }
+  if (typeof data.studentEmail === 'string' && data.studentEmail.toLowerCase() !== enrollment.studentEmail.toLowerCase()) {
+    const duplicateApplication = await prisma.enrollment.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        studentEmail: { equals: data.studentEmail, mode: 'insensitive' },
+        programId: enrollment.programId,
+        sessionId: enrollment.sessionId,
+        id: { not: enrollment.id },
+      },
+      select: { id: true },
+    });
+    if (duplicateApplication) {
+      res.status(409).json({ success: false, message: 'An application with this email already exists for this program and session' });
+      return;
+    }
+
+    if (enrollment.studentId) {
+      const duplicateStudent = await prisma.student.findFirst({
+        where: {
+          email: { equals: data.studentEmail, mode: 'insensitive' },
+          id: { not: enrollment.studentId },
+        },
+        select: { id: true },
+      });
+      if (duplicateStudent) {
+        res.status(409).json({ success: false, message: 'Another student already uses this email address' });
+        return;
+      }
+    }
+  }
+  if (req.body.admissionDate !== undefined) {
+    data.admissionDate = req.body.admissionDate ? new Date(req.body.admissionDate) : null;
+  }
+  if (req.body.documents !== undefined) {
+    data.documents = typeof req.body.documents === 'string' ? JSON.parse(req.body.documents) : req.body.documents;
+  }
+  if (req.body.educationalDetails !== undefined) {
+    data.educationalDetails = typeof req.body.educationalDetails === 'string'
+      ? JSON.parse(req.body.educationalDetails)
+      : req.body.educationalDetails;
+  }
+
+  const now = new Date();
+  const statusHistory = Array.isArray(enrollment.statusHistory) ? [...enrollment.statusHistory] : [];
+  statusHistory.push({
+    status: 'pending_doc_review',
+    actorId: req.user.id,
+    actorName: req.user.name,
+    actorRole: req.user.role,
+    timestamp: now.toISOString(),
+    note: 'Application details updated by Operations and returned for document review',
+  });
+
+  const updatedEnrollment = await prisma.$transaction(async (tx) => {
+    const updated = await tx.enrollment.update({
+      where: { id: enrollment.id },
+      data: {
+        ...data,
+        status: 'pending_doc_review',
+        statusHistory,
+      },
+    });
+    if (enrollment.studentId) {
+      const studentData: Record<string, unknown> = {};
+      if (data.studentName !== undefined) studentData.name = data.studentName;
+      if (data.studentEmail !== undefined) studentData.email = data.studentEmail;
+      if (data.studentPhone !== undefined) studentData.phone = data.studentPhone;
+      if (data.studentAddress !== undefined) studentData.address = data.studentAddress;
+      if (data.dob !== undefined) studentData.dob = data.dob;
+      if (Object.keys(studentData).length) {
+        await tx.student.update({ where: { id: enrollment.studentId }, data: studentData });
+      }
+    }
+    return updated;
+  });
+
+  res.json({ success: true, data: updatedEnrollment });
+});
+
 export const approveDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   const currentEnrollment = await prisma.enrollment.findUnique({
     where: { id: req.params.id },
