@@ -53,7 +53,41 @@ export const convertLead = asyncHandler(async (req: AuthRequest, res: Response) 
 
 // Targets
 export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const targets = await prisma.target.findMany({ where: { organizationId: req.user.organizationId }, include: { employee: true } });
+  const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  let departmentId = req.user.departmentId || req.user.subDepartment?.parentDept?.id;
+  const roleDepartmentType: Record<string, string> = {
+    sales_admin: 'sales',
+    ops_admin: 'operations',
+  };
+  if (!canViewAll && !departmentId && roleDepartmentType[req.user.role]) {
+    const department = await prisma.department.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        OR: [
+          { type: { equals: roleDepartmentType[req.user.role], mode: 'insensitive' } },
+          { name: { contains: roleDepartmentType[req.user.role], mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    departmentId = department?.id;
+  }
+  const targets = await prisma.target.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      ...(!canViewAll ? {
+        OR: [
+          { employeeId: req.user.id },
+          ...(departmentId ? [{ departmentId }] : []),
+        ],
+      } : {}),
+    },
+    include: {
+      employee: { select: { id: true, name: true, email: true, role: true } },
+      department: { select: { id: true, name: true, type: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
   res.json({ success: true, count: targets.length, data: targets });
 });
 export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -61,7 +95,112 @@ export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) =>
   res.json({ success: true, data: target });
 });
 export const createTarget = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const target = await prisma.target.create({ data: { ...req.body, organizationId: req.user.organizationId } });
+  const { employeeId, type, period, target: targetValue, achieved, incentive, deadline } = req.body;
+  let departmentId = req.body.departmentId || null;
+  const roleDepartmentType: Record<string, string> = {
+    sales_admin: 'sales',
+    ops_admin: 'operations',
+  };
+  if (roleDepartmentType[req.user.role]) {
+    let assignedDepartmentId = req.user.departmentId
+      || req.user.subDepartment?.parentDept?.id
+      || req.user.department?.id;
+    if (!assignedDepartmentId) {
+      const matchingDepartment = await prisma.department.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          OR: [
+            { type: { equals: roleDepartmentType[req.user.role], mode: 'insensitive' } },
+            { name: { contains: roleDepartmentType[req.user.role], mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      assignedDepartmentId = matchingDepartment?.id;
+    }
+    if (departmentId && assignedDepartmentId && departmentId !== assignedDepartmentId) {
+      res.status(403).json({ success: false, message: 'Targets can only be assigned to your department' });
+      return;
+    }
+    departmentId = assignedDepartmentId || null;
+  }
+
+  let employee = null;
+  if (employeeId) {
+    employee = await prisma.user.findFirst({
+      where: { id: employeeId, organizationId: req.user.organizationId },
+      select: { id: true, name: true, departmentId: true, subDepartment: { select: { parentDeptId: true } } },
+    });
+    if (!employee) {
+      res.status(400).json({ success: false, message: 'Selected employee was not found in your organization' });
+      return;
+    }
+    if (!departmentId) departmentId = employee.departmentId || employee.subDepartment?.parentDeptId || null;
+    if (departmentId && employee.departmentId !== departmentId && employee.subDepartment?.parentDeptId !== departmentId) {
+      res.status(400).json({ success: false, message: 'Selected employee does not belong to the selected department' });
+      return;
+    }
+  }
+
+  if (departmentId) {
+    const department = await prisma.department.findFirst({
+      where: { id: departmentId, organizationId: req.user.organizationId },
+      select: { id: true },
+    });
+    if (!department) {
+      res.status(400).json({ success: false, message: 'Selected department was not found in your organization' });
+      return;
+    }
+  }
+
+  const recipientIds = employeeId
+    ? [employeeId]
+    : departmentId
+      ? (await prisma.user.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { not: req.user.id },
+            OR: [
+              { departmentId },
+              { subDepartment: { parentDeptId: departmentId } },
+            ],
+          },
+          select: { id: true },
+        })).map((recipient) => recipient.id)
+      : [];
+  const target = await prisma.$transaction(async (tx) => {
+    const createdTarget = await tx.target.create({
+      data: {
+        organizationId: req.user.organizationId,
+        employeeId: employeeId || null,
+        departmentId,
+        type,
+        period,
+        target: Number(targetValue),
+        achieved: achieved === undefined ? 0 : Number(achieved),
+        incentive: incentive === undefined || incentive === '' ? null : Number(incentive),
+        deadline: deadline ? new Date(deadline) : null,
+      },
+      include: {
+        employee: { select: { id: true, name: true, email: true, role: true } },
+        department: { select: { id: true, name: true, type: true } },
+      },
+    });
+    if (recipientIds.length) {
+      await tx.notification.createMany({
+        data: recipientIds.map((userId) => ({
+          organizationId: req.user.organizationId,
+          userId,
+          title: 'New target assigned',
+          message: `A ${period} ${type} target has been assigned to you.`,
+          type: 'general',
+          priority: 'medium',
+          link: '/dashboard?tab=targets',
+        })),
+      });
+    }
+    return createdTarget;
+  });
   res.status(201).json({ success: true, data: target });
 });
 export const updateTarget = asyncHandler(async (req: AuthRequest, res: Response) => {

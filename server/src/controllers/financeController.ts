@@ -240,9 +240,33 @@ export const approveExpense = asyncHandler(async (req: AuthRequest, res: Respons
 
 // Targets
 export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  let departmentId = req.user.departmentId || req.user.department?.id;
+  if (!canViewAll && !departmentId && req.user.role === 'finance_admin') {
+    const financeDepartment = await prisma.department.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        OR: [
+          { type: { equals: 'finance', mode: 'insensitive' } },
+          { name: { contains: 'finance', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    departmentId = financeDepartment?.id;
+  }
   const targets = await prisma.target.findMany({
-    where: { organizationId: req.user.organizationId },
+    where: {
+      organizationId: req.user.organizationId,
+      ...(!canViewAll ? {
+        OR: [
+          { employeeId: req.user.id },
+          ...(departmentId ? [{ departmentId }] : []),
+        ],
+      } : {}),
+    },
     include: {
+      department: { select: { id: true, name: true, type: true } },
       employee: {
         select: {
           id: true,
@@ -263,6 +287,7 @@ export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) =>
   const target = await prisma.target.findUnique({
     where: { id: req.params.id },
     include: {
+      department: { select: { id: true, name: true, type: true } },
       employee: {
         select: {
           id: true,
@@ -285,27 +310,105 @@ export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) =>
 });
 export const createTarget = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { employeeId, type, period, target, achieved, incentive, deadline } = req.body;
-  const newTarget = await prisma.target.create({
-    data: {
-      organizationId: req.user.organizationId,
-      employeeId,
-      type,
-      period,
-      target: parseFloat(target),
-      achieved: achieved !== undefined ? parseFloat(achieved) : 0,
-      incentive: incentive !== undefined && incentive !== '' ? parseFloat(incentive) : null,
-      deadline: deadline ? new Date(deadline) : null
-    },
-    include: {
-      employee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true
+  let departmentId = req.body.departmentId || null;
+  let assignedDepartmentId = req.user.departmentId || req.user.department?.id;
+  if (!assignedDepartmentId) {
+    const financeDepartment = await prisma.department.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        OR: [
+          { type: { equals: 'finance', mode: 'insensitive' } },
+          { name: { contains: 'finance', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    assignedDepartmentId = financeDepartment?.id;
+  }
+  if (departmentId && assignedDepartmentId && departmentId !== assignedDepartmentId) {
+    res.status(403).json({ success: false, message: 'Targets can only be assigned to your department' });
+    return;
+  }
+  departmentId = assignedDepartmentId || null;
+  let employee = null;
+  if (employeeId) {
+    employee = await prisma.user.findFirst({
+      where: { id: employeeId, organizationId: req.user.organizationId },
+      select: { id: true, departmentId: true, subDepartment: { select: { parentDeptId: true } } },
+    });
+    if (!employee) {
+      res.status(400).json({ success: false, message: 'Selected employee was not found in your organization' });
+      return;
+    }
+    if (departmentId && employee.departmentId !== departmentId && employee.subDepartment?.parentDeptId !== departmentId) {
+      res.status(400).json({ success: false, message: 'Selected employee does not belong to the selected department' });
+      return;
+    }
+  }
+  if (departmentId) {
+    const department = await prisma.department.findFirst({
+      where: { id: departmentId, organizationId: req.user.organizationId },
+      select: { id: true },
+    });
+    if (!department) {
+      res.status(400).json({ success: false, message: 'Selected department was not found in your organization' });
+      return;
+    }
+  }
+  const recipientIds = employeeId
+    ? [employeeId]
+    : departmentId
+      ? (await prisma.user.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { not: req.user.id },
+            OR: [
+              { departmentId },
+              { subDepartment: { parentDeptId: departmentId } },
+            ],
+          },
+          select: { id: true },
+        })).map((recipient) => recipient.id)
+      : [];
+  const newTarget = await prisma.$transaction(async (tx) => {
+    const createdTarget = await tx.target.create({
+      data: {
+        organizationId: req.user.organizationId,
+        employeeId: employeeId || null,
+        departmentId,
+        type,
+        period,
+        target: parseFloat(target),
+        achieved: achieved !== undefined ? parseFloat(achieved) : 0,
+        incentive: incentive !== undefined && incentive !== '' ? parseFloat(incentive) : null,
+        deadline: deadline ? new Date(deadline) : null
+      },
+      include: {
+        department: { select: { id: true, name: true, type: true } },
+        employee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true
+          }
         }
       }
+    });
+    if (recipientIds.length) {
+      await tx.notification.createMany({
+        data: recipientIds.map((userId) => ({
+          organizationId: req.user.organizationId,
+          userId,
+          title: 'New target assigned',
+          message: `A ${period} ${type} target has been assigned to you.`,
+          type: 'general',
+          priority: 'medium',
+          link: '/dashboard?tab=targets',
+        })),
+      });
     }
+    return createdTarget;
   });
   const mapped = {
     ...newTarget,

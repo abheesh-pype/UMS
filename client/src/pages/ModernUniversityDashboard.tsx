@@ -34,6 +34,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { UniversityEnrollmentReviewPanel } from '@/components/panels/UniversityEnrollmentReviewPanel';
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
+import { TargetsPanel } from '@/components/panels/TargetsPanel';
 
 
 interface Enrollment {
@@ -225,6 +226,18 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
         No university linked to your account. Contact your administrator.
+      </div>
+    );
+  }
+
+  if (activeTab === 'targets') {
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div>
+          <h1 className="text-2xl font-bold">{uniName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">University Admin Panel</p>
+        </div>
+        <TargetsPanel endpoint="/sales/targets" title="Targets" />
       </div>
     );
   }
@@ -774,6 +787,7 @@ function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; labe
 export function getUniversityNavItems() {
   return [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'targets', label: 'Targets' },
     {
       id: 'students',
       label: 'Students',

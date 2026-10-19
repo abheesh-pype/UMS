@@ -18,7 +18,8 @@ interface TargetsPanelProps {
 
 export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsPanelProps) {
   const { user } = useAuth();
-  const canManage = user?.role === 'sales_admin' || user?.role === 'ceo' || user?.role === 'org_admin' || user?.role === 'superadmin';
+  const canManage = ['sales_admin', 'finance_admin', 'ops_admin', 'ceo', 'org_admin', 'superadmin', 'university_admin'].includes(user?.role || '');
+  const departmentScopedRole = ['sales_admin', 'finance_admin', 'ops_admin'].includes(user?.role || '');
 
   const [targets, setTargets] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
@@ -34,6 +35,13 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
     period: 'monthly',
     type: 'revenue'
   });
+  const selectedDepartmentId = formData.departmentId === 'none' ? '' : formData.departmentId;
+  const availableEmployees = employees.filter((employee) => {
+    if (!selectedDepartmentId) return true;
+    return employee.departmentId === selectedDepartmentId
+      || employee.subDepartment?.parentDeptId === selectedDepartmentId
+      || employee.subDepartment?.parentDept?.id === selectedDepartmentId;
+  });
 
   const fetchTargets = useCallback(async () => {
     setLoading(true);
@@ -41,6 +49,7 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
       const res = await api.get(endpoint);
       setTargets(res.data.data || []);
     } catch (err) {
+      toast.error('Failed to load targets');
     } finally {
       setLoading(false);
     }
@@ -51,6 +60,7 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
       const res = await api.get('/users');
       setEmployees(res.data.data?.filter((u: any) => !['ceo', 'superadmin', 'org_admin', 'center_admin', 'student'].includes(u.role)) || []);
     } catch (err) {
+      toast.error('Failed to load employees');
     }
   }, []);
 
@@ -59,6 +69,7 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
       const res = await api.get('/departments');
       setDepartments(res.data.data || []);
     } catch (err) {
+      toast.error('Failed to load departments');
     }
   }, []);
 
@@ -68,16 +79,33 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
     fetchDepartments();
   }, [fetchTargets, fetchEmployees, fetchDepartments]);
 
+  useEffect(() => {
+    if (!departments.length || !departmentScopedRole || formData.departmentId) return;
+    const typeByRole: Record<string, string> = {
+      sales_admin: 'sales',
+      finance_admin: 'finance',
+      ops_admin: 'operations',
+    };
+    const defaultDepartment = departments.find((department) =>
+      department.id === user?.departmentId
+      || department.type?.toLowerCase() === typeByRole[user?.role || '']
+      || department.name?.toLowerCase().includes(typeByRole[user?.role || ''])
+    );
+    if (defaultDepartment) {
+      setFormData((current) => ({ ...current, departmentId: defaultDepartment.id }));
+    }
+  }, [departments, departmentScopedRole, formData.departmentId, user?.departmentId, user?.role]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: any = {
+    const payload: Record<string, string | number> = {
       target: Number(formData.target),
       achieved: Number(formData.achieved),
       period: formData.period,
       type: formData.type
     };
     if (formData.employeeId && formData.employeeId !== 'none') payload.employeeId = formData.employeeId;
-    if (formData.departmentId && formData.departmentId !== 'none') payload.departmentId = formData.departmentId;
+    if (selectedDepartmentId) payload.departmentId = selectedDepartmentId;
 
     try {
       if (editingId) {
@@ -94,9 +122,9 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
   };
 
   const handleEdit = (t: any) => {
-    const empId = typeof t.employeeId === 'object' ? (t.employeeId?.id || t.employeeId?.id) : t.employeeId;
-    const deptId = typeof t.departmentId === 'object' ? (t.departmentId?.id || t.departmentId?.id) : t.departmentId;
-    setEditingId(t.id || t.id);
+    const empId = typeof t.employeeId === 'object' ? t.employeeId?.id : t.employeeId;
+    const deptId = typeof t.departmentId === 'object' ? t.departmentId?.id : t.departmentId;
+    setEditingId(t.id);
     setFormData({
       employeeId: empId?.toString() || '',
       departmentId: deptId?.toString() || '',
@@ -148,8 +176,8 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
                     <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {employees.filter(e => e && (e.id || e.id)).map((e) => (
-                        <SelectItem key={e.id || e.id} value={(e.id || e.id).toString()}>
+                      {availableEmployees.filter(e => e?.id).map((e) => (
+                      <SelectItem key={e.id} value={e.id.toString()}>
                           {e.name || e.email}
                         </SelectItem>
                       ))}
@@ -158,12 +186,16 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
                 </div>
                 <div>
                   <Label>Department (optional)</Label>
-                  <Select value={formData.departmentId} onValueChange={(v) => setFormData({ ...formData, departmentId: v })}>
+                  <Select
+                    value={formData.departmentId}
+                    disabled={departmentScopedRole}
+                    onValueChange={(v) => setFormData({ ...formData, departmentId: v, employeeId: '' })}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {departments.filter(d => d && (d.id || d.id)).map((d) => (
-                        <SelectItem key={d.id || d.id} value={(d.id || d.id).toString()}>
+                      {departments.filter(d => d?.id).map((d) => (
+                        <SelectItem key={d.id} value={d.id.toString()}>
                           {d.name}
                         </SelectItem>
                       ))}
@@ -224,11 +256,11 @@ export function TargetsPanel({ endpoint, title = 'Target Management' }: TargetsP
             <div className="text-center py-8 text-muted-foreground">No targets found</div>
           ) : (
             <div className="space-y-4">
-              {targets.filter(t => t && (t.id || t.id)).map((t) => {
-                const tid = t.id || t.id;
+              {targets.filter(t => t?.id).map((t) => {
+                const tid = t.id;
                 const pct = t.target ? Math.min(100, ((t.achieved || 0) / t.target) * 100) : 0;
-                const empName = typeof t.employeeId === 'object' ? t.employeeId?.name : '';
-                const deptName = typeof t.departmentId === 'object' ? t.departmentId?.name : '';
+                const empName = typeof t.employeeId === 'object' ? t.employeeId?.name : t.employee?.name;
+                const deptName = typeof t.departmentId === 'object' ? t.departmentId?.name : t.department?.name;
                 return (
                   <div key={tid} className="p-4 border rounded-lg hover:bg-muted/50">
                     <div className="flex items-center justify-between mb-3">

@@ -28,8 +28,8 @@ import { CentersAdmissionsPanel } from '@/components/panels/CentersAdmissionsPan
 import { PayrollPanel } from '@/components/panels/PayrollPanel';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 import { 
-  BarChart, 
-  Bar, 
+  LineChart,
+  Line,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -57,6 +57,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   const [metrics, setMetrics] = useState<any>({});
   const [leads, setLeads] = useState<any[]>([]);
   const [targets, setTargets] = useState<any[]>([]);
+  const [applicationSummary, setApplicationSummary] = useState<any>({ total: 0, enrolled: 0 });
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
 
   const handleTabChange = (tab: string) => {
@@ -75,14 +76,16 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [metricsRes, leadsRes, targetsRes] = await Promise.all([
+      const [metricsRes, leadsRes, targetsRes, applicationsRes] = await Promise.all([
         api.get('/dashboard/metrics'),
         api.get('/sales/leads').catch(() => ({ data: { data: [] } })),
         api.get('/sales/targets').catch(() => ({ data: { data: [] } })),
+        api.get('/sales/student-applications').catch(() => ({ data: { summary: { total: 0, enrolled: 0 } } })),
       ]);
       setMetrics(metricsRes.data.data || {});
       setLeads(leadsRes.data.data || []);
       setTargets(targetsRes.data.data || []);
+      setApplicationSummary(applicationsRes.data.summary || { total: 0, enrolled: 0 });
     } catch (e) {
     } finally {
       setLoading(false);
@@ -97,7 +100,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   const renderContent = () => {
     switch (activeTab) {
       case 'overview': return (
-        <OverviewContent metrics={metrics} leads={leads} targets={targets} loading={loading} onNavigate={setActiveTab} />
+        <OverviewContent metrics={metrics} leads={leads} targets={targets} applicationSummary={applicationSummary} loading={loading} onNavigate={setActiveTab} />
       );
       case 'leads': return null;
       case 'targets': return <TargetsPanel endpoint="/sales/targets" title="Sales Targets" />;
@@ -161,12 +164,35 @@ export function getSalesNavItems(includeStudentEnrollment = true) {
   ];
 }
 
-function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) {
+function OverviewContent({ metrics, leads, targets, applicationSummary, loading, onNavigate }: any) {
   // Compute live stats
   const totalLeads = leads.length;
   const newLeads = leads.filter((l: any) => l.status === 'new').length;
   const convertedLeads = leads.filter((l: any) => l.status === 'converted').length;
   const conversionRate = totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : 0;
+  const totalApplications = applicationSummary?.total || 0;
+  const enrolledApplications = applicationSummary?.enrolled || 0;
+  const admissionRate = totalApplications > 0 ? Math.round((enrolledApplications / totalApplications) * 100) : 0;
+
+  const growthData = Array.from({ length: 6 }, (_, index) => {
+    const month = new Date();
+    month.setDate(1);
+    month.setMonth(month.getMonth() - (5 - index));
+    const year = month.getFullYear();
+    const monthIndex = month.getMonth();
+    return {
+      month: month.toLocaleString('en', { month: 'short' }),
+      leads: leads.filter((lead: any) => {
+        const createdAt = new Date(lead.createdAt);
+        return createdAt.getFullYear() === year && createdAt.getMonth() === monthIndex;
+      }).length,
+    };
+  });
+  const currentMonthLeads = growthData[growthData.length - 1]?.leads || 0;
+  const previousMonthLeads = growthData[growthData.length - 2]?.leads || 0;
+  const monthlyGrowth = previousMonthLeads > 0
+    ? Math.round(((currentMonthLeads - previousMonthLeads) / previousMonthLeads) * 100)
+    : null;
 
   // Lead source breakdown from real data
   const sourceCounts: Record<string, number> = {};
@@ -188,15 +214,6 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
       }, 0) / activeTargets.length)
     : 0;
 
-  // Lead status bar chart
-  const statusData = [
-    { label: 'New', value: leads.filter((l: any) => l.status === 'new').length, color: 'hsl(var(--primary))' },
-    { label: 'Contacted', value: leads.filter((l: any) => l.status === 'contacted').length, color: 'hsl(var(--info))' },
-    { label: 'Qualified', value: leads.filter((l: any) => l.status === 'qualified').length, color: 'hsl(var(--warning))' },
-    { label: 'Converted', value: convertedLeads, color: 'hsl(var(--success))' },
-    { label: 'Lost', value: leads.filter((l: any) => l.status === 'lost').length, color: 'hsl(var(--error))' },
-  ];
-
   const hotLeads = [...leads]
     .filter((l: any) => l.status !== 'converted' && l.status !== 'lost')
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -205,14 +222,13 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
   return (
     <div className="space-y-6">
       {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-5 gap-6">
         <SalesMetric
           title="Total Leads"
           value={loading ? '...' : totalLeads}
           trend={newLeads > 0 ? `${newLeads} new` : 'No new leads'}
           icon={<Users className="w-5 h-5" />}
           color="primary"
-          className="hidden"
           onClick={() => onNavigate('leads')}
         />
         <SalesMetric
@@ -221,8 +237,15 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
           trend={`${conversionRate}% rate`}
           icon={<TrendingUp className="w-5 h-5" />}
           color="success"
-          className="hidden"
           onClick={() => onNavigate('leads')}
+        />
+        <SalesMetric
+          title="Student Admissions"
+          value={loading ? '...' : totalApplications}
+          trend={`${enrolledApplications} enrolled · ${admissionRate}% admission rate`}
+          icon={<TrendingUp className="w-5 h-5" />}
+          color="success"
+          onClick={() => onNavigate('student_enrollment')}
         />
         <SalesMetric
           title="Active Targets"
@@ -243,37 +266,35 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lead Status Chart */}
+        {/* Lead Growth */}
         <Card
-          className="hidden lg:col-span-2 border-none shadow-xl bg-card/60 backdrop-blur-xl cursor-pointer hover:border-primary/30 transition-colors"
+          className="lg:col-span-2 border-none shadow-xl bg-card/60 backdrop-blur-xl cursor-pointer hover:border-primary/30 transition-colors"
           onClick={() => onNavigate('leads')}
         >
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Lead Pipeline</CardTitle>
-              <CardDescription>Live status breakdown — click to manage leads</CardDescription>
+              <CardTitle>Lead Growth</CardTitle>
+              <CardDescription>
+                Monthly lead volume · {monthlyGrowth === null ? 'Growth comparison unavailable' : `${monthlyGrowth >= 0 ? '+' : ''}${monthlyGrowth}% vs. last month`}
+              </CardDescription>
             </div>
             <BarChart3 className="w-5 h-5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="h-[260px]">
             {leads.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={statusData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                <LineChart data={growthData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px' }} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={36}>
-                    {statusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
+                  <Line type="monotone" dataKey="leads" name="Leads" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ r: 4 }} />
+                </LineChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <Users className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No leads yet</p>
+                <p className="text-sm">No lead growth data yet</p>
                 <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); onNavigate('leads'); }}>
                   Add Lead
                 </Button>
@@ -284,7 +305,7 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
 
         {/* Lead Sources */}
         <Card
-          className="hidden border-none shadow-xl bg-card/60 backdrop-blur-xl cursor-pointer hover:border-primary/30 transition-colors"
+          className="border-none shadow-xl bg-card/60 backdrop-blur-xl cursor-pointer hover:border-primary/30 transition-colors"
           onClick={() => onNavigate('leads')}
         >
           <CardHeader>
@@ -328,7 +349,7 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Hot Leads */}
-        <Card className="hidden cursor-pointer hover:border-primary/30 transition-colors" onClick={() => onNavigate('leads')}>
+        <Card className="cursor-pointer hover:border-primary/30 transition-colors" onClick={() => onNavigate('leads')}>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Recent Leads</CardTitle>
             <Button variant="ghost" size="sm" className="text-primary font-bold" onClick={e => { e.stopPropagation(); onNavigate('leads'); }}>
@@ -379,9 +400,12 @@ function OverviewContent({ metrics, leads, targets, loading, onNavigate }: any) 
               ) : (
               activeTargets.slice(0, 3).map((t: any) => {
                   const pct = t.target > 0 ? Math.round((t.achieved / t.target) * 100) : 0;
-                  const label = typeof t.employeeId === 'object' ? t.employeeId?.name
-                    : typeof t.departmentId === 'object' ? t.departmentId?.name
-                    : t.type || 'Target';
+                  const label = t.employee?.name
+                    || t.department?.name
+                    || (typeof t.employeeId === 'object' ? t.employeeId?.name : '')
+                    || (typeof t.departmentId === 'object' ? t.departmentId?.name : '')
+                    || t.type
+                    || 'Target';
                   return (
                   <div key={t.id} className="space-y-1">
                     <div className="flex justify-between text-xs">
