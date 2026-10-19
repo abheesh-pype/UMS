@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,21 @@ interface ProfileData {
   salaryConfig: SalaryConfig | null;
 }
 
+interface EmployeeSummary {
+  name?: string;
+  designation?: string;
+  designationRef?: { title?: string };
+  role?: string;
+  status?: string;
+  email?: string;
+  phone?: string;
+  userId?: string;
+  department?: { name?: string };
+  departmentId?: { name?: string };
+  subDepartment?: { name?: string; parentDept?: { name?: string } };
+  branch?: { name?: string };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const KPI_STATUS_COLORS: Record<string, string> = {
   on_track: 'bg-blue-100 text-blue-700',
@@ -90,10 +105,13 @@ function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
 interface Props {
   userId: string | null;
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  onOpenChange?: (open: boolean) => void;
+  readOnly?: boolean;
+  employee?: EmployeeSummary;
 }
 
-export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
+export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, readOnly = false, employee }: Props) {
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -116,8 +134,13 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
   const [kpiIdx, setKpiIdx] = useState<number | null>(null);
   const [kraIdx, setKraIdx] = useState<number | null>(null);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!userId) return;
+    if (readOnly) {
+      setData({ user: employee, profile: null, salaryConfig: null });
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.get(`/hr/employee-profiles/${userId}`);
@@ -175,11 +198,11 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, readOnly, employee]);
 
   useEffect(() => {
     if (open && userId) { setTab('overview'); fetchProfile(); }
-  }, [open, userId]);
+  }, [open, userId, fetchProfile]);
 
   // ─── Save handlers ────────────────────────────────────────────────────────
   const savePersonal = async () => {
@@ -294,9 +317,15 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
 
   const user = data?.user;
   const profile = data?.profile;
+  const handleOpenChange = (value: boolean) => {
+    if (!value) {
+      if (onOpenChange) onOpenChange(false);
+      else onClose?.();
+    }
+  };
 
   return (
-    <Sheet open={open} onOpenChange={v => !v && onClose()}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto p-0">
         {/* Profile Header */}
         <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-6 py-5 border-b">
@@ -307,10 +336,10 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
               </div>
               <div className="flex-1 min-w-0">
                 <SheetTitle className="text-xl font-bold truncate">{user?.name || 'Employee Profile'}</SheetTitle>
-                <p className="text-sm text-muted-foreground mt-0.5">{user?.designation || user?.role?.replace(/_/g, ' ')}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{user?.designation || user?.designationRef?.title || user?.role?.replace(/_/g, ' ')}</p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {user?.departmentId?.name && (
-                    <Badge variant="outline" className="text-xs"><Building2 className="w-3 h-3 mr-1" />{user.departmentId.name}</Badge>
+                  {(user?.department?.name || user?.departmentId?.name) && (
+                    <Badge variant="outline" className="text-xs"><Building2 className="w-3 h-3 mr-1" />{user.department?.name || user.departmentId.name}</Badge>
                   )}
                   <Badge className={cn('text-xs', user?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600')}>
                     {user?.status?.replace('_', ' ')}
@@ -320,9 +349,11 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
                   )}
                 </div>
               </div>
-              <Button size="sm" variant="ghost" onClick={fetchProfile} disabled={loading}>
-                <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
-              </Button>
+              {!readOnly && (
+                <Button size="sm" variant="ghost" onClick={fetchProfile} disabled={loading}>
+                  <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+                </Button>
+              )}
             </div>
           </SheetHeader>
         </div>
@@ -330,6 +361,28 @@ export function EmployeeProfilePanel({ userId, open, onClose }: Props) {
         {loading ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Loading...
+          </div>
+        ) : readOnly ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-6 py-5">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Mail className="w-4 h-4" />Contact</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div><p className="text-xs text-muted-foreground">Email</p><p>{user?.email || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Phone</p><p>{user?.phone || '—'}</p></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Briefcase className="w-4 h-4" />Employment</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div><p className="text-xs text-muted-foreground">Employee ID</p><p>{user?.userId || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Role</p><p className="capitalize">{user?.role?.replace(/_/g, ' ') || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Designation</p><p>{user?.designation || user?.designationRef?.title || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Department</p><p>{user?.department?.name || user?.subDepartment?.parentDept?.name || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Team</p><p>{user?.subDepartment?.name || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Branch</p><p>{user?.branch?.name || '—'}</p></div>
+                <div><p className="text-xs text-muted-foreground">Status</p><p className="capitalize">{user?.status?.replace(/_/g, ' ') || '—'}</p></div>
+              </CardContent>
+            </Card>
           </div>
         ) : (
           <Tabs value={tab} onValueChange={setTab} className="flex flex-col h-full">

@@ -182,6 +182,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
     setSelectedUserId(userId);
     setProfileOpen(true);
   };
+  const selectedEmployee = users.find((user) => user.id === selectedUserId);
 
   const formatRoleLabel = (role: string = '') => {
     const r = role.toLowerCase();
@@ -536,6 +537,8 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
         <EmployeeProfilePanel
           userId={selectedUserId}
           open={profileOpen}
+          employee={selectedEmployee}
+          readOnly
           onOpenChange={(open) => {
             setProfileOpen(open);
             if (!open) setSelectedUserId(null);
