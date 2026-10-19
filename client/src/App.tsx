@@ -10,6 +10,7 @@ import { getHRNavItems } from '@/pages/ModernHRDashboard';
 import { getFinanceNavItems } from '@/pages/ModernFinanceDashboard';
 import { getSalesNavItems } from '@/pages/ModernSalesDashboard';
 import { getBranchManagerNavItems } from '@/pages/ModernBranchManagerDashboard';
+import { getUniversityNavItems } from '@/pages/ModernUniversityDashboard';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -108,6 +109,8 @@ const TABLE_TO_TAB: Record<string, string> = {
   escalations: 'escalations',
   audit_logs: 'overview',
   center_admissions: 'center_admissions',
+  // University Admin
+  enrolled_students: 'enrolled_students',
 };
 
 function App() {
@@ -125,7 +128,7 @@ function App() {
       case 'finance_admin':
       case 'hr_admin':
       case 'sales_admin': return 'overview';
-      case 'university_admin': return 'overview';
+      case 'university_admin': return 'dashboard';
       case 'academic_admin': return 'dashboard';
       case 'student': return 'dashboard';
       default: return 'tasks';
@@ -222,11 +225,7 @@ function App() {
     if (!user) return [];
 
     if (user.role === 'university_admin') {
-      return [
-        { id: 'dashboard', label: 'Dashboard' },
-        { id: 'pending_center_verification', label: 'Pending Verification' },
-        { id: 'integration', label: 'Integration' },
-      ];
+      return getUniversityNavItems();
     }
     
     const baseTables = [

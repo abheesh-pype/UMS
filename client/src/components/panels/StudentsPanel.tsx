@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, Mail, Phone, GraduationCap, MapPin, Calendar, FileText, CreditCard, Check, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Mail, Phone, GraduationCap, MapPin, Calendar, FileText, CreditCard, Check, Clock, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -538,27 +538,63 @@ export function StudentsPanel() {
               </DialogHeader>
 
               <div className="space-y-6 py-4">
-                {/* Contact details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border text-sm">
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Email</p>
-                      <p className="font-medium">{selectedStudent.email}</p>
+                {/* Personal & Contact Info */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-primary" /> Personal &amp; Contact Info
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border text-sm">
+                    {/* Date of Birth (DOB) */}
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Date of Birth (DOB)</p>
+                        <p className="font-bold text-foreground">
+                          {(() => {
+                            const rawDob = selectedStudent.dob || selectedStudent.enrollments?.[0]?.dob;
+                            if (!rawDob) return 'N/A';
+                            try {
+                              const d = new Date(rawDob);
+                              if (isNaN(d.getTime())) return rawDob;
+                              return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                            } catch {
+                              return rawDob;
+                            }
+                          })()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Phone</p>
-                      <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Email</p>
+                        <p className="font-medium">{selectedStudent.email}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="col-span-2 flex items-start gap-2 pt-2 border-t">
-                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Address</p>
-                      <p className="font-medium">{selectedStudent.address || 'N/A'}</p>
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Phone</p>
+                        <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {(selectedStudent.parentMobile || selectedStudent.fatherName) && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-semibold">
+                            {selectedStudent.fatherName ? `Father (${selectedStudent.fatherName})` : 'Parent Mobile'}
+                          </p>
+                          <p className="font-medium">{selectedStudent.parentMobile || 'N/A'}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="col-span-1 sm:col-span-2 flex items-start gap-2 pt-2 border-t">
+                      <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Address</p>
+                        <p className="font-medium">{selectedStudent.address || 'N/A'}</p>
+                      </div>
                     </div>
                   </div>
                 </div>

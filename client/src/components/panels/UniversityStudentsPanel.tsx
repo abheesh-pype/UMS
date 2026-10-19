@@ -24,10 +24,12 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  dob?: string;
   enrolledAt?: string;
   program: { id: string; name: string; code: string; courseType: string };
   studyCenter: { id: string; name: string; code: string; city?: string };
   session: { id: string; name: string };
+  student?: { dob?: string };
 }
 
 interface Metrics {
@@ -298,6 +300,11 @@ export function UniversityStudentsPanel() {
                       <td className="py-3 pr-4">
                         <p className="font-medium">{e.studentName}</p>
                         <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
+                        {(e.dob || e.student?.dob) && (
+                          <span className="text-[11px] text-primary font-medium block mt-0.5">
+                            DOB: {e.dob || e.student?.dob}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 pr-4">
                         <p className="font-medium">{e.program?.name || 'Program'}</p>

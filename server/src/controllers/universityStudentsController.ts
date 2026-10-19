@@ -11,7 +11,7 @@ export const getUniversityStudents = asyncHandler(async (req: AuthRequest, res: 
 
   // Verify university exists and belongs to org
   const university = await prisma.university.findFirst({
-    where: { id: universityId, organizationId, singletonKey: 'primary' }
+    where: { id: universityId, organizationId }
   });
 
   if (!university) {
@@ -53,7 +53,23 @@ export const getUniversityStudents = asyncHandler(async (req: AuthRequest, res: 
       program: { select: { id: true, name: true, code: true, courseType: true } },
       studyCenter: { select: { id: true, name: true, code: true, city: true } },
       session: { select: { id: true, name: true, startDate: true, endDate: true } },
-      student: { select: { id: true, enrollmentNo: true, phone: true, address: true } }
+      student: {
+        select: {
+          id: true,
+          enrollmentNo: true,
+          phone: true,
+          address: true,
+          dob: true,
+          fatherName: true,
+          motherName: true,
+          parentMobile: true,
+          alternativePhone: true,
+          maritalStatus: true,
+          religion: true,
+          caste: true,
+          pincode: true,
+        }
+      }
     },
     orderBy: { enrolledAt: 'desc' }
   });
@@ -67,8 +83,8 @@ export const getUniversityStudents = asyncHandler(async (req: AuthRequest, res: 
   };
 
   enrollments.forEach(e => {
-    const progName = e.program.name;
-    const centerName = e.studyCenter.name;
+    const progName = e.program?.name || 'Unknown';
+    const centerName = e.studyCenter?.name || 'Direct Admission';
     stats.byProgram[progName] = (stats.byProgram[progName] || 0) + 1;
     stats.byCenter[centerName] = (stats.byCenter[centerName] || 0) + 1;
   });
@@ -92,7 +108,7 @@ export const getUniversityMetrics = asyncHandler(async (req: AuthRequest, res: R
   const organizationId = req.user.organizationId;
 
   const university = await prisma.university.findFirst({
-    where: { id: universityId, organizationId, singletonKey: 'primary' }
+    where: { id: universityId, organizationId }
   });
 
   if (!university) {
