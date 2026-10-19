@@ -280,6 +280,7 @@ function App() {
         { id: 'center_admissions', label: 'Centers Admissions' },
         { id: 'invoices', label: 'Invoices' },
         { id: 'payments', label: 'Payments' },
+        { id: 'integration', label: 'Integration' },
         { id: 'expenses', label: 'Expenses' },
         { id: 'employees', label: 'Employees' },
         { id: 'leave_requests', label: 'Leave Requests' },

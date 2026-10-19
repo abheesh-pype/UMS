@@ -26,6 +26,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
+import { UniversityExamIntegrationPanel } from '@/pages/ModernUniversityDashboard';
 
 function StudyCentreCustomisationPage() {
   const { user } = useAuth();
@@ -220,8 +221,14 @@ function StudyCentreCustomisationPage() {
 }
 
 export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
+  const { user } = useAuth();
   const [metrics, setMetrics] = useState<any>({});
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
+  const linkedUniversityId = typeof (user as any)?.universityId === 'object'
+    ? (user as any)?.universityId?.id
+    : (user as any)?.universityId;
+  const [integrationUniversityId, setIntegrationUniversityId] = useState<string | null>(linkedUniversityId || null);
+  const [integrationUniversityLoading, setIntegrationUniversityLoading] = useState(false);
 
   useEffect(() => {
     setActiveTab(initialTab || 'overview');
@@ -232,6 +239,31 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
       .then(r => setMetrics(r.data.data || {}))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (linkedUniversityId) {
+      setIntegrationUniversityId(linkedUniversityId);
+      return;
+    }
+    if (activeTab !== 'integration' || integrationUniversityId) return;
+
+    let active = true;
+    setIntegrationUniversityLoading(true);
+    api.get('/operations/universities')
+      .then(response => {
+        if (!active) return;
+        const university = response.data.data?.[0];
+        if (university?.id) setIntegrationUniversityId(university.id);
+        else toast.error('No university is configured for this organization');
+      })
+      .catch((error: any) => {
+        if (active) toast.error(error.response?.data?.message || 'Failed to load organization university');
+      })
+      .finally(() => {
+        if (active) setIntegrationUniversityLoading(false);
+      });
+    return () => { active = false; };
+  }, [activeTab, integrationUniversityId, linkedUniversityId]);
 
   if (activeTab === 'study-centre-customisation') {
     return <StudyCentreCustomisationPage />;
@@ -245,6 +277,24 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
           <p className="mt-1 text-muted-foreground">Review pending students and study centres.</p>
         </div>
         <PendingCenterVerificationPanel mode="org" />
+      </div>
+    );
+  }
+
+  if (activeTab === 'integration') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Integration</h1>
+          <p className="mt-1 text-muted-foreground">Connect your university to an external examination portal.</p>
+        </div>
+        {integrationUniversityLoading ? (
+          <p className="py-6 text-sm text-muted-foreground">Loading university integration...</p>
+        ) : integrationUniversityId ? (
+          <UniversityExamIntegrationPanel universityId={integrationUniversityId} />
+        ) : (
+          <p className="py-6 text-sm text-muted-foreground">No university is available for exam portal integration.</p>
+        )}
       </div>
     );
   }

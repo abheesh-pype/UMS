@@ -250,7 +250,7 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
   );
 }
 
-function UniversityExamIntegrationPanel({ universityId }: { universityId: string }) {
+export function UniversityExamIntegrationPanel({ universityId }: { universityId: string }) {
   const [endpoint, setEndpoint] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [hasApiKey, setHasApiKey] = useState(false);
