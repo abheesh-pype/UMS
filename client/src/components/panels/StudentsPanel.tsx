@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, Mail, Phone, GraduationCap, MapPin, Calendar, FileText, CreditCard, Check, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Mail, Phone, GraduationCap, MapPin, Calendar, FileText, CreditCard, Check, Clock, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
@@ -538,27 +538,69 @@ export function StudentsPanel() {
               </DialogHeader>
 
               <div className="space-y-6 py-4">
-                {/* Contact details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border text-sm">
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Email</p>
-                      <p className="font-medium">{selectedStudent.email}</p>
+                {/* Personal & Contact Info */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-primary" /> Personal &amp; Contact Info
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border text-sm">
+                    {/* Date of Birth (DOB) */}
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Date of Birth (DOB)</p>
+                        <p className="font-bold text-foreground font-mono">
+                          {(() => {
+                            const rawDob = selectedStudent.dob || selectedStudent.enrollments?.[0]?.dob;
+                            if (!rawDob) return 'N/A';
+                            const str = String(rawDob).trim();
+                            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+                            const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+                            if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+                            const ymd = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+                            if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+                            try {
+                              const d = new Date(str);
+                              if (!isNaN(d.getTime())) {
+                                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                              }
+                            } catch {}
+                            return str;
+                          })()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Phone</p>
-                      <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Email</p>
+                        <p className="font-medium">{selectedStudent.email}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="col-span-2 flex items-start gap-2 pt-2 border-t">
-                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Address</p>
-                      <p className="font-medium">{selectedStudent.address || 'N/A'}</p>
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Phone</p>
+                        <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
+                      </div>
+                    </div>
+                    {(selectedStudent.parentMobile || selectedStudent.fatherName) && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-semibold">
+                            {selectedStudent.fatherName ? `Father (${selectedStudent.fatherName})` : 'Parent Mobile'}
+                          </p>
+                          <p className="font-medium">{selectedStudent.parentMobile || 'N/A'}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="col-span-1 sm:col-span-2 flex items-start gap-2 pt-2 border-t">
+                      <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Address</p>
+                        <p className="font-medium">{selectedStudent.address || 'N/A'}</p>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -24,10 +24,12 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  dob?: string;
   enrolledAt?: string;
   program: { id: string; name: string; code: string; courseType: string };
   studyCenter: { id: string; name: string; code: string; city?: string };
   session: { id: string; name: string };
+  student?: { dob?: string };
 }
 
 interface Metrics {
@@ -298,6 +300,25 @@ export function UniversityStudentsPanel() {
                       <td className="py-3 pr-4">
                         <p className="font-medium">{e.studentName}</p>
                         <p className="text-xs text-muted-foreground">{e.studentEmail}</p>
+                        {(e.dob || e.student?.dob) && (
+                          <span className="text-[11px] text-primary font-medium block mt-0.5 font-mono">
+                            DOB: {(() => {
+                              const raw = e.dob || e.student?.dob;
+                              if (!raw) return 'N/A';
+                              const str = String(raw).trim();
+                              if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+                              const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+                              if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+                              try {
+                                const d = new Date(str);
+                                if (!isNaN(d.getTime())) {
+                                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                }
+                              } catch {}
+                              return str;
+                            })()}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 pr-4">
                         <p className="font-medium">{e.program?.name || 'Program'}</p>

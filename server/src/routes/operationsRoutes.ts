@@ -65,7 +65,11 @@ import {
   updateBranchSettings,
 } from '../controllers/operationsController.js';
 import { resubmitStudyCenter } from '../controllers/salesController.js';
-import { updateEnrollmentUniNumber } from '../controllers/universityStudentsController.js';
+import {
+  getUniversityStudents,
+  getUniversityMetrics,
+  updateEnrollmentUniNumber,
+} from '../controllers/universityStudentsController.js';
 import {
   getProgramDetail,
   getProgramMaterials,
@@ -90,6 +94,8 @@ router.use(protect);
 
 router.get('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalIntegration);
 router.put('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), saveExamPortalIntegration);
+router.get('/universities/:universityId/students', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityStudents);
+router.get('/universities/:universityId/metrics', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityMetrics);
 
 // Universities — write access restricted to org_admin / superadmin & operations admin
 router.route('/universities').get(getUniversities).post(authorize('org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), createUniversity);
@@ -202,6 +208,6 @@ router.put('/programs/:programId/materials/:materialId', authorize('ops_admin', 
 router.delete('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), deleteProgramMaterial);
 
 // Enrollment Uni Enrollment Number Updates
-router.put('/enrollments/:id', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin'), updateEnrollmentUniNumber);
+router.put('/enrollments/:id', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'university_admin'), updateEnrollmentUniNumber);
 
 export default router;
