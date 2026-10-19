@@ -12,9 +12,10 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
-export function StudentsPanel() {
+export function StudentsPanel({ operationsMode = false }: { operationsMode?: boolean }) {
   const { user } = useAuth();
-  const canWrite = ['org_admin', 'superadmin', 'center_admin'].includes(user?.role || '');
+  const canCreate = ['org_admin', 'superadmin', 'center_admin'].includes(user?.role || '');
+  const canEdit = canCreate || (operationsMode && ['ops_admin', 'ops_sub_admin', 'employee'].includes(user?.role || ''));
   const canDelete = ['org_admin', 'superadmin'].includes(user?.role || '');
   const [students, setStudents] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
@@ -266,11 +267,13 @@ export function StudentsPanel() {
           <h2 className="text-2xl font-bold">Student Management</h2>
           <p className="text-muted-foreground">Manage student records and enrollments</p>
         </div>
-        {canWrite && (
+        {canEdit && (
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button><Plus className="w-4 h-4 mr-2" />Add Student</Button>
-            </DialogTrigger>
+            {canCreate && (
+              <DialogTrigger asChild>
+                <Button><Plus className="w-4 h-4 mr-2" />Add Student</Button>
+              </DialogTrigger>
+            )}
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingId ? 'Edit Student' : 'Add New Student'}</DialogTitle>
@@ -480,7 +483,7 @@ export function StudentsPanel() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge>{student.status}</Badge>
-                      {canWrite && (
+                      {canEdit && (
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}><Edit className="w-4 h-4" /></Button>
                       )}
                       {canDelete && (

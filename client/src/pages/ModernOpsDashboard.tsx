@@ -76,7 +76,7 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
       case 'my_team':
       case 'team': return <MyTeamPanel departmentType="operations" title="Operations Team" />;
       case 'targets': return <TargetsPanel endpoint="/sales/targets" title="Operations Targets" />;
-      case 'students': return <StudentsPanel />;
+      case 'students': return <StudentsPanel operationsMode />;
       case 'programs': return <ProgramsPanel readOnly />;
       case 'centers': return <StudyCentersPanel operationsMode />;
       case 'pending_verification': return <OpsCenterVerificationPanel />;

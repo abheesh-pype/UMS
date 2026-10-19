@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle, XCircle, Mail, Phone, MapPin, GraduationCap, FileText, Calendar, ShieldAlert, UserCheck, Users, Send, AlertTriangle } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, Mail, Phone, MapPin, GraduationCap, FileText, Calendar, ShieldAlert, UserCheck, Users, Send, AlertTriangle, Edit, Upload, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -78,6 +78,10 @@ export function DeptEnrollmentReviewPanel() {
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [remarks, setRemarks] = useState('');
   const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
+  const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [editDocuments, setEditDocuments] = useState<{ name: string; url: string }[]>([]);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [universityFilter, setUniversityFilter] = useState('all');
@@ -154,6 +158,54 @@ export function DeptEnrollmentReviewPanel() {
       fetch();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to resubmit');
+    }
+  };
+
+  const handleStartEdit = (enrollment: Enrollment) => {
+    const editableFields = [
+      'studentName', 'studentEmail', 'studentPhone', 'studentAddress', 'dob', 'fatherName',
+      'motherName', 'parentMobile', 'alternativePhone', 'pincode', 'religion', 'caste',
+      'maritalStatus', 'currentlyWorking', 'specialisation', 'abcId', 'debId',
+    ];
+    setEditForm(Object.fromEntries(editableFields.map(field => [field, String((enrollment as any)[field] || '')])));
+    setEditDocuments(enrollment.documents || []);
+    setEditingEnrollment(enrollment);
+    setSelectedEnrollment(null);
+  };
+
+  const handleUploadEditDocument = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadingDocument(true);
+    const body = new FormData();
+    body.append('file', file);
+    try {
+      const response = await api.post('/enrollment/upload', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setEditDocuments(current => [...current, { name: file.name, url: response.data.url }]);
+      toast.success('Document uploaded');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setUploadingDocument(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleUpdateEnrollment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingEnrollment) return;
+    try {
+      await api.put(`/enrollment/review/${editingEnrollment.id}/update`, {
+        ...editForm,
+        documents: editDocuments,
+      });
+      toast.success('Student details updated and returned to Operations review');
+      setEditingEnrollment(null);
+      fetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to update student details');
     }
   };
 
@@ -323,6 +375,9 @@ export function DeptEnrollmentReviewPanel() {
                         )}
                       </div>
                       <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleStartEdit(e)}>
+                          <Edit className="w-4 h-4 mr-1" />Update
+                        </Button>
                         {e.status === 'finance_rejected' ? (
                           <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm" onClick={() => handleResubmit(e.id)}>
                             <Send className="w-4 h-4 mr-1" />Resubmit to Finance
@@ -672,7 +727,10 @@ export function DeptEnrollmentReviewPanel() {
                 </Button>
                 {activeTab === 'pending' && (
                   <>
-                    <Button
+                <Button variant="outline" onClick={() => handleStartEdit(selectedEnrollment)}>
+                  <Edit className="w-4 h-4 mr-1" />Update Details
+                </Button>
+                <Button
                       variant="destructive"
                       className="text-white bg-destructive hover:bg-destructive/90"
                       onClick={() => {
@@ -702,6 +760,73 @@ export function DeptEnrollmentReviewPanel() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingEnrollment} onOpenChange={open => !open && setEditingEnrollment(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Update Student Application</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateEnrollment} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                ['studentName', 'Student Name'],
+                ['studentEmail', 'Email'],
+                ['studentPhone', 'Phone'],
+                ['studentAddress', 'Address'],
+                ['dob', 'Date of Birth'],
+                ['fatherName', "Father's Name"],
+                ['motherName', "Mother's Name"],
+                ['parentMobile', 'Parent Mobile'],
+                ['alternativePhone', 'Alternative Phone'],
+                ['pincode', 'Pincode'],
+                ['religion', 'Religion'],
+                ['caste', 'Caste / Category'],
+                ['maritalStatus', 'Marital Status'],
+                ['currentlyWorking', 'Currently Working'],
+                ['specialisation', 'Specialisation'],
+                ['abcId', 'ABC ID'],
+                ['debId', 'DEB ID'],
+              ].map(([field, label]) => (
+                <div key={field} className="space-y-1">
+                  <Label htmlFor={`ops-enrollment-${field}`}>{label}</Label>
+                  <Input
+                    id={`ops-enrollment-${field}`}
+                    type={field === 'studentEmail' ? 'email' : 'text'}
+                    value={editForm[field] || ''}
+                    onChange={event => setEditForm(current => ({ ...current, [field]: event.target.value }))}
+                    required={['studentName', 'studentEmail', 'studentPhone'].includes(field)}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <Label>Application Documents</Label>
+              <Input type="file" onChange={handleUploadEditDocument} disabled={uploadingDocument} />
+              {uploadingDocument && <p className="text-xs text-muted-foreground">Uploading document...</p>}
+              {editDocuments.map((document, index) => (
+                <div key={`${document.url}-${index}`} className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
+                  <a className="truncate text-primary hover:underline" href={document.url} target="_blank" rel="noreferrer">
+                    {document.name || 'Application document'}
+                  </a>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Remove ${document.name || 'document'}`}
+                    onClick={() => setEditDocuments(current => current.filter((_, documentIndex) => documentIndex !== index))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingEnrollment(null)}>Cancel</Button>
+              <Button type="submit" disabled={uploadingDocument}>Save and Return to Operations Review</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

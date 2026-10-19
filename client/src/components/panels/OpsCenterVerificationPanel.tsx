@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, RefreshCw, ExternalLink, AlertCircle } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, RefreshCw, ExternalLink, AlertCircle, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -47,6 +48,9 @@ export function OpsCenterVerificationPanel() {
   const [assigningCenterId, setAssigningCenterId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<{ center: Center; action: 'approve' | 'reject' | 'resubmit' } | null>(null);
+  const [editingCenter, setEditingCenter] = useState<Center | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', code: '', email: '', contact: '', address: '', city: '', state: '', branchName: '', coordinatorName: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -199,6 +203,38 @@ export function OpsCenterVerificationPanel() {
     }
   };
 
+  const handleStartEdit = (center: Center) => {
+    const details = center as Center & { city?: string; state?: string; branchName?: string; coordinatorName?: string };
+    setEditForm({
+      name: center.name || '',
+      code: center.code || '',
+      email: center.email || '',
+      contact: center.contact || '',
+      address: center.address || '',
+      city: details.city || '',
+      state: details.state || '',
+      branchName: details.branchName || '',
+      coordinatorName: details.coordinatorName || '',
+    });
+    setEditingCenter(center);
+  };
+
+  const handleSaveEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingCenter) return;
+    setSavingEdit(true);
+    try {
+      await api.put(`/operations/centers/${editingCenter.id}`, editForm);
+      toast.success('Study center updated');
+      setEditingCenter(null);
+      fetch();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to update study center');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const visibleCenters = centers.filter(c => {
     const isFinanceRejected = ['finance_rejected', 'rejected_from_finance'].includes(c.status);
     const isOpsRejected = c.status === 'ops_rejected' || (c.status === 'rejected' && !isFinanceRejected && !c.paymentRemarks);
@@ -309,6 +345,9 @@ export function OpsCenterVerificationPanel() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      <Button size="sm" variant="outline" onClick={() => handleStartEdit(c)}>
+                        <Edit className="w-4 h-4 mr-1" />Update
+                      </Button>
                       {user?.role === 'ops_admin' && (
                         <Select
                           value={assignableOpsUsers.some(candidate => candidate.id === c.assignedOperationsUserId) ? c.assignedOperationsUserId || '__none__' : '__none__'}
@@ -431,6 +470,44 @@ export function OpsCenterVerificationPanel() {
                     : 'Reject'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingCenter} onOpenChange={open => !open && setEditingCenter(null)}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Update Study Center{editingCenter ? ` — ${editingCenter.name}` : ''}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                ['name', 'Center Name'],
+                ['code', 'Center Code'],
+                ['email', 'Email'],
+                ['contact', 'Contact Number'],
+                ['address', 'Address'],
+                ['city', 'City'],
+                ['state', 'State'],
+                ['branchName', 'Branch Name'],
+                ['coordinatorName', 'Coordinator Name'],
+              ].map(([field, label]) => (
+                <div key={field} className="space-y-1">
+                  <Label htmlFor={`ops-center-${field}`}>{label}</Label>
+                  <Input
+                    id={`ops-center-${field}`}
+                    type={field === 'email' ? 'email' : 'text'}
+                    value={editForm[field as keyof typeof editForm]}
+                    onChange={event => setEditForm(current => ({ ...current, [field]: event.target.value }))}
+                    required={['name', 'code', 'email', 'contact', 'address'].includes(field)}
+                  />
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingCenter(null)}>Cancel</Button>
+              <Button type="submit" disabled={savingEdit}>{savingEdit ? 'Saving...' : 'Save Changes'}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
