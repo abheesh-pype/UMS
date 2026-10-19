@@ -2,12 +2,29 @@
 import cron from 'node-cron';
 import prisma from '../lib/prisma.js';
 import { startEscalationCron } from './escalationService.js';
+import { checkOverdueInvoices } from './invoiceService.js';
 
 export const startAllCronJobs = () => {
   startInviteExpiryCron();
   startEscalationCron();
   startAutoPunchOutCron();
+  startOverdueInvoicesCron();
   console.log('✅ All cron jobs started');
+};
+
+const startOverdueInvoicesCron = () => {
+  // Check overdue invoices every day at midnight (00:05 AM)
+  cron.schedule('5 0 * * *', async () => {
+    console.log('🔄 Running overdue invoices check...');
+    try {
+      const count = await checkOverdueInvoices();
+      if (count > 0) {
+        console.log(`✅ Marked ${count} invoices as overdue`);
+      }
+    } catch (error) {
+      console.error('❌ Overdue invoice check error:', error);
+    }
+  });
 };
 
 const startInviteExpiryCron = () => {

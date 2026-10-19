@@ -21,9 +21,11 @@ import {
   Clock,
   ExternalLink,
   Maximize,
-  Minimize
+  Minimize,
+  Printer
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
 
 interface StudentAssessmentResult {
   assessment_id: string;
@@ -64,6 +66,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [registrationExamination, setRegistrationExamination] = useState<any>(null);
   const [registeredExaminationIds, setRegisteredExaminationIds] = useState<string[]>([]);
+  // const [studentExamPortals, setStudentExamPortals] = useState<any[]>(readStudentExamPortals);
+  const [selectedStudentInvoiceForPrint, setSelectedStudentInvoiceForPrint] = useState<any | null>(null);
   const [studentExaminations, setStudentExaminations] = useState<any[]>([]);
   const [studentExaminationsLoading, setStudentExaminationsLoading] = useState(false);
   const [launchingExaminationId, setLaunchingExaminationId] = useState<string | null>(null);
@@ -617,17 +621,52 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
                   {studentPaymentInfo.invoices?.length > 0 && (
                     <section className="space-y-3">
-                      <h3 className="font-semibold">Invoices</h3>
+                      <div>
+                        <h3 className="font-semibold">Fee Invoices & Statements</h3>
+                        <p className="text-xs text-muted-foreground">Official university invoices generated for your academic course and enrollment.</p>
+                      </div>
                       <div className="space-y-2">
                         {studentPaymentInfo.invoices.map((invoice: any) => (
-                          <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm">
-                            <div>
-                              <p className="font-medium">{invoice.invoiceNo}</p>
-                              {invoice.dueDate && <p className="text-xs text-muted-foreground">Due {new Date(invoice.dueDate).toLocaleDateString()}</p>}
+                          <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm bg-card hover:border-primary/40 transition-colors shadow-xs">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold font-mono text-foreground">{invoice.invoiceNo}</p>
+                                <Badge variant="outline" className="text-[10px] capitalize">
+                                  {invoice.invoiceType || 'Tuition Fee'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {invoice.financialYear || 'FY 2026-27'} · {invoice.period || 'Academic Fee'}
+                                {invoice.dueDate && ` · Due: ${new Date(invoice.dueDate).toLocaleDateString()}`}
+                              </p>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="font-medium">{formatPaymentAmount(invoice.amount)}</span>
-                              <Badge variant={invoice.status === 'paid' ? 'default' : 'secondary'}>{invoice.status}</Badge>
+                              <div className="text-right">
+                                <span className="font-bold text-base font-mono block">
+                                  {formatPaymentAmount(invoice.total || invoice.amount)}
+                                </span>
+                                {invoice.balanceAmount > 0 && invoice.status !== 'paid' ? (
+                                  <span className="text-[11px] text-rose-600 font-mono block">
+                                    Bal: {formatPaymentAmount(invoice.balanceAmount)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-emerald-600 font-semibold block">
+                                    Fully Paid
+                                  </span>
+                                )}
+                              </div>
+                              <Badge variant={invoice.status === 'paid' ? 'default' : 'secondary'} className="capitalize font-semibold text-xs">
+                                {invoice.status?.replace('_', ' ')}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setSelectedStudentInvoiceForPrint(invoice)}
+                                className="gap-1.5 text-xs font-semibold"
+                              >
+                                <Printer className="h-3.5 w-3.5" />
+                                <span>View & Print</span>
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -1469,6 +1508,14 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </form>
         </DialogContent>
       </Dialog>
+
+      <InvoicePrintModal
+        open={Boolean(selectedStudentInvoiceForPrint)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedStudentInvoiceForPrint(null);
+        }}
+        invoice={selectedStudentInvoiceForPrint}
+      />
         </div>
       </div>
     </div>

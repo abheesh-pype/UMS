@@ -658,27 +658,44 @@ model Student {
 }
 
 model Invoice {
-  id             String         @id @default(uuid())
-  organizationId String
-  centerId       String?
-  studentId      String?
-  invoiceNo      String         @unique
-  amount         Float
-  tax            Float          @default(0)
-  total          Float
-  status         String         @default("draft")
-  items          Json           @default("[]")
-  dueDate        DateTime?
-  paidAt         DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  center         StudyCenter?   @relation(fields: [centerId], references: [id])
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  student        Student?       @relation(fields: [studentId], references: [id])
-  payments       PaymentEntry[]
+  id                  String         @id @default(uuid())
+  organizationId      String
+  centerId            String?
+  studentId           String?
+  enrollmentId        String?
+  universityId        String?
+  invoiceNo           String         @unique
+  invoiceType         String         @default("tuition") // tuition, admission, examination, installment, full_program, misc
+  financialYear       String?        // e.g., FY 2026-27
+  academicYear        String?        // e.g., AY 2026-27
+  period              String?        // e.g., Semester 1, Year 1, Full Course
+  amount              Float          // Subtotal before tax
+  tax                 Float          @default(0)
+  total               Float          // Total payable
+  paidAmount          Float          @default(0)
+  balanceAmount       Float          @default(0)
+  status              String         @default("unpaid") // unpaid, partially_paid, paid, overdue, cancelled
+  items               Json           @default("[]") // [{ description, category, quantity, rate, taxRate, amount }]
+  taxDetails          Json?          @default("{}") // { cgst, sgst, igst, rate, gstin }
+  universityDetails   Json?          @default("{}") // snapshot of university details
+  studentDetails      Json?          @default("{}") // snapshot of student details
+  paymentInstructions Json?          @default("{}") // bank details, terms
+  dueDate             DateTime?
+  issuedAt            DateTime       @default(now())
+  paidAt              DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  center              StudyCenter?   @relation(fields: [centerId], references: [id])
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student             Student?       @relation(fields: [studentId], references: [id])
+  enrollment          Enrollment?    @relation(fields: [enrollmentId], references: [id])
+  payments            PaymentEntry[]
 
   @@index([organizationId, status])
   @@index([centerId])
+  @@index([studentId])
+  @@index([enrollmentId])
 }
 
 model Lead {
@@ -1093,6 +1110,7 @@ model Enrollment {
   payment              EnrollmentPayment?
   commissionIn         CommissionIn?
   studentFeeReceipts   StudentFeeReceipt[]
+  invoices             Invoice[]
   extraFees            Json?               @default("[]")
 
   @@unique([studentId, programId, sessionId])
@@ -1164,6 +1182,8 @@ model PaymentEntry {
   amount         Float
   method         String
   referenceNo    String?
+  receiptNo      String?
+  receiptDate    DateTime?    @default(now())
   receivedBy     String
   receivedAt     DateTime     @default(now())
   notes          String?
