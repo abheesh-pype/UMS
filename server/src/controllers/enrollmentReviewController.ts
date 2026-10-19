@@ -38,7 +38,11 @@ export const getPendingReviews = asyncHandler(async (req: AuthRequest, res: Resp
     },
     orderBy: { createdAt: 'asc' }
   });
-  res.json({ success: true, count: enrollments.length, data: enrollments });
+  const data = enrollments.map(({ publicTrackingTokenHash, ...enrollment }) => ({
+    ...enrollment,
+    isDirectStudentApplication: Boolean(publicTrackingTokenHash),
+  }));
+  res.json({ success: true, count: data.length, data });
 });
 
 export const assignDeptEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -283,4 +287,3 @@ export const resubmitToFinance = asyncHandler(async (req: AuthRequest, res: Resp
 
   res.json({ success: true, data: enrollment });
 });
-

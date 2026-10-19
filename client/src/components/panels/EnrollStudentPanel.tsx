@@ -52,8 +52,8 @@ interface Session {
 }
 
 interface EnrollStudentPanelProps {
-  mode?: 'center' | 'sales';
-  onSubmitted?: () => void;
+  mode?: 'center' | 'sales' | 'public';
+  onSubmitted?: (result?: any) => void;
   onBack?: () => void;
 }
 
@@ -124,6 +124,13 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
         setCenterConfig(null);
         return;
       }
+      if (mode === 'public') {
+        const programsResponse = await api.get('/public/student-enrollment/programs');
+        setPrograms(programsResponse.data.data || []);
+        setWallet(null);
+        setCenterConfig(null);
+        return;
+      }
       const [progsRes, walletRes, centerRes] = await Promise.all([
         api.get('/enrollment/programs'),
         api.get('/enrollment/wallet'),
@@ -143,9 +150,12 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
 
   const fetchSessions = async (programId: string) => {
     try {
-      const res = await api.get(mode === 'sales'
+      const sessionsUrl = mode === 'sales'
         ? `/sales/enrollment-sessions?programId=${programId}`
-        : `/enrollment/sessions?programId=${programId}`);
+        : mode === 'public'
+          ? `/public/student-enrollment/sessions?programId=${programId}`
+          : `/enrollment/sessions?programId=${programId}`;
+      const res = await api.get(sessionsUrl);
       setSessions(res.data.data || []);
     } catch (e) {
       toast.error('Failed to load admission sessions for this program');
@@ -172,7 +182,12 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
     if (!form.studentEmail || !selectedProgram || !selectedSessionId) return;
     setCheckingEmail(true);
     try {
-      const res = await api.post(mode === 'sales' ? '/sales/enrollment-check-email' : '/enrollment/check-email', {
+      const checkEmailUrl = mode === 'sales'
+        ? '/sales/enrollment-check-email'
+        : mode === 'public'
+          ? '/public/student-enrollment/check-email'
+          : '/enrollment/check-email';
+      const res = await api.post(checkEmailUrl, {
         studentEmail: form.studentEmail,
         programId: selectedProgram.id,
         sessionId: selectedSessionId
@@ -283,7 +298,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
 
     setUploading(true);
     try {
-      const res = await api.post('/enrollment/upload', formData, {
+      const res = await api.post(mode === 'public' ? '/public/student-enrollment/upload' : '/enrollment/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (res.data.success) {
@@ -308,7 +323,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
     formData.append('file', file);
     setUploading(true);
     try {
-      const res = await api.post('/enrollment/upload', formData, {
+      const res = await api.post(mode === 'public' ? '/public/student-enrollment/upload' : '/enrollment/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (res.data.success) {
@@ -323,6 +338,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
   };
 
   const isFieldMandatory = (key: string, defaultRequired: boolean = false) => {
+    if (mode === 'public' && key === 'dob') return true;
     // Check if the university made it optional (for Premium universities)
     const uniOptFields = selectedProgram?.university?.optionalFields;
     if (uniOptFields) {
@@ -446,7 +462,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
     }
     
     // Validate standard base required fields
-    const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress'];
+    const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress', ...(mode === 'public' ? ['dob'] : [])];
     const missing = [];
     for (const key of baseRequired) {
       if (!(form as any)[key]?.trim()) {
@@ -488,7 +504,12 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
     setConfirmOpen(false);
     setSubmitting(true);
     try {
-      await api.post(mode === 'sales' ? '/sales/enroll-student' : '/enrollment/enroll', {
+      const enrollmentUrl = mode === 'sales'
+        ? '/sales/enroll-student'
+        : mode === 'public'
+          ? '/public/student-enrollment'
+          : '/enrollment/enroll';
+      const response = await api.post(enrollmentUrl, {
         ...form, 
         programId: selectedProgram.id,
         sessionId: selectedSessionId,
@@ -499,7 +520,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
       });
       toast.success('Enrollment submitted successfully');
       if (onSubmitted) {
-        onSubmitted();
+        onSubmitted({
+          ...response.data.data,
+          studentEmail: form.studentEmail.trim(),
+          initialPassword: form.dob,
+        });
         return;
       }
       setForm({ 
@@ -567,7 +592,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
       }
     } else if (stepNum === 2) {
       // Validate Step 2: studentName, studentEmail, studentPhone, studentAddress
-      const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress'];
+      const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress', ...(mode === 'public' ? ['dob'] : [])];
       for (const key of baseRequired) {
         if (isFieldMandatory(key, true) && !(form as any)[key]?.trim()) {
           toast.error(`Field '${key.replace('student', '')}' is required`);
@@ -654,7 +679,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
             <p className="text-xs text-muted-foreground mt-0.5">Please fill all required student documents and info step-by-step.</p>
           </div>
           <div className="flex items-center gap-3">
-            {mode !== 'sales' && <div className="text-right">
+            {mode === 'center' && <div className="text-right">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Wallet Balance</p>
               <p className="text-lg font-extrabold text-primary">₹{balance.toLocaleString()}</p>
             </div>}
@@ -733,7 +758,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
                     <option value="">
                       {programs.length > 0
                         ? '-- Select Program --'
-                        : mode === 'sales'
+                        : mode !== 'center'
                           ? 'No programs available'
                           : 'No allocated programs available'}
                     </option>
@@ -745,7 +770,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
                   </select>
                   {programs.length === 0 && (
                     <p className="text-xs text-destructive">
-                      {mode === 'sales'
+                      {mode !== 'center'
                         ? 'No active programs found in this organization.'
                         : 'No active programs are allocated to this study center. Please contact Operations.'}
                     </p>
@@ -1116,7 +1141,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
               <Button
                 type="button"
                 onClick={triggerConfirm}
-                disabled={!selectedProgram || submitting || (mode !== 'sales' && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram))}
+                disabled={!selectedProgram || submitting || (mode === 'center' && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram))}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 font-semibold"
               >
                 <GraduationCap className="w-4.5 h-4.5" />
@@ -1124,7 +1149,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack }: Enr
               </Button>
             )}
           </div>
-          {mode !== 'sales' && activeStep === 4 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
+          {mode === 'center' && activeStep === 4 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
             <p className="text-xs text-destructive text-center mt-3">Insufficient wallet balance. Please top up first.</p>
           )}
         </CardContent>

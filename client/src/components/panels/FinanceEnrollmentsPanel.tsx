@@ -34,6 +34,7 @@ interface Enrollment {
   alternativePhone?: string;
   programId?: { name: string; code: string } | string | null;
   studyCenterId?: { name: string; code: string } | string | null;
+  isDirectStudentApplication?: boolean;
   program?: { name: string; code: string } | null;
   studyCenter?: { name: string; code: string } | null;
   status: string;
@@ -44,7 +45,7 @@ interface Enrollment {
   payment?: { amount: number; debitedAt: string; walletId?: string } | null;
   totalFee?: number;
   paymentMethod?: string;
-  documents?: { name: string; url: string }[];
+  documents?: { name: string; url: string; reqName?: string; uploadedAt?: string; remarks?: string }[];
   educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
   createdAt: string;
   enrolledAt?: string;
@@ -79,6 +80,11 @@ const FILTER_TABS = [
   { key: 'enrolled', label: 'Enrolled' },
   { key: 'rejected', label: 'Rejected' },
 ];
+
+const isPaymentProofDocument = (document: { name?: string; reqName?: string; url?: string }) => {
+  const label = `${document.reqName || ''} ${document.name || ''}`.toLowerCase();
+  return Boolean(document.url) && (label.includes('payment proof') || label.includes('payment receipt'));
+};
 
 export function FinanceEnrollmentsPanel() {
   const { user } = useAuth();
@@ -218,7 +224,15 @@ export function FinanceEnrollmentsPanel() {
     if (e.studyCenterId && typeof e.studyCenterId === 'object') {
       return `${(e.studyCenterId as any).name || 'Study Center'}`;
     }
-    return typeof e.studyCenterId === 'string' && e.studyCenterId ? e.studyCenterId : 'Direct Admission (Sales)';
+    if (typeof e.studyCenterId === 'string' && e.studyCenterId) return e.studyCenterId;
+    return e.isDirectStudentApplication ? 'Direct Student Application' : 'Direct Admission (Sales)';
+  };
+
+  const paymentProof = selectedEnrollment?.documents?.find(isPaymentProofDocument);
+  const canApproveEnrollment = (enrollment: Enrollment) => {
+    const fee = Number(enrollment.totalFee);
+    return (Number.isFinite(fee) && fee <= 0)
+      || Boolean(enrollment.documents?.some(isPaymentProofDocument));
   };
 
   return (
@@ -423,7 +437,14 @@ export function FinanceEnrollmentsPanel() {
                         </Button>
                         {(e.status === 'pending_finance_review' || e.status === 'finance_review') && (
                           <>
-                            <Button size="sm" variant="outline" className="h-7 text-xs text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleApprove(e.id)}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs text-green-600 border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20"
+                              onClick={() => handleApprove(e.id)}
+                              disabled={!canApproveEnrollment(e)}
+                              title={!canApproveEnrollment(e) ? 'Student payment proof is required before final approval' : undefined}
+                            >
                               <CheckCircle className="w-3 h-3 mr-1" />Enroll
                             </Button>
                             <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => { setRejectDialog({ open: true, id: e.id }); setRemarks(''); }}>
@@ -654,9 +675,41 @@ export function FinanceEnrollmentsPanel() {
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-1.5">
                     <FileText className="w-4 h-4 text-primary" /> Documents
                   </h4>
+                  <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h5 className="text-sm font-semibold">Student Payment Proof</h5>
+                        <p className="text-xs text-muted-foreground">
+                          {paymentProof ? 'Submitted for Finance verification' : 'No student payment proof submitted'}
+                        </p>
+                      </div>
+                      {paymentProof && (
+                        <a
+                          href={paymentProof.url.startsWith('/') ? paymentProof.url : `/uploads/${paymentProof.url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-semibold text-primary hover:underline"
+                        >
+                          View payment proof
+                        </a>
+                      )}
+                    </div>
+                    {paymentProof?.uploadedAt && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Uploaded: {new Date(paymentProof.uploadedAt).toLocaleString()}
+                      </p>
+                    )}
+                    {paymentProof?.remarks && (
+                      <p className="mt-2 rounded-lg border bg-background p-2.5 text-sm">
+                        {paymentProof.remarks}
+                      </p>
+                    )}
+                  </div>
                   {selectedEnrollment.documents && selectedEnrollment.documents.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {selectedEnrollment.documents.map((doc, idx) => (
+                      {selectedEnrollment.documents
+                        .filter(doc => doc.reqName !== 'Student Payment Proof')
+                        .map((doc, idx) => (
                         <div key={idx} className="flex justify-between items-center bg-muted/10 p-2 rounded-lg border text-sm">
                           <div className="flex items-center gap-2 truncate pr-2">
                             <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -673,9 +726,9 @@ export function FinanceEnrollmentsPanel() {
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) : !paymentProof ? (
                     <p className="text-xs text-muted-foreground italic bg-muted/10 p-3 rounded-lg border">No documents uploaded.</p>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -698,6 +751,8 @@ export function FinanceEnrollmentsPanel() {
                     </Button>
                     <Button
                       className="bg-green-600 hover:bg-green-700 text-white"
+                      disabled={!canApproveEnrollment(selectedEnrollment)}
+                      title={!canApproveEnrollment(selectedEnrollment) ? 'Student payment proof is required before final approval' : undefined}
                       onClick={() => {
                         const id = selectedEnrollment.id;
                         setSelectedEnrollment(null);

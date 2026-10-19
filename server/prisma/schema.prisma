@@ -1066,6 +1066,7 @@ model Enrollment {
   currentlyWorking     String?
   admissionDate        DateTime?           @default(now())
   enrollmentNumber     String?             @unique
+  publicTrackingTokenHash String?          @unique
   uniEnrollmentNumber  String?
   studentName          String
   studentEmail         String

@@ -22,6 +22,7 @@ interface Enrollment {
   studentPhoto?: string;
   programId?: string | null;
   studyCenterId?: string | null;
+  isDirectStudentApplication?: boolean;
   status: string;
   createdAt: string;
   departmentRemarks?: string;
@@ -186,7 +187,8 @@ export function DeptEnrollmentReviewPanel() {
     if (e.studyCenterId && typeof e.studyCenterId === 'object') {
       return (e.studyCenterId as any).name || 'Study Center';
     }
-    return typeof e.studyCenterId === 'string' && e.studyCenterId ? e.studyCenterId : 'Direct Admission (Sales)';
+    if (typeof e.studyCenterId === 'string' && e.studyCenterId) return e.studyCenterId;
+    return e.isDirectStudentApplication ? 'Direct Student Application' : 'Direct Admission (Sales)';
   };
 
   const uniqueUniversities = Array.from(new Set(enrollments.filter(e => e.program?.university).map(e => JSON.stringify({ id: e.program!.university!.id, name: e.program!.university!.name })))).map(s => JSON.parse(s));

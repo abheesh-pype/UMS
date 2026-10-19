@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
+import api from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,8 @@ const workflowSteps = [
   { number: '03', title: 'Begin your university story', detail: 'Join a community where learning, new experiences, and future possibilities come together.' },
 ];
 
+const PUBLIC_APPLICATION_STATUS_CREDENTIALS_KEY = 'publicApplicationStatusCredentials';
+
 export function Login() {
   const { login } = useAuth();
   const [loginOpen, setLoginOpen] = useState(false);
@@ -65,18 +68,48 @@ export function Login() {
     setError('');
     setIsLoading(true);
 
+    const credentials = {
+      email: email.trim(),
+      password: password.trim(),
+    };
+    let loginError: any;
+
     try {
-      const success = await login((email || '').trim(), (password || '').trim());
-      if (!success) setError('Invalid email/User ID or password');
+      const success = await login(credentials.email, credentials.password);
+      if (success) {
+        setIsLoading(false);
+        return;
+      }
     } catch (error: any) {
-      const responseData = error.response?.data;
+      loginError = error;
+    }
+
+    try {
+      const response = await api.post('/public/student-applications/status', credentials);
+      if (response.data.success) {
+        sessionStorage.setItem(PUBLIC_APPLICATION_STATUS_CREDENTIALS_KEY, JSON.stringify(credentials));
+        window.location.assign('/application-status');
+        return;
+      }
+    } catch (statusError: any) {
+      const statusMessage = statusError.response?.data?.message;
+      if (statusMessage && statusError.response?.status !== 401) {
+        setError(statusMessage);
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    if (loginError?.response?.status && loginError.response.status !== 401) {
+      const responseData = loginError.response?.data;
       const serverMessage = typeof responseData === 'string'
         ? responseData
         : responseData?.message;
-      setError(serverMessage || 'Unable to sign in. Please try again.');
-    } finally {
-      setIsLoading(false);
+      setError(serverMessage || 'Invalid credentials. Applicants can check status using their email and date of birth.');
+    } else {
+      setError('Invalid credentials. Applicants can check status using their email and date of birth.');
     }
+    setIsLoading(false);
   };
 
   return (
@@ -96,6 +129,7 @@ export function Login() {
             <a href="#campus" className="hidden text-sm font-medium text-[#526b60] transition hover:text-[#173b34] lg:inline">Campus life</a>
             <button
               type="button"
+              onClick={() => window.location.assign('/apply')}
               className="whitespace-nowrap rounded-full border border-[#b8cbbf] bg-transparent px-3.5 py-2.5 text-sm font-semibold text-[#285448] transition hover:bg-[#e7efe8] sm:px-4"
             >
               Enroll now
@@ -320,6 +354,7 @@ export function Login() {
           </div>
           <button
             type="button"
+            onClick={() => window.location.assign('/apply')}
             className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e2c58d] px-5 py-3 text-sm font-bold text-[#243b30] transition hover:bg-[#edd5a5]"
           >
             Enroll now <ArrowRight className="h-4 w-4" />
@@ -396,6 +431,20 @@ export function Login() {
           <p className="mt-1 text-center text-xs leading-5 text-[#8a9a91]">
             Sign in to access your university account and services.
           </p>
+          <div className="mt-4 border-t border-[#e1e9e1] pt-4 text-center">
+            <p className="text-sm text-[#71847a]">Applied directly from the landing page?</p>
+            <Button
+              type="button"
+              variant="link"
+              className="mt-1 h-auto p-0 font-semibold text-[#24564a]"
+              onClick={() => {
+                setLoginOpen(false);
+                window.location.assign('/application-status');
+              }}
+            >
+              Check application status with email and date of birth
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </main>

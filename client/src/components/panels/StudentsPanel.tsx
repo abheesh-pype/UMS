@@ -444,7 +444,7 @@ export function StudentsPanel() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Student Directory</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Student Directory  </CardTitle></CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-center py-8">Loading...</div>
@@ -544,7 +544,27 @@ export function StudentsPanel() {
                     <User className="w-4 h-4 text-primary" /> Personal &amp; Contact Info
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border text-sm">
-                    {/* Date of Birth (DOB) */}
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-primary" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Student Name</p>
+                        <p className="font-medium">{selectedStudent.name || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Email</p>
+                        <p className="font-medium">{selectedStudent.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-semibold">Phone</p>
+                        <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-primary" />
                       <div>
@@ -570,31 +590,6 @@ export function StudentsPanel() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs text-muted-foreground font-semibold">Email</p>
-                        <p className="font-medium">{selectedStudent.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs text-muted-foreground font-semibold">Phone</p>
-                        <p className="font-medium">{selectedStudent.phone || 'N/A'}</p>
-                      </div>
-                    </div>
-                    {(selectedStudent.parentMobile || selectedStudent.fatherName) && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-xs text-muted-foreground font-semibold">
-                            {selectedStudent.fatherName ? `Father (${selectedStudent.fatherName})` : 'Parent Mobile'}
-                          </p>
-                          <p className="font-medium">{selectedStudent.parentMobile || 'N/A'}</p>
-                        </div>
-                      </div>
-                    )}
                     <div className="col-span-1 sm:col-span-2 flex items-start gap-2 pt-2 border-t">
                       <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                       <div>

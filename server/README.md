@@ -81,6 +81,26 @@ integration settings:
 npx prisma migrate deploy
 ```
 
+## Direct Student Applications
+
+The public landing page's **Enroll now** buttons open the direct student
+application form at `/apply`. Applications are created without a study-center
+assignment and enter the Operations review queue. Applicants can return through
+the landing-page sign-in dialog's **Check application status** link and check
+status at `/application-status` using their email address and date of birth in
+`YYYY-MM-DD` format. The token-based
+`/application-status/<token>` link remains available for existing status links.
+Applicants can submit a payment receipt during Finance review.
+
+Student accounts remain inactive until Finance gives final approval. When
+activated, the student's email is the login ID and the date of birth in
+`YYYY-MM-DD` format is the initial password. The form displays these credentials
+after submission; they can be used to check application progress before
+activation, but cannot access the student portal until Finance gives final
+approval. A fee-bearing public application must have a payment receipt attached
+before Finance can approve it. Apply the Prisma migrations before accepting
+applications.
+
 ## Database Setup
 
 1. Create the PostgreSQL database and configure its `DATABASE_URL` in `.env`.

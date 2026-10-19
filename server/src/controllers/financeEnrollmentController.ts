@@ -15,6 +15,23 @@ const FINANCE_VISIBLE_ENROLLMENT_STATUSES = [
   'finance_rejected',
 ];
 
+const hasEnrollmentPaymentProof = (documents: unknown) => {
+  let parsedDocuments = documents;
+  if (typeof parsedDocuments === 'string') {
+    try {
+      parsedDocuments = JSON.parse(parsedDocuments);
+    } catch {
+      return false;
+    }
+  }
+  if (!Array.isArray(parsedDocuments)) return false;
+  return parsedDocuments.some((document: any) => {
+    if (typeof document?.url !== 'string' || !document.url.trim()) return false;
+    const label = `${document.reqName || ''} ${document.name || ''}`.toLowerCase();
+    return label.includes('payment proof') || label.includes('payment receipt');
+  });
+};
+
 const getAllEnrollmentsHandler = async (req: AuthRequest, res: Response, financeQueueOnly = false) => {
   const { status, search } = req.query;
   const where: any = { organizationId: req.user.organizationId };
@@ -100,7 +117,11 @@ const getAllEnrollmentsHandler = async (req: AuthRequest, res: Response, finance
     else if (e.status === 'department_rejected' || e.status === 'ops_rejected') summary.department_rejected++;
   });
 
-  res.status(200).json({ success: true, count: enrollments.length, data: enrollments, summary });
+  const data = enrollments.map(({ publicTrackingTokenHash, ...enrollment }) => ({
+    ...enrollment,
+    isDirectStudentApplication: Boolean(publicTrackingTokenHash),
+  }));
+  res.status(200).json({ success: true, count: data.length, data, summary });
 };
 
 export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -203,7 +224,6 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     res.status(409).json({ success: false, message: 'Enrollment must be approved by Operations before Finance can approve it' });
     return;
   }
-
   // 2. Fetch program fee structure matching session
   let feeStructure = await prisma.programFeeStructure.findFirst({
     where: {
@@ -311,6 +331,10 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
 
   // Use the totalFee calculated at enrollment time (which respects paymentMethod), or fallback
   const totalFee = (dbEnrollment as any).totalFee || (subtotal + gstAmount);
+  if (totalFee > 0 && !hasEnrollmentPaymentProof(dbEnrollment.documents)) {
+    res.status(400).json({ success: false, message: 'Payment proof must be submitted before Finance can give final approval' });
+    return;
+  }
 
   // 3. Perform final updates and create student inside a transaction
   const enrollment = await prisma.$transaction(async (tx) => {

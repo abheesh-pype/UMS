@@ -5,6 +5,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { PrismaLayout } from '@/components/layout/PrismaLayout';
 import { DataGrid } from '@/components/ui/data-grid';
 import PublicRegisterPage from '@/pages/PublicRegisterPage';
+import PublicStudentApplicationPage from '@/pages/PublicStudentApplicationPage';
 import { getOpsNavItems } from '@/pages/ModernOpsDashboard';
 import { getHRNavItems } from '@/pages/ModernHRDashboard';
 import { getFinanceNavItems } from '@/pages/ModernFinanceDashboard';
@@ -219,6 +220,9 @@ function App() {
   const urlParams = new URLSearchParams(window.location.search);
   const hasInviteToken = urlParams.has('token');
   const isRegisterPage = window.location.pathname === '/register' || (hasInviteToken && !user);
+  const isPublicStudentApplicationPage = window.location.pathname === '/apply'
+    || window.location.pathname === '/application-status'
+    || /^\/application-status\/[^/]+$/.test(window.location.pathname);
 
   // Define available tables based on user role
   const getAvailableTables = () => {
@@ -414,6 +418,9 @@ function App() {
   // Public register page early return — must be AFTER all hooks
   if (isRegisterPage) {
     return <PublicRegisterPage />;
+  }
+  if (isPublicStudentApplicationPage) {
+    return <PublicStudentApplicationPage />;
   }
 
 
