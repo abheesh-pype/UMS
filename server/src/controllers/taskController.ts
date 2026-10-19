@@ -4,6 +4,35 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+const departmentTypeByAdminRole: Record<string, string> = {
+  sales_admin: 'sales',
+  ops_admin: 'operations',
+  finance_admin: 'finance',
+};
+
+const getAssignableUser = async (userId: string, organizationId: string, departmentType?: string) => {
+  return prisma.user.findFirst({
+    where: {
+      id: userId,
+      organizationId,
+      status: 'active' as any,
+      ...(departmentType ? {
+        OR: [
+          { department: { type: { equals: departmentType, mode: 'insensitive' } } },
+          { department: { name: { contains: departmentType, mode: 'insensitive' } } },
+          { subDepartment: { parentDept: { type: { equals: departmentType, mode: 'insensitive' } } } },
+          { subDepartment: { parentDept: { name: { contains: departmentType, mode: 'insensitive' } } } },
+        ],
+      } : {}),
+    },
+    select: {
+      id: true,
+      departmentId: true,
+      subDepartment: { select: { parentDeptId: true } },
+    },
+  });
+};
+
 export const getTasks = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId };
   if (req.query.assignedTo) where.assignedTo = req.query.assignedTo as string;
@@ -56,9 +85,21 @@ export const getTask = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 export const createTask = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { title, description, assignedTo, deadline, priority, departmentId } = req.body;
-
   const cleanAssignedTo = assignedTo === 'null' || !assignedTo ? req.user.id : assignedTo;
-  const cleanDepartmentId = departmentId === 'null' || !departmentId ? null : departmentId;
+  const departmentType = departmentTypeByAdminRole[req.user.role];
+  const assignee = await getAssignableUser(cleanAssignedTo, req.user.organizationId, departmentType);
+  if (!assignee) {
+    res.status(400).json({
+      success: false,
+      message: departmentType
+        ? 'Select an active employee from your department'
+        : 'Selected assignee was not found in your organization',
+    });
+    return;
+  }
+  const cleanDepartmentId = assignee.departmentId || assignee.subDepartment?.parentDeptId
+    || (departmentId === 'null' ? null : departmentId)
+    || null;
 
   const task = await prisma.task.create({
     data: {
@@ -80,13 +121,32 @@ export const updateTask = asyncHandler(async (req: AuthRequest, res: Response) =
   const { title, description, assignedTo, deadline, status, priority, departmentId } = req.body;
   
   const updateData: any = {};
+  if (assignedTo !== undefined && assignedTo !== 'null') {
+    const assignee = await getAssignableUser(
+      assignedTo,
+      req.user.organizationId,
+      departmentTypeByAdminRole[req.user.role],
+    );
+    if (!assignee) {
+      res.status(400).json({
+        success: false,
+        message: departmentTypeByAdminRole[req.user.role]
+          ? 'Select an active employee from your department'
+          : 'Selected assignee was not found in your organization',
+      });
+      return;
+    }
+    updateData.assignedTo = assignee.id;
+    updateData.departmentId = assignee.departmentId || assignee.subDepartment?.parentDeptId || null;
+  }
   if (title) updateData.title = title;
   if (description) updateData.description = description;
-  if (assignedTo) updateData.assignedTo = assignedTo === 'null' ? null : assignedTo;
   if (deadline) updateData.deadline = new Date(deadline);
   if (status) updateData.status = status;
   if (priority) updateData.priority = priority;
-  if (departmentId) updateData.departmentId = departmentId === 'null' ? null : departmentId;
+  if (departmentId !== undefined && assignedTo === undefined) {
+    updateData.departmentId = departmentId === 'null' ? null : departmentId;
+  }
 
   const task = await prisma.task.update({
     where: { id: req.params.id },
@@ -113,9 +173,33 @@ export const deleteTask = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const getAssignableUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const departmentType = departmentTypeByAdminRole[req.user.role];
   const users = await prisma.user.findMany({
-    where: { organizationId: req.user.organizationId, status: 'active' as any },
-    select: { id: true, name: true, email: true, designation: true }
+    where: {
+      organizationId: req.user.organizationId,
+      status: 'active' as any,
+      ...(departmentType ? {
+        OR: [
+          { department: { type: { equals: departmentType, mode: 'insensitive' } } },
+          { department: { name: { contains: departmentType, mode: 'insensitive' } } },
+          { subDepartment: { parentDept: { type: { equals: departmentType, mode: 'insensitive' } } } },
+          { subDepartment: { parentDept: { name: { contains: departmentType, mode: 'insensitive' } } } },
+        ],
+      } : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      designation: true,
+      departmentId: true,
+      department: { select: { id: true, name: true, type: true } },
+      subDepartment: { select: { parentDeptId: true, parentDept: { select: { id: true, name: true, type: true } } } },
+    },
   });
-  res.status(200).json({ success: true, count: users.length, data: users });
+  const data = users.map(user => ({
+    ...user,
+    departmentId: user.departmentId || user.subDepartment?.parentDeptId || undefined,
+  }));
+  res.status(200).json({ success: true, count: data.length, data });
 });
