@@ -334,7 +334,8 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
         <TabsContent value="invoices"><InvoicesPanel /></TabsContent>
         <TabsContent value="payments"><PaymentsPanel /></TabsContent>
         <TabsContent value="expenses"><ExpensesPanel /></TabsContent>
-        <TabsContent value="employees"><EmployeesPanel /></TabsContent>
+        <TabsContent value="employees"><EmployeesPanel adminProfileAccess /></TabsContent>
+        <TabsContent value="team"><EmployeesPanel adminProfileAccess /></TabsContent>
         <TabsContent value="leaves"><LeavesPanel /></TabsContent>
         <TabsContent value="leads"><LeadsPanel /></TabsContent>
         <TabsContent value="center_admissions"><CentersAdmissionsPanel /></TabsContent>

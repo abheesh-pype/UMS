@@ -172,13 +172,28 @@ export function TasksPanel() {
   }[s] || 'bg-gray-100 text-gray-800');
 
   const currentUserId = user?.id || (user)?.id;
+  const isTaskAdmin = [
+    'superadmin',
+    'org_admin',
+    'ceo',
+    'hr_admin',
+    'finance_admin',
+    'ops_admin',
+    'sales_admin',
+  ].includes(user?.role || '');
+  const getUserId = (value: any) => value?.id || value;
 
   const filteredTasks = (() => {
     switch (activeTab) {
-      case 'assigned': return tasks.filter(t => (t.assignedBy?.id || t.assignedBy?.id || t.assignedBy) === currentUserId);
-      case 'my': return tasks.filter(t => (t.assignedTo?.id || t.assignedTo?.id || t.assignedTo) === currentUserId);
-      case 'pending': return tasks.filter(t => t.status === 'pending' || t.status === 'in_progress');
-      case 'completed': return tasks.filter(t => t.status === 'completed');
+      case 'my': return tasks.filter(t => getUserId(t.assignedTo) === currentUserId);
+      case 'pending': return tasks.filter(t =>
+        (!isTaskAdmin || getUserId((t as any).createdBy) === currentUserId)
+        && t.status !== 'completed'
+      );
+      case 'completed': return tasks.filter(t =>
+        (!isTaskAdmin || getUserId((t as any).createdBy) === currentUserId)
+        && t.status === 'completed'
+      );
       default: return tasks;
     }
   })();
@@ -279,10 +294,9 @@ export function TasksPanel() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="all">All Tasks</TabsTrigger>
-            <TabsTrigger value="assigned">Assigned by Me</TabsTrigger>
-            <TabsTrigger value="my">My Tasks</TabsTrigger>
+            <TabsTrigger value="my">My Task</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
+            <TabsTrigger value="completed">Complete</TabsTrigger>
           </TabsList>
 
           <TabsContent value={activeTab}>
@@ -294,9 +308,9 @@ export function TasksPanel() {
             ) : (
               <div className="space-y-3">
                 {filteredTasks.map(task => {
-                  const taskId = task.id || task.id || '';
-                  const isAssignedByMe = (task as any).createdBy === currentUserId;
-                  const isAssignedToMe = task.assignedTo === currentUserId;
+                  const taskId = task.id || '';
+                  const isAssignedByMe = getUserId((task as any).createdBy) === currentUserId;
+                  const isAssignedToMe = getUserId(task.assignedTo) === currentUserId;
                   return (
                     <div key={taskId} className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                       <div className="flex-1">

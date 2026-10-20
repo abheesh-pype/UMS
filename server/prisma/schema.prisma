@@ -38,6 +38,7 @@ model Organization {
   editDeleteRequests    EditDeleteRequest[]
   employees             Employee[]
   employeeProfiles      EmployeeProfile[]
+  employeeReviews      EmployeePerformanceReview[]
   enrollments           Enrollment[]
   escalations           Escalation[]
   escalationLogs        EscalationLog[]
@@ -188,6 +189,8 @@ model User {
   editDeleteRequester           EditDeleteRequest[]    @relation("EditDeleteRequester")
   employeeProfile               Employee?
   employeeProfileDetail         EmployeeProfile?
+  reviewsReceived               EmployeePerformanceReview[] @relation("EmployeeReviewsReceived")
+  reviewsGiven                  EmployeePerformanceReview[] @relation("EmployeeReviewsGiven")
   deptReviewedEnrollments       Enrollment[]           @relation("DeptReviewedBy")
   financeReviewedEnrollments    Enrollment[]           @relation("FinanceReviewedBy")
   opsAssignedEnrollments        Enrollment[]           @relation("OpsAssignedEnrollments")
@@ -1260,6 +1263,22 @@ model EmployeeProfile {
   shiftId            String?
 
   @@index([userId, organizationId])
+}
+
+model EmployeePerformanceReview {
+  id             String       @id @default(uuid())
+  organizationId String
+  employeeId     String
+  reviewerId     String
+  rating         Float
+  remarks        String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee       User         @relation("EmployeeReviewsReceived", fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewer       User         @relation("EmployeeReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, employeeId, createdAt])
+  @@index([reviewerId])
 }
 
 model HRSettings {

@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { UniversityEnrollmentReviewPanel } from '@/components/panels/UniversityEnrollmentReviewPanel';
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 import { TargetsPanel } from '@/components/panels/TargetsPanel';
+import { UniversityTeamPanel } from '@/components/panels/UniversityTeamPanel';
 
 
 interface Enrollment {
@@ -221,6 +222,10 @@ export function ModernUniversityDashboard({ initialTab, onNavigate }: { initialT
       setSavingUniEnr(false);
     }
   };
+
+  if (activeTab === 'team') {
+    return <UniversityTeamPanel />;
+  }
 
   if (!universityId) {
     return (
@@ -787,6 +792,7 @@ function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; labe
 export function getUniversityNavItems() {
   return [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'team', label: 'Team' },
     { id: 'targets', label: 'Targets' },
     {
       id: 'students',

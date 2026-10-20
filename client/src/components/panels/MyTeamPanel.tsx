@@ -183,7 +183,6 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
     setProfileOpen(true);
   };
   const selectedEmployee = users.find((user) => user.id === selectedUserId);
-
   const formatRoleLabel = (role: string = '') => {
     const r = role.toLowerCase();
     if (r === 'ops_sub_admin' || r === 'operation_subadmin' || r === 'operations_sub_admin') {

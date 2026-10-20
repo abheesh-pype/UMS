@@ -222,7 +222,12 @@ export function Sidebar({ isCollapsed, onToggle, activeModule, onModuleChange }:
 
   if (!user) return null;
 
-  const filteredNavItems = navItems.filter(item => {
+  const hiddenNavItemIds = new Set(['marks', 'internal_marks', 'announcements', 'broadcast_notifications']);
+  const filteredNavItems = navItems.map(item => ({
+    ...item,
+    children: item.children?.filter(child => !hiddenNavItemIds.has(child.id)),
+  })).filter(item => {
+    if (hiddenNavItemIds.has(item.id)) return false;
     if (!item.roles.includes(user.role)) return false;
 
     // Filter department-specific tabs for employee role

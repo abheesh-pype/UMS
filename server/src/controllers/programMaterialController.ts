@@ -68,11 +68,40 @@ export const getAllProgramEbooks = asyncHandler(async (req: AuthRequest, res: Re
 });
 
 export const getProgramDetail = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const program = await prisma.program.findUnique({ 
-    where: { id: req.params.programId }, 
-    include: { university: true } 
+  const program = await prisma.program.findFirst({
+    where: {
+      id: req.params.programId,
+      organizationId: req.user.organizationId,
+      isDeleted: false,
+    },
+    include: {
+      university: true,
+      academicSession: true,
+      assignedSubDepts: true,
+    },
   });
-  res.json({ success: true, data: program });
+  if (!program) {
+    res.status(404).json({ success: false, message: 'Program not found' });
+    return;
+  }
+
+  const materials = await prisma.programMaterial.findMany({
+    where: {
+      programId: program.id,
+      organizationId: req.user.organizationId,
+      isActive: true,
+    },
+    include: {
+      uploader: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  const byCategory = materials.reduce<Record<string, typeof materials>>((categories, material) => {
+    (categories[material.category] ||= []).push(material);
+    return categories;
+  }, {});
+
+  res.json({ success: true, data: { program, materials, byCategory } });
 });
 
 export const uploadProgramMaterial = asyncHandler(async (req: AuthRequest, res: Response) => {

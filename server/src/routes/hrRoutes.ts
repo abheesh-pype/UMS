@@ -47,7 +47,18 @@ import {
   getActivityReport,
 } from '../controllers/attendanceController.js';
 import {
+  getAdminTeamMembers,
+  getAdminEmployeeProfile,
+  getAdminEmployeeReviews,
+  updateAdminEmployeeProfile,
+  updateAdminEmployeeSalary,
+  updateAdminEmployeeKPIs,
+  updateAdminEmployeeKRAs,
+  createAdminEmployeeReview,
   getEmployeeProfile,
+  getDepartmentEmployeeProfile,
+  getDepartmentEmployeeReviews,
+  createDepartmentEmployeeReview,
   upsertEmployeeProfile,
   updateKPIs,
   updateKRAs,
@@ -143,6 +154,75 @@ router.route('/leave-allocations/:userId')
 router.post('/payroll/generate-smart', authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), generateSmartPayroll);
 
 // Employee Profiles (KPI / KRA / Salary details)
+const employeeProfileAdminRoles = ['org_admin', 'university_admin'];
+router.get('/employee-profiles/admin/team', authorize(...employeeProfileAdminRoles), getAdminTeamMembers);
+router.get('/employee-profiles/:userId/admin', authorize(...employeeProfileAdminRoles), getAdminEmployeeProfile);
+router.get('/employee-profiles/:userId/admin/reviews', authorize(...employeeProfileAdminRoles), getAdminEmployeeReviews);
+router.put('/employee-profiles/:userId/admin', authorize(...employeeProfileAdminRoles), updateAdminEmployeeProfile);
+router.patch('/employee-profiles/:userId/admin/salary', authorize(...employeeProfileAdminRoles), updateAdminEmployeeSalary);
+router.patch('/employee-profiles/:userId/admin/kpis', authorize(...employeeProfileAdminRoles), updateAdminEmployeeKPIs);
+router.patch('/employee-profiles/:userId/admin/kras', authorize(...employeeProfileAdminRoles), updateAdminEmployeeKRAs);
+router.post('/employee-profiles/:userId/admin/reviews', authorize(...employeeProfileAdminRoles), createAdminEmployeeReview);
+router.get(
+  '/employee-profiles/:userId/team',
+  authorize(
+    'ops_admin',
+    'finance_admin',
+    'sales_admin',
+    'ops_sub_admin',
+    'ops_subadmin',
+    'operation_subadmin',
+    'operations_sub_admin',
+    'operations_subadmin',
+    'finance_sub_admin',
+    'finance_subadmin',
+    'sales_sub_admin',
+    'sales_subadmin',
+    'employee',
+    'bde',
+  ),
+  getDepartmentEmployeeProfile,
+);
+router.get(
+  '/employee-profiles/:userId/team/reviews',
+  authorize(
+    'ops_admin',
+    'finance_admin',
+    'sales_admin',
+    'ops_sub_admin',
+    'ops_subadmin',
+    'operation_subadmin',
+    'operations_sub_admin',
+    'operations_subadmin',
+    'finance_sub_admin',
+    'finance_subadmin',
+    'sales_sub_admin',
+    'sales_subadmin',
+    'employee',
+    'bde',
+  ),
+  getDepartmentEmployeeReviews,
+);
+router.post(
+  '/employee-profiles/:userId/team/reviews',
+  authorize(
+    'ops_admin',
+    'finance_admin',
+    'sales_admin',
+    'ops_sub_admin',
+    'ops_subadmin',
+    'operation_subadmin',
+    'operations_sub_admin',
+    'operations_subadmin',
+    'finance_sub_admin',
+    'finance_subadmin',
+    'sales_sub_admin',
+    'sales_subadmin',
+    'employee',
+    'bde',
+  ),
+  createDepartmentEmployeeReview,
+);
 router.get('/employee-profiles/:userId', authorize('hr_admin'), getEmployeeProfile);
 router.put('/employee-profiles/:userId', authorize('hr_admin'), upsertEmployeeProfile);
 router.patch('/employee-profiles/:userId/kpis', authorize('hr_admin'), updateKPIs);

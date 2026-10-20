@@ -26,9 +26,10 @@ const EMPLOYEE_NAV_ITEMS = [
   { id: 'holidays', label: 'Holiday List' },
   { id: 'announcements', label: 'Announcements' },
   { id: 'notice-board', label: 'Notice Board' },
-  { id: 'my_team', label: 'My Team' },
   { id: 'ld-portal', label: 'L&D Portal' },
 ];
+
+const HIDDEN_NAV_LINK_IDS = new Set(['marks', 'internal_marks', 'announcements', 'broadcast_notifications']);
 
 // Maps sidebar table IDs to the dashboard tab they should open
 const TABLE_TO_TAB: Record<string, string> = {
@@ -105,7 +106,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   ld_portal: 'ld-portal',
   payslips: 'payslips',
   my_team: 'my_team',
-  team: 'my_team',
+  team: 'team',
   // Common
   escalations: 'escalations',
   audit_logs: 'overview',
@@ -286,6 +287,7 @@ function App() {
         { id: 'integration', label: 'Integration' },
         { id: 'expenses', label: 'Expenses' },
         { id: 'employees', label: 'Employees' },
+        { id: 'team', label: 'Team' },
         { id: 'leave_requests', label: 'Leave Requests' },
         { id: 'leads', label: 'Leads' },
       ];
@@ -374,19 +376,19 @@ function App() {
       if (deptType) {
         if (isSubDeptManager) {
           switch (deptType) {
-            case 'operations': return getOpsNavItems(true);
+            case 'operations': return getOpsNavItems(true).filter(item => item.id !== 'my_team');
             case 'hr': return getHRNavItems();
-            case 'finance': return getFinanceNavItems();
-            case 'sales': return getSalesNavItems();
+            case 'finance': return getFinanceNavItems().filter(item => item.id !== 'my_team');
+            case 'sales': return getSalesNavItems().filter(item => item.id !== 'my_team');
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems();
+          return getSalesNavItems().filter(item => item.id !== 'my_team');
         } else if (deptType === 'operations') {
-          return getOpsNavItems(false);
+          return getOpsNavItems(false).filter(item => item.id !== 'my_team');
         } else if (deptType === 'hr') {
           return getHRNavItems();
         } else if (deptType === 'finance') {
-          return getFinanceNavItems();
+          return getFinanceNavItems().filter(item => item.id !== 'my_team');
         }
       }
       return EMPLOYEE_NAV_ITEMS;
@@ -401,6 +403,7 @@ function App() {
     const seen = new Set<string>();
     return rawTables.filter(item => {
       const id = typeof item === 'string' ? item : item.id;
+      if (HIDDEN_NAV_LINK_IDS.has(id)) return false;
       if (seen.has(id)) return false;
       seen.add(id);
       return true;

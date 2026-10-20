@@ -31,7 +31,6 @@ import { SubOpsPortalPanel } from '@/components/panels/SubOpsPortalPanel';
 import { SubSalesPortalPanel } from '@/components/panels/SubSalesPortalPanel';
 import { EmployeeEscalationsPanel } from '@/components/panels/EmployeeEscalationsPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
-import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 
 export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab?: string; onNavigate?: (tab: string) => void }) {
@@ -49,7 +48,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
     initialTab === 'my-leaves' ? 'leaves' : 
     initialTab === 'my-attendance' ? 'attendance' : 
     initialTab === 'my-complaints' ? 'escalations' : 
-    (initialTab === 'team' || initialTab === 'my_team') ? 'my_team' : initialTab;
+    (initialTab === 'team' || initialTab === 'my_team') ? 'overview' : initialTab;
 
   const [activeTab, setActiveTab] = useState(mappedInitialTab || (isSubDeptManager ? 'my_subdept' : 'overview'));
 
@@ -65,7 +64,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
       initialTab === 'my-leaves' ? 'leaves' : 
       initialTab === 'my-attendance' ? 'attendance' : 
       initialTab === 'my-complaints' ? 'escalations' : 
-      (initialTab === 'team' || initialTab === 'my_team') ? 'my_team' : initialTab;
+      (initialTab === 'team' || initialTab === 'my_team') ? 'overview' : initialTab;
     setActiveTab(mapped || (isSubDeptManager ? 'my_subdept' : 'overview'));
   }, [initialTab, isSubDeptManager]);
 
@@ -150,9 +149,8 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
           <TabsTrigger value="leaves">My Leaves</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="notice-board">Notice Board</TabsTrigger>
-          <TabsTrigger value="announcements">Announcements</TabsTrigger>
           <TabsTrigger value="holidays">Holiday List</TabsTrigger>
-          <TabsTrigger value="my_team">My Team</TabsTrigger>
+          <TabsTrigger value="announcements" className="hidden">Announcements</TabsTrigger>
           {isSubDeptManager && <TabsTrigger value="my_subdept">My Sub-Dept</TabsTrigger>}
           <TabsTrigger value="ld-portal">L&amp;D Portal</TabsTrigger>
           <TabsTrigger value="escalations">Escalations</TabsTrigger>
@@ -264,13 +262,13 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
                     { label: 'Apply for Leave', tab: 'leaves', color: 'text-info' },
                     { label: 'View Attendance', tab: 'attendance', color: 'text-warning' },
                     { label: 'Notice Board', tab: 'notice-board', color: 'text-success' },
-                    { label: 'Announcements', tab: 'announcements', color: 'text-primary' },
+                    { label: 'Announcements', tab: 'announcements', color: 'text-primary', hidden: true },
                     { label: 'My Team', tab: 'team', color: 'text-warning' },
                     { label: 'Raise Escalation', tab: 'escalations', color: 'text-error' },
                   ].map(item => (
                     <button
                       key={item.tab}
-                      className="w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors flex items-center justify-between"
+                      className={`w-full text-left text-sm px-3 py-2 rounded-lg hover:bg-muted transition-colors flex items-center justify-between ${item.hidden ? 'hidden' : ''}`}
                       onClick={() => handleTabChange(item.tab)}
                     >
                       <span className={cn('font-medium', item.color)}>{item.label}</span>
@@ -299,6 +297,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
                 icon={<MessageSquare className="w-5 h-5 text-success" />}
                 title="Announcements"
                 onClick={() => handleTabChange('announcements')}
+                className="hidden"
               />
               <ShortcutBtn
                 icon={<Star className="w-5 h-5 text-warning" />}
@@ -331,20 +330,6 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
 
         <TabsContent value="holidays">
           <HolidaysPanel />
-        </TabsContent>
-
-        <TabsContent value="my_team">
-          <MyTeamPanel
-            departmentType={(parentDeptType || (typeof (user as any)?.department === 'object' ? (user as any)?.department?.type : null) || 'operations') as any}
-            title="My Team"
-          />
-        </TabsContent>
-
-        <TabsContent value="team">
-          <MyTeamPanel
-            departmentType={(parentDeptType || (typeof (user as any)?.department === 'object' ? (user as any)?.department?.type : null) || 'operations') as any}
-            title="My Team"
-          />
         </TabsContent>
 
         {isSubDeptManager && (
@@ -469,10 +454,10 @@ function TaskItem({ title, priority, due, progress, onClick }: any) {
   );
 }
 
-function ShortcutBtn({ icon, title, onClick }: any) {
+function ShortcutBtn({ icon, title, onClick, className = '' }: any) {
   return (
     <button
-      className="flex flex-col items-center justify-center p-6 rounded-2xl bg-card border border-border hover:border-primary/40 hover:bg-primary/5 transition-all group"
+      className={`flex flex-col items-center justify-center p-6 rounded-2xl bg-card border border-border hover:border-primary/40 hover:bg-primary/5 transition-all group ${className}`}
       onClick={onClick}
     >
       <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-all mb-3 group-hover:scale-110">

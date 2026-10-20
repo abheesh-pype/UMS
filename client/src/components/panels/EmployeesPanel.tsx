@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { EmployeeProfilePanel } from '@/components/panels/EmployeeProfilePanel';
 import api from '@/lib/api';
 
-export function EmployeesPanel() {
+export function EmployeesPanel({ adminProfileAccess = false }: { adminProfileAccess?: boolean }) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
@@ -169,6 +169,7 @@ export function EmployeesPanel() {
       <EmployeeProfilePanel
         userId={profileUserId}
         open={profileOpen}
+        adminAccess={adminProfileAccess}
         onClose={() => setProfileOpen(false)}
       />
       <div className="flex items-center justify-between">

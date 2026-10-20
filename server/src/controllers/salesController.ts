@@ -54,6 +54,8 @@ export const convertLead = asyncHandler(async (req: AuthRequest, res: Response) 
 // Targets
 export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) => {
   const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  const departmentManagerRoles = ['sales_admin', 'ops_admin'];
+  const isDepartmentManager = departmentManagerRoles.includes(req.user.role);
   let departmentId = req.user.departmentId || req.user.subDepartment?.parentDept?.id;
   const roleDepartmentType: Record<string, string> = {
     sales_admin: 'sales',
@@ -75,12 +77,13 @@ export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) =
   const targets = await prisma.target.findMany({
     where: {
       organizationId: req.user.organizationId,
-      ...(!canViewAll ? {
+      ...(!canViewAll && isDepartmentManager ? {
         OR: [
           { employeeId: req.user.id },
           ...(departmentId ? [{ departmentId }] : []),
         ],
       } : {}),
+      ...(!canViewAll && !isDepartmentManager ? { employeeId: req.user.id } : {}),
     },
     include: {
       employee: { select: { id: true, name: true, email: true, role: true } },
@@ -91,7 +94,19 @@ export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) =
   res.json({ success: true, count: targets.length, data: targets });
 });
 export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const target = await prisma.target.findUnique({ where: { id: req.params.id } });
+  const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  const isDepartmentManager = ['sales_admin', 'ops_admin'].includes(req.user.role);
+  const target = await prisma.target.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      ...(!canViewAll && !isDepartmentManager ? { employeeId: req.user.id } : {}),
+    },
+  });
+  if (!target) {
+    res.status(404).json({ success: false, message: 'Target not found' });
+    return;
+  }
   res.json({ success: true, data: target });
 });
 export const createTarget = asyncHandler(async (req: AuthRequest, res: Response) => {

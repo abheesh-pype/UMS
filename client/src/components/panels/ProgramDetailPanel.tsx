@@ -21,14 +21,17 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 interface Program {
   id: string; name: string; code: string; courseType: string;
   duration: number; hasSemesters: boolean; semesters: { number: number; name: string; durationMonths: number }[];
-  status: string; universityId: any; subDepartmentId?: any;
+  status: string; universityId: any; subDepartmentId?: any; courseName?: string;
+  description?: string; specialisations?: string[];
+  certificateRequirements?: { name: string; isMandatory: boolean }[];
 }
 
 interface Material {
   id: string; title: string; description: string;
   category: string; fileUrl: string; fileName: string;
-  fileSize: number; mimeType: string; semesterNumber?: number;
-  uploadedBy: { id: string; name: string; email: string };
+  fileSize?: number; mimeType?: string; semesterNumber?: string | number;
+  uploadedBy?: { id: string; name: string; email: string };
+  uploader?: { id: string; name: string; email: string };
   createdAt: string;
 }
 
@@ -37,6 +40,9 @@ const CATEGORIES = [
   { value: 'study_material', label: 'Study Material', icon: '📚', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
   { value: 'question_paper', label: 'Question Paper', icon: '📝', color: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
   { value: 'reference', label: 'Reference', icon: '🔗', color: 'bg-purple-500/10 text-purple-600 border-purple-500/20' },
+  { value: 'ebook', label: 'E-Book', icon: '📖', color: 'bg-indigo-500/10 text-indigo-600 border-indigo-500/20' },
+  { value: 'video_class', label: 'Video Class', icon: '🎬', color: 'bg-rose-500/10 text-rose-600 border-rose-500/20' },
+  { value: 'video', label: 'Uploaded Class', icon: '🎥', color: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20' },
   { value: 'other', label: 'Other', icon: '📁', color: 'bg-gray-500/10 text-gray-600 border-gray-500/20' },
 ];
 
@@ -46,6 +52,26 @@ const COURSE_COLORS: Record<string, { color: string; bg: string }> = {
   'B.Voc Degree':    { color: '#0891b2', bg: '#ecfeff' },
   'Credit Transfer': { color: '#16a34a', bg: '#f0fdf4' },
 };
+
+function getMaterialUrl(fileUrl: string) {
+  return fileUrl.startsWith('http') ? fileUrl : `${API_BASE.replace('/api/v1', '')}${fileUrl}`;
+}
+
+function getVideoEmbedUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'youtu.be') {
+      return `https://www.youtube.com/embed/${parsed.pathname.slice(1)}`;
+    }
+    if (parsed.hostname === 'www.youtube.com' || parsed.hostname === 'youtube.com') {
+      const videoId = parsed.searchParams.get('v');
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : url;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -91,6 +117,7 @@ export function ProgramDetailPanel({
   const [materials, setMaterials] = useState<Material[]>([]);
   const [byCategory, setByCategory] = useState<Record<string, Material[]>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,12 +135,25 @@ export function ProgramDetailPanel({
     setLoading(true);
     try {
       const res = await api.get(`/operations/programs/${programId}/detail`);
-      const data = res.data.data;
-      setProgram(data.program);
-      setMaterials(data.materials || []);
-      setByCategory(data.byCategory || {});
+      const responseData = res.data.data;
+      const detail = responseData.program
+        ? responseData
+        : { program: responseData, materials: [] };
+      if (!detail.program) {
+        throw new Error('Program details were not returned by the server');
+      }
+      const loadedMaterials = (detail.materials || []).map((material: Material) => ({
+        ...material,
+        uploadedBy: material.uploadedBy || material.uploader,
+      }));
+      setProgram(detail.program);
+      setMaterials(loadedMaterials);
+      setByCategory(detail.byCategory || {});
+      setLoadError('');
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to load program detail');
+      const message = err.response?.data?.message || err.message || 'Failed to load program detail';
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -207,9 +247,22 @@ export function ProgramDetailPanel({
   const filtered = materials.filter(m => {
     const matchSearch = !searchTerm ||
       m.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.fileName.toLowerCase().includes(searchTerm.toLowerCase());
+      (m.fileName || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchCategory = activeTab === 'all' || m.category === activeTab;
-    const matchSemester = selectedSemester === 'all' || String(m.semesterNumber) === selectedSemester;
+    let materialSemester = String(m.semesterNumber || '');
+    if (m.category === 'video_class' && m.description) {
+      try {
+        const metadata = JSON.parse(m.description);
+        const matchedSemester = program?.semesters?.find(semester =>
+          semester.name === metadata.semesterName
+          || String(semester.number) === metadata.semesterName?.replace(/\D/g, '')
+        );
+        if (matchedSemester) materialSemester = String(matchedSemester.number);
+      } catch {
+        // Keep the material's saved semester number when description is not metadata.
+      }
+    }
+    const matchSemester = selectedSemester === 'all' || materialSemester === selectedSemester;
     return matchSearch && matchCategory && matchSemester;
   });
 
@@ -224,14 +277,17 @@ export function ProgramDetailPanel({
   if (!program) {
     return (
       <div className="text-center py-16 text-muted-foreground">
-        <p>Program not found</p>
+        <p>{loadError || 'Program not found'}</p>
+        {loadError && <Button variant="outline" className="mt-4" onClick={fetchDetail}>Retry</Button>}
         <Button variant="ghost" className="mt-4" onClick={onBack}>Go Back</Button>
       </div>
     );
   }
 
   const ctMeta = COURSE_COLORS[program.courseType] || COURSE_COLORS['Online Degree'];
-  const uniName = typeof program.universityId === 'object' ? program.universityId?.name : '';
+  const uniName = typeof program.universityId === 'object'
+    ? program.universityId?.name
+    : (program as any).university?.name;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -273,6 +329,50 @@ export function ProgramDetailPanel({
           </Button>
         )}
       </div>
+
+      {(program.courseName || program.description || program.specialisations?.length || program.certificateRequirements?.length) && (
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            {program.courseName && (
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Course Name</p>
+                <p className="mt-1">{program.courseName}</p>
+              </div>
+            )}
+            {program.description && (
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Description</p>
+                <p className="mt-1 whitespace-pre-wrap">{program.description}</p>
+              </div>
+            )}
+            {!!program.specialisations?.length && (
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Specialisations</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {program.specialisations.map((specialisation, index) => (
+                    <Badge key={`${specialisation}-${index}`} variant="secondary">{specialisation}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!!program.certificateRequirements?.length && (
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Certificate Requirements</p>
+                <ul className="mt-2 space-y-1">
+                  {program.certificateRequirements.map((requirement, index) => (
+                    <li key={`${requirement.name}-${index}`} className="text-sm">
+                      {requirement.name}
+                      <span className="ml-2 text-muted-foreground">
+                        {requirement.isMandatory ? 'Required' : 'Optional'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Semester breakdown if applicable */}
       {program.hasSemesters && program.semesters?.length > 0 && (
@@ -363,13 +463,28 @@ export function ProgramDetailPanel({
       ) : (
         <div className="space-y-2">
           {filtered.map(m => {
-            const catMeta = CATEGORIES.find(c => c.value === m.category) || CATEGORIES[4];
+            const catMeta = CATEGORIES.find(c => c.value === m.category) || CATEGORIES[CATEGORIES.length - 1];
+            const mimeType = m.mimeType || '';
+            const materialUrl = getMaterialUrl(m.fileUrl);
+            const isVideo = m.category === 'video_class' || m.category === 'video';
+            let videoDescription = m.description || '';
+            if (m.category === 'video_class' && videoDescription) {
+              try {
+                const metadata = JSON.parse(videoDescription);
+                videoDescription = metadata.text || metadata.description || '';
+              } catch {
+                // Keep the saved description when it is plain text.
+              }
+            }
+            const videoUrl = m.category === 'video_class' && m.fileUrl.startsWith('http')
+              ? getVideoEmbedUrl(m.fileUrl)
+              : '';
             return (
               <Card key={m.id} className="group hover:border-primary/20 transition-colors">
                 <CardContent className="p-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                      {getFileIcon(m.mimeType)}
+                      {getFileIcon(mimeType || m.fileName || '')}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -385,19 +500,31 @@ export function ProgramDetailPanel({
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{m.description}</p>
                       )}
                       <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1">
-                        <span>{m.fileName}</span>
-                        <span>•</span>
-                        <span>{formatBytes(m.fileSize)}</span>
+                        <span>{m.fileName || 'Uploaded material'}</span>
+                        {m.fileSize ? <>
+                          <span>•</span>
+                          <span>{formatBytes(m.fileSize)}</span>
+                        </> : null}
                         <span>•</span>
                         <span>by {m.uploadedBy?.name || 'Unknown'}</span>
                         <span>•</span>
                         <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                       </div>
+                      {isVideo && videoDescription && (
+                        <p className="mt-1 text-xs text-muted-foreground">{videoDescription}</p>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="ghost" size="sm" onClick={() => handleDownload(m)} title="Download">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => isVideo
+                        ? window.open(materialUrl, '_blank', 'noopener,noreferrer')
+                        : handleDownload(m)}
+                      title={isVideo ? 'Open video class' : 'Download'}
+                    >
                       <Download className="w-4 h-4" />
                     </Button>
                     {canManage && (
@@ -413,6 +540,26 @@ export function ProgramDetailPanel({
                     )}
                   </div>
                 </CardContent>
+                {isVideo && (
+                  <div className="border-t bg-muted/20 p-4">
+                    {videoUrl ? (
+                      <div className="aspect-video overflow-hidden rounded-lg bg-black">
+                        <iframe
+                          src={videoUrl}
+                          title={m.title}
+                          className="h-full w-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : (
+                      <video controls preload="metadata" className="max-h-[28rem] w-full rounded-lg bg-black">
+                        <source src={materialUrl} type={mimeType || undefined} />
+                        Your browser does not support video playback.
+                      </video>
+                    )}
+                  </div>
+                )}
               </Card>
             );
           })}

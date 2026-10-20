@@ -10,6 +10,16 @@ const departmentTypeByAdminRole: Record<string, string> = {
   finance_admin: 'finance',
 };
 
+const taskManagementRoles = [
+  'superadmin',
+  'org_admin',
+  'ceo',
+  'hr_admin',
+  'finance_admin',
+  'ops_admin',
+  'sales_admin',
+];
+
 const getAssignableUser = async (userId: string, organizationId: string, departmentType?: string) => {
   return prisma.user.findFirst({
     where: {
@@ -34,17 +44,19 @@ const getAssignableUser = async (userId: string, organizationId: string, departm
 };
 
 export const getTasks = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const where: any = { organizationId: req.user.organizationId };
-  if (req.query.assignedTo) where.assignedTo = req.query.assignedTo as string;
-  if (req.query.status) where.status = req.query.status as string;
-
-  const isAdmin = ['superadmin', 'org_admin', 'ceo', 'hr_admin', 'finance_admin', 'ops_admin', 'sales_admin'].includes(req.user.role);
-  if (!isAdmin) {
+  const where: any = {
+    organizationId: req.user.organizationId,
+  };
+  if (taskManagementRoles.includes(req.user.role)) {
     where.OR = [
       { assignedTo: req.user.id },
-      { createdBy: req.user.id }
+      { createdBy: req.user.id },
     ];
+  } else {
+    where.assignedTo = req.user.id;
   }
+  if (req.query.status) where.status = req.query.status as string;
+
   const tasks = await prisma.task.findMany({
     where,
     include: {
@@ -58,14 +70,17 @@ export const getTasks = asyncHandler(async (req: AuthRequest, res: Response) => 
 });
 
 export const getTask = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const isAdmin = ['superadmin', 'org_admin', 'ceo', 'hr_admin', 'finance_admin', 'ops_admin', 'sales_admin'].includes(req.user.role);
-  
-  const where: any = { id: req.params.id, organizationId: req.user.organizationId };
-  if (!isAdmin) {
+  const where: any = {
+    id: req.params.id,
+    organizationId: req.user.organizationId,
+  };
+  if (taskManagementRoles.includes(req.user.role)) {
     where.OR = [
       { assignedTo: req.user.id },
-      { createdBy: req.user.id }
+      { createdBy: req.user.id },
     ];
+  } else {
+    where.assignedTo = req.user.id;
   }
 
   const task = await prisma.task.findFirst({
@@ -156,15 +171,27 @@ export const updateTask = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const completeTask = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const task = await prisma.task.update({
-    where: { id: req.params.id },
+  const task = await prisma.task.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      assignedTo: req.user.id,
+    },
+  });
+  if (!task) {
+    res.status(404).json({ success: false, message: 'Task not found' });
+    return;
+  }
+
+  const updatedTask = await prisma.task.update({
+    where: { id: task.id },
     data: {
       status: 'completed' as any,
       completedAt: new Date(),
       remarks: req.body.remarks,
     }
   });
-  res.status(200).json({ success: true, data: { ...task, _id: task.id } });
+  res.status(200).json({ success: true, data: { ...updatedTask, _id: updatedTask.id } });
 });
 
 export const deleteTask = asyncHandler(async (req: AuthRequest, res: Response) => {

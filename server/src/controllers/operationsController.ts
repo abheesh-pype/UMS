@@ -148,6 +148,16 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
     isDeleted: false,
     university: { singletonKey: 'primary' },
   };
+  if (req.user.role === 'center_admin') {
+    const centerId = (req.user as any).studyCenterId;
+    where.programAllocations = {
+      some: {
+        organizationId: req.user.organizationId,
+        centerId: centerId || '__unassigned_center__',
+        isActive: true,
+      },
+    };
+  }
   if (req.query.academicSessionId && req.query.academicSessionId !== 'all') {
     where.academicSessionId = String(req.query.academicSessionId);
   }
@@ -1677,16 +1687,125 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
 
 
 // Allocations
+const requireOperationsAllocationAccess = (req: AuthRequest, res: Response) => {
+  const departmentType = (
+    req.user.department?.type
+    || req.user.subDepartment?.parentDept?.type
+    || ''
+  ).toLowerCase();
+  const departmentName = (
+    req.user.department?.name
+    || req.user.subDepartment?.parentDept?.name
+    || ''
+  ).toLowerCase();
+  const isOperationsStaff = req.user.role === 'employee'
+    && (departmentType === 'operations' || departmentName.includes('operations'));
+  if (!['ops_admin', 'ops_sub_admin'].includes(req.user.role) && !isOperationsStaff) {
+    res.status(403).json({ success: false, message: 'Only Operations department users can manage program allocations' });
+    return false;
+  }
+  return true;
+};
+
 export const getProgramAllocations = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const allocations = await prisma.programAllocation.findMany({ where: { centerId: req.params.id }, include: { program: true } });
+  if (!requireOperationsAllocationAccess(req, res)) return;
+  const center = await prisma.studyCenter.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { id: true },
+  });
+  if (!center) {
+    res.status(404).json({ success: false, message: 'Study center not found' });
+    return;
+  }
+  const allocations = await prisma.programAllocation.findMany({
+    where: { centerId: center.id, organizationId: req.user.organizationId },
+    include: { program: true },
+    orderBy: { program: { name: 'asc' } },
+  });
   res.json({ success: true, data: allocations });
 });
 export const allocateProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const allocation = await prisma.programAllocation.create({ data: { ...req.body, centerId: req.params.id, organizationId: req.user.organizationId, allocatedBy: req.user.id } });
+  if (!requireOperationsAllocationAccess(req, res)) return;
+  const [center, program] = await Promise.all([
+    prisma.studyCenter.findFirst({
+      where: { id: req.params.id, organizationId: req.user.organizationId },
+      select: { id: true },
+    }),
+    prisma.program.findFirst({
+      where: {
+        id: req.body.programId,
+        organizationId: req.user.organizationId,
+        isDeleted: false,
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (!center || !program) {
+    res.status(404).json({ success: false, message: 'Study center or program not found' });
+    return;
+  }
+  const allocation = await prisma.programAllocation.upsert({
+    where: {
+      organizationId_centerId_programId: {
+        organizationId: req.user.organizationId,
+        centerId: center.id,
+        programId: program.id,
+      },
+    },
+    update: { isActive: true, allocatedBy: req.user.id },
+    create: {
+      programId: program.id,
+      centerId: center.id,
+      organizationId: req.user.organizationId,
+      allocatedBy: req.user.id,
+      isActive: true,
+    },
+  });
   res.status(201).json({ success: true, data: allocation });
 });
+export const updateProgramAllocationStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!requireOperationsAllocationAccess(req, res)) return;
+  if (typeof req.body.isActive !== 'boolean') {
+    res.status(400).json({ success: false, message: 'isActive must be a boolean' });
+    return;
+  }
+
+  const result = await prisma.programAllocation.updateMany({
+    where: {
+      id: req.params.allocId,
+      centerId: req.params.id,
+      organizationId: req.user.organizationId,
+    },
+    data: { isActive: req.body.isActive },
+  });
+  if (result.count === 0) {
+    res.status(404).json({ success: false, message: 'Program allocation not found' });
+    return;
+  }
+
+  const allocation = await prisma.programAllocation.findFirst({
+    where: {
+      id: req.params.allocId,
+      centerId: req.params.id,
+      organizationId: req.user.organizationId,
+    },
+    include: { program: true },
+  });
+  res.json({ success: true, data: allocation });
+});
 export const removeAllocation = asyncHandler(async (req: AuthRequest, res: Response) => {
-  await prisma.programAllocation.delete({ where: { id: req.params.allocId } });
+  if (!requireOperationsAllocationAccess(req, res)) return;
+  const result = await prisma.programAllocation.deleteMany({
+    where: {
+      id: req.params.allocId,
+      centerId: req.params.id,
+      organizationId: req.user.organizationId,
+    },
+  });
+  if (result.count === 0) {
+    res.status(404).json({ success: false, message: 'Program allocation not found' });
+    return;
+  }
   res.json({ success: true, data: {} });
 });
 

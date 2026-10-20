@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 interface Center { id: string; name: string; code: string; }
 interface Program { id: string; name: string; code: string; courseType?: string; }
 interface University { id: string; name: string; code: string; }
-interface Allocation { id: string; programId: string; program: Program; allocatedAt: string; }
+interface Allocation { id: string; programId: string; program: Program; allocatedAt: string; isActive: boolean; }
 interface UniAllocation { id: string; universityId: string; university: University; allocatedAt: string; }
 
 export function OpsProgramAllocationPanel() {
@@ -23,15 +23,13 @@ export function OpsProgramAllocationPanel() {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
   const [uniOpen, setUniOpen] = useState(false);
-  const [selectedProgram, setSelectedProgram] = useState('');
   const [selectedUniversity, setSelectedUniversity] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'programs' | 'universities'>('programs');
 
   useEffect(() => {
-    api.get('/operations/centers?status=active').then(r => setCenters(r.data.data || [])).catch(() => {});
+    api.get('/operations/centers').then(r => setCenters(r.data.data || [])).catch(() => {});
     api.get('/operations/programs').then(r => setPrograms(r.data.data || [])).catch(() => {});
     api.get('/operations/universities?status=active').then(r => setUniversities(r.data.data || [])).catch(() => {});
   }, []);
@@ -58,17 +56,21 @@ export function OpsProgramAllocationPanel() {
     fetchAllocations(id);
   };
 
-  const handleAllocate = async () => {
-    if (!selectedProgram) { toast.error('Select a program'); return; }
+  const handleProgramStatus = async (program: Program, allocation?: Allocation) => {
+    if (!selectedCenter) return;
     setSubmitting(true);
     try {
-      await api.post(`/operations/centers/${selectedCenter}/allocations`, { programId: selectedProgram });
-      toast.success('Program allocated');
-      setOpen(false);
-      setSelectedProgram('');
-      fetchAllocations(selectedCenter);
+      if (!allocation) {
+        await api.post(`/operations/centers/${selectedCenter}/allocations`, { programId: program.id });
+        toast.success('Program allocated and activated');
+      } else {
+        const isActive = !allocation.isActive;
+        await api.put(`/operations/centers/${selectedCenter}/allocations/${allocation.id}`, { isActive });
+        toast.success(`Program ${isActive ? 'activated' : 'deactivated'}`);
+      }
+      await fetchAllocations(selectedCenter);
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to allocate');
+      toast.error(e.response?.data?.message || 'Failed to update program allocation');
     } finally {
       setSubmitting(false);
     }
@@ -110,9 +112,6 @@ export function OpsProgramAllocationPanel() {
     }
   };
 
-  const allocatedProgramIds = allocations.map(a => a.programId);
-  const availablePrograms = programs.filter(p => !allocatedProgramIds.includes(p.id));
-
   const allocatedUniIds = uniAllocations.map(a => a.universityId);
   const availableUniversities = universities.filter(u => !allocatedUniIds.includes(u.id));
 
@@ -120,7 +119,7 @@ export function OpsProgramAllocationPanel() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">Allocations</h2>
-        <p className="text-muted-foreground text-sm mt-1">Manage which programs and universities each active study center is allocated to enroll students in.</p>
+        <p className="text-muted-foreground text-sm mt-1">Manage the programs and universities available to each study center.</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -139,11 +138,7 @@ export function OpsProgramAllocationPanel() {
             <Button variant="outline" size="sm" onClick={() => fetchAllocations(selectedCenter)} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
             </Button>
-            {activeSubTab === 'programs' ? (
-              <Button size="sm" onClick={() => setOpen(true)} disabled={availablePrograms.length === 0}>
-                <Plus className="w-4 h-4 mr-2" />Add Program
-              </Button>
-            ) : (
+            {activeSubTab === 'universities' && (
               <Button size="sm" onClick={() => setUniOpen(true)} disabled={availableUniversities.length === 0}>
                 <Plus className="w-4 h-4 mr-2" />Add University
               </Button>
@@ -179,31 +174,58 @@ export function OpsProgramAllocationPanel() {
           {loading ? (
             <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted rounded-xl animate-pulse" />)}</div>
           ) : activeSubTab === 'programs' ? (
-            allocations.length === 0 ? (
-              <Card><CardContent className="py-10 text-center text-muted-foreground text-sm">
-                No programs allocated yet.
-              </CardContent></Card>
-            ) : (
-              <Card>
-                <CardHeader><CardTitle className="text-base">Allocated Programs ({allocations.length})</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {allocations.map(a => (
-                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Programs ({programs.length})</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Activate programs to make them available in the selected study center.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {programs.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">No programs are available to allocate.</p>
+                ) : programs.map(program => {
+                  const allocation = allocations.find(item => item.programId === program.id);
+                  return (
+                    <div key={program.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/40">
                       <div>
-                        <span className="font-medium text-sm">{a.program?.name}</span>
-                        <span className="text-muted-foreground text-xs ml-2">({a.program?.code})</span>
-                        {a.program?.courseType && (
-                          <Badge variant="outline" className="ml-2 text-[10px]">{a.program?.courseType}</Badge>
+                        <span className="font-medium text-sm">{program.name}</span>
+                        <span className="text-muted-foreground text-xs ml-2">({program.code})</span>
+                        {program.courseType && (
+                          <Badge variant="outline" className="ml-2 text-[10px]">{program.courseType}</Badge>
+                        )}
+                        <div className="mt-1">
+                          <Badge variant={allocation?.isActive ? 'default' : 'secondary'}>
+                            {allocation?.isActive ? 'Active' : allocation ? 'Inactive' : 'Not allocated'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant={allocation?.isActive ? 'outline' : 'default'}
+                          disabled={submitting}
+                          onClick={() => handleProgramStatus(program, allocation)}
+                        >
+                          {!allocation ? 'Allocate' : allocation.isActive ? 'Deactivate' : 'Activate'}
+                        </Button>
+                        {allocation && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-error hover:text-error"
+                            onClick={() => handleRemove(allocation.id)}
+                            title="Remove allocation"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         )}
                       </div>
-                      <Button variant="ghost" size="sm" className="text-error hover:text-error" onClick={() => handleRemove(a.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )
+                  );
+                })}
+              </CardContent>
+            </Card>
           ) : (
             uniAllocations.length === 0 ? (
               <Card><CardContent className="py-10 text-center text-muted-foreground text-sm">
@@ -230,31 +252,6 @@ export function OpsProgramAllocationPanel() {
           )}
         </>
       )}
-
-      {/* Program Allocation Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Allocate Program</DialogTitle></DialogHeader>
-          <div className="py-2">
-            <Select value={selectedProgram} onValueChange={setSelectedProgram}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a program" />
-              </SelectTrigger>
-              <SelectContent>
-                {availablePrograms.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setOpen(false); setSelectedProgram(''); }}>Cancel</Button>
-            <Button onClick={handleAllocate} disabled={submitting || !selectedProgram}>
-              {submitting ? 'Allocating...' : 'Allocate'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* University Allocation Dialog */}
       <Dialog open={uniOpen} onOpenChange={setUniOpen}>

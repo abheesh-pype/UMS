@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { isAxiosError } from 'axios';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface KPI {
@@ -50,9 +51,17 @@ interface ProfileData {
   profile: any;
   user: any;
   salaryConfig: SalaryConfig | null;
+  reviews?: Array<{
+    id: string;
+    rating: number;
+    remarks?: string | null;
+    createdAt: string;
+    reviewer?: { name?: string; role?: string };
+  }>;
 }
 
 interface EmployeeSummary {
+  id: string;
   name?: string;
   designation?: string;
   designationRef?: { title?: string };
@@ -101,6 +110,15 @@ function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
   );
 }
 
+function ProfileField({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="break-words capitalize">{value == null || value === '' ? '—' : value}</p>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface Props {
   userId: string | null;
@@ -109,9 +127,10 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   readOnly?: boolean;
   employee?: EmployeeSummary;
+  adminAccess?: boolean;
 }
 
-export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, readOnly = false, employee }: Props) {
+export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, readOnly = false, employee, adminAccess = false }: Props) {
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -125,6 +144,7 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [kras, setKras] = useState<KRA[]>([]);
   const [reviewForm, setReviewForm] = useState<any>({});
+  const [accountForm, setAccountForm] = useState({ name: '', email: '', phone: '', designation: '' });
 
   // KPI/KRA dialog
   const [kpiDialog, setKpiDialog] = useState(false);
@@ -136,18 +156,39 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
 
   const fetchProfile = useCallback(async () => {
     if (!userId) return;
-    if (readOnly) {
-      setData({ user: employee, profile: null, salaryConfig: null });
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const res = await api.get(`/hr/employee-profiles/${userId}`);
+      const endpoint = readOnly
+        ? `/hr/employee-profiles/${userId}/team`
+        : adminAccess
+          ? `/hr/employee-profiles/${userId}/admin`
+          : `/hr/employee-profiles/${userId}`;
+      const res = await api.get(endpoint);
       const d: ProfileData = res.data.data;
       setData(d);
+      if (readOnly || adminAccess) {
+        try {
+          const reviewEndpoint = adminAccess
+            ? `/hr/employee-profiles/${userId}/admin/reviews`
+            : `/hr/employee-profiles/${userId}/team/reviews`;
+          const reviewsResponse = await api.get(reviewEndpoint);
+          setData(current => current
+            ? { ...current, reviews: reviewsResponse.data.data || [] }
+            : current);
+        } catch (error: unknown) {
+          toast.error(isAxiosError(error)
+            ? error.response?.data?.message || error.message
+            : 'Failed to load review history');
+        }
+      }
       const p = d.profile || {};
       const u = d.user || {};
+      setAccountForm({
+        name: u.name || '',
+        email: u.email || '',
+        phone: u.phone || '',
+        designation: u.designation || '',
+      });
       setPersonalForm({
         dateOfBirth: p.dateOfBirth ? p.dateOfBirth.split('T')[0] : '',
         gender: p.gender || '',
@@ -190,15 +231,20 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
       setReviewForm({
         lastReviewDate: p.lastReviewDate ? p.lastReviewDate.split('T')[0] : '',
         nextReviewDate: p.nextReviewDate ? p.nextReviewDate.split('T')[0] : '',
-        overallRating: p.overallRating || 0,
-        reviewRemarks: p.reviewRemarks || '',
+        overallRating: readOnly ? 0 : p.overallRating || 0,
+        reviewRemarks: readOnly ? '' : p.reviewRemarks || '',
       });
-    } catch {
-      toast.error('Failed to load employee profile');
+    } catch (error: unknown) {
+      if (readOnly) {
+        setData({ user: employee || { id: userId }, profile: null, salaryConfig: null, reviews: [] });
+      }
+      toast.error(isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : 'Failed to load employee profile');
     } finally {
       setLoading(false);
     }
-  }, [userId, readOnly, employee]);
+  }, [userId, readOnly, employee, adminAccess]);
 
   useEffect(() => {
     if (open && userId) { setTab('overview'); fetchProfile(); }
@@ -208,7 +254,10 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const savePersonal = async () => {
     setSaving(true);
     try {
-      await api.put(`/hr/employee-profiles/${userId}`, {
+      await api.put(adminAccess
+        ? `/hr/employee-profiles/${userId}/admin`
+        : `/hr/employee-profiles/${userId}`, {
+        ...(adminAccess ? accountForm : {}),
         dateOfBirth: personalForm.dateOfBirth || undefined,
         gender: personalForm.gender || undefined,
         bloodGroup: personalForm.bloodGroup || undefined,
@@ -230,20 +279,33 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveEmployment = async () => {
     setSaving(true);
     try {
-      await Promise.all([
-        api.put(`/hr/employee-profiles/${userId}`, {
+      if (adminAccess) {
+        await api.put(`/hr/employee-profiles/${userId}/admin`, {
+          phone: accountForm.phone,
+          designation: accountForm.designation,
           employeeCode: employmentForm.employeeCode,
           joinDate: employmentForm.joinDate || undefined,
           confirmationDate: employmentForm.confirmationDate || undefined,
           probationEndDate: employmentForm.probationEndDate || undefined,
           employmentType: employmentForm.employmentType,
           workLocation: employmentForm.workLocation,
-        }),
-        api.put(`/users/${userId}`, {
-          designation: employmentForm.designation,
-          phone: employmentForm.phone,
-        }),
-      ]);
+        });
+      } else {
+        await Promise.all([
+          api.put(`/hr/employee-profiles/${userId}`, {
+            employeeCode: employmentForm.employeeCode,
+            joinDate: employmentForm.joinDate || undefined,
+            confirmationDate: employmentForm.confirmationDate || undefined,
+            probationEndDate: employmentForm.probationEndDate || undefined,
+            employmentType: employmentForm.employmentType,
+            workLocation: employmentForm.workLocation,
+          }),
+          api.put(`/users/${userId}`, {
+            designation: employmentForm.designation,
+            phone: employmentForm.phone,
+          }),
+        ]);
+      }
       toast.success('Employment info saved');
       fetchProfile();
     } catch { toast.error('Save failed'); } finally { setSaving(false); }
@@ -252,7 +314,9 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveSalary = async () => {
     setSaving(true);
     try {
-      await api.patch(`/hr/employee-profiles/${userId}/salary`, {
+      await api.patch(adminAccess
+        ? `/hr/employee-profiles/${userId}/admin/salary`
+        : `/hr/employee-profiles/${userId}/salary`, {
         ...salaryForm,
         salaryConfig: salaryConfigForm,
       });
@@ -264,7 +328,9 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveKPIs = async () => {
     setSaving(true);
     try {
-      await api.patch(`/hr/employee-profiles/${userId}/kpis`, { kpis });
+      await api.patch(adminAccess
+        ? `/hr/employee-profiles/${userId}/admin/kpis`
+        : `/hr/employee-profiles/${userId}/kpis`, { kpis });
       toast.success('KPIs saved');
     } catch { toast.error('Save failed'); } finally { setSaving(false); }
   };
@@ -272,7 +338,9 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveKRAs = async () => {
     setSaving(true);
     try {
-      await api.patch(`/hr/employee-profiles/${userId}/kras`, { kras });
+      await api.patch(adminAccess
+        ? `/hr/employee-profiles/${userId}/admin/kras`
+        : `/hr/employee-profiles/${userId}/kras`, { kras });
       toast.success('KRAs saved');
     } catch { toast.error('Save failed'); } finally { setSaving(false); }
   };
@@ -280,10 +348,32 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveReview = async () => {
     setSaving(true);
     try {
+      if (readOnly || adminAccess) {
+        const response = await api.post(
+          adminAccess
+            ? `/hr/employee-profiles/${userId}/admin/reviews`
+            : `/hr/employee-profiles/${userId}/team/reviews`,
+          {
+            rating: reviewForm.overallRating,
+            remarks: reviewForm.reviewRemarks,
+          },
+        );
+        const savedReview = response.data.data;
+        setData(current => current
+          ? { ...current, reviews: [savedReview, ...(current.reviews || [])] }
+          : current);
+        setReviewForm({ overallRating: 0, reviewRemarks: '' });
+        toast.success('Review saved');
+        return;
+      }
       await api.put(`/hr/employee-profiles/${userId}`, reviewForm);
       toast.success('Review saved');
       fetchProfile();
-    } catch { toast.error('Save failed'); } finally { setSaving(false); }
+    } catch (error: unknown) {
+      toast.error(isAxiosError(error)
+        ? error.response?.data?.message || error.message
+        : error instanceof Error ? error.message : 'Save failed');
+    } finally { setSaving(false); }
   };
 
   // ─── KPI helpers ──────────────────────────────────────────────────────────
@@ -363,27 +453,115 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
             <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Loading...
           </div>
         ) : readOnly ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 px-6 py-5">
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Mail className="w-4 h-4" />Contact</CardTitle></CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div><p className="text-xs text-muted-foreground">Email</p><p>{user?.email || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Phone</p><p>{user?.phone || '—'}</p></div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Briefcase className="w-4 h-4" />Employment</CardTitle></CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div><p className="text-xs text-muted-foreground">Employee ID</p><p>{user?.userId || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Role</p><p className="capitalize">{user?.role?.replace(/_/g, ' ') || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Designation</p><p>{user?.designation || user?.designationRef?.title || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Department</p><p>{user?.department?.name || user?.subDepartment?.parentDept?.name || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Team</p><p>{user?.subDepartment?.name || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Branch</p><p>{user?.branch?.name || '—'}</p></div>
-                <div><p className="text-xs text-muted-foreground">Status</p><p className="capitalize">{user?.status?.replace(/_/g, ' ') || '—'}</p></div>
-              </CardContent>
-            </Card>
-          </div>
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-col h-full">
+            <TabsList className="mx-6 mt-4 justify-start">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="review">Review</TabsTrigger>
+            </TabsList>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <TabsContent value="overview" className="space-y-4 mt-0">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Staff and Contact Details</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <ProfileField label="Name" value={user?.name} />
+                    <ProfileField label="Employee ID" value={profile?.employeeCode || user?.userId} />
+                    <ProfileField label="Email" value={user?.email} />
+                    <ProfileField label="Phone" value={user?.phone} />
+                    <ProfileField label="Role" value={user?.role?.replace(/_/g, ' ')} />
+                    <ProfileField label="Designation" value={user?.designation || user?.designationRef?.title} />
+                    <ProfileField label="Department" value={user?.department?.name || user?.subDepartment?.parentDept?.name} />
+                    <ProfileField label="Team" value={user?.subDepartment?.name} />
+                    <ProfileField label="Branch" value={user?.branch?.name} />
+                    <ProfileField label="Status" value={user?.status?.replace(/_/g, ' ')} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Personal Details</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <ProfileField label="Date of Birth" value={profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : undefined} />
+                    <ProfileField label="Gender" value={profile?.gender} />
+                    <ProfileField label="Blood Group" value={profile?.bloodGroup} />
+                    <ProfileField label="Address" value={[profile?.address, profile?.city, profile?.state, profile?.pincode].filter(Boolean).join(', ')} />
+                    <ProfileField label="Emergency Contact" value={profile?.emergencyContact?.name} />
+                    <ProfileField label="Emergency Phone" value={profile?.emergencyContact?.phone} />
+                    <ProfileField label="Emergency Relation" value={profile?.emergencyContact?.relation} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Employment Details</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <ProfileField label="Employment Type" value={profile?.employmentType?.replace(/_/g, ' ')} />
+                    <ProfileField label="Employment Status" value={profile?.employmentRole?.replace(/_/g, ' ')} />
+                    <ProfileField label="Induction Status" value={profile?.inductionStatus?.replace(/_/g, ' ')} />
+                    <ProfileField label="Work Location" value={profile?.workLocation} />
+                    <ProfileField label="Join Date" value={profile?.joinDate ? new Date(profile.joinDate).toLocaleDateString() : undefined} />
+                    <ProfileField label="Confirmation Date" value={profile?.confirmationDate ? new Date(profile.confirmationDate).toLocaleDateString() : undefined} />
+                    <ProfileField label="Probation End Date" value={profile?.probationEndDate ? new Date(profile.probationEndDate).toLocaleDateString() : undefined} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Salary and Bank Details</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <ProfileField label="Annual CTC" value={profile?.ctc != null ? `₹${Number(profile.ctc).toLocaleString()}` : undefined} />
+                    <ProfileField label="Monthly Basic Salary" value={profile?.basicSalary != null ? `₹${Number(profile.basicSalary).toLocaleString()}` : undefined} />
+                    <ProfileField label="Bank Name" value={profile?.bankName} />
+                    <ProfileField label="Account Number" value={profile?.bankAccountNo} />
+                    <ProfileField label="IFSC Code" value={profile?.ifscCode} />
+                    <ProfileField label="PAN Number" value={profile?.panNumber} />
+                    <ProfileField label="Payroll Basic" value={data?.salaryConfig?.basicSalary != null ? `₹${data.salaryConfig.basicSalary.toLocaleString()}` : undefined} />
+                    <ProfileField label="Allowances" value={data?.salaryConfig?.allowances ? JSON.stringify(data.salaryConfig.allowances) : undefined} />
+                    <ProfileField label="Deductions" value={data?.salaryConfig?.deductions ? JSON.stringify(data.salaryConfig.deductions) : undefined} />
+                    <ProfileField label="Late Deduction / Minute" value={data?.salaryConfig?.lateDeductionPerMinute} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Performance Summary</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <ProfileField label="Overall Rating" value={profile?.overallRating} />
+                    <ProfileField label="Last Review Date" value={profile?.lastReviewDate ? new Date(profile.lastReviewDate).toLocaleDateString() : undefined} />
+                    <ProfileField label="Next Review Date" value={profile?.nextReviewDate ? new Date(profile.nextReviewDate).toLocaleDateString() : undefined} />
+                    <ProfileField label="Review Remarks" value={profile?.reviewRemarks} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="review" className="space-y-4 mt-0">
+                <SectionTitle icon={Star} title="Add Staff Review" />
+                <div>
+                  <Label className="mb-2 block">Rating</Label>
+                  <StarRating value={reviewForm.overallRating} onChange={value => setReviewForm({ ...reviewForm, overallRating: value })} />
+                </div>
+                <div>
+                  <Label>Review Remarks</Label>
+                  <Textarea rows={4} value={reviewForm.reviewRemarks} onChange={event => setReviewForm({ ...reviewForm, reviewRemarks: event.target.value })} placeholder="Share feedback about this staff member..." />
+                </div>
+                <Button onClick={saveReview} disabled={saving || !reviewForm.overallRating} className="w-full">
+                  <Save className="w-4 h-4 mr-2" />{saving ? 'Saving Review...' : 'Save Review'}
+                </Button>
+                <SectionTitle icon={Award} title={`Review History (${data?.reviews?.length || 0})`} />
+                {!data?.reviews?.length ? (
+                  <p className="text-sm text-muted-foreground">No reviews have been added yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {data.reviews.map(review => (
+                      <Card key={review.id}>
+                        <CardContent className="p-4 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <StarRating value={review.rating} />
+                            <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm">{review.remarks || 'No remarks provided.'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Rated by <span className="font-medium text-foreground">{review.reviewer?.name || 'Staff member'}</span>
+                            {review.reviewer?.role && ` · ${review.reviewer.role.replace(/_/g, ' ')}`}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
         ) : (
           <Tabs value={tab} onValueChange={setTab} className="flex flex-col h-full">
             <TabsList className="flex-wrap h-auto gap-1 mx-6 mt-4 justify-start bg-transparent border-b rounded-none pb-0">
@@ -475,6 +653,16 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
 
               {/* ── PERSONAL ── */}
               <TabsContent value="personal" className="space-y-4 mt-0">
+                {adminAccess && (
+                  <>
+                    <SectionTitle icon={User} title="Account Information" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div><Label>Name</Label><Input value={accountForm.name} onChange={event => setAccountForm({ ...accountForm, name: event.target.value })} /></div>
+                      <div><Label>Email</Label><Input type="email" value={accountForm.email} onChange={event => setAccountForm({ ...accountForm, email: event.target.value })} /></div>
+                      <div><Label>Phone</Label><Input value={accountForm.phone} onChange={event => setAccountForm({ ...accountForm, phone: event.target.value })} /></div>
+                    </div>
+                  </>
+                )}
                 <SectionTitle icon={User} title="Personal Information" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><Label>Date of Birth</Label><Input type="date" value={personalForm.dateOfBirth} onChange={e => setPersonalForm({ ...personalForm, dateOfBirth: e.target.value })} /></div>
@@ -508,8 +696,8 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
                 <SectionTitle icon={Briefcase} title="Employment Details" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><Label>Employee Code</Label><Input value={employmentForm.employeeCode} onChange={e => setEmploymentForm({ ...employmentForm, employeeCode: e.target.value })} /></div>
-                  <div><Label>Designation</Label><Input value={employmentForm.designation} onChange={e => setEmploymentForm({ ...employmentForm, designation: e.target.value })} /></div>
-                  <div><Label>Phone</Label><Input value={employmentForm.phone} onChange={e => setEmploymentForm({ ...employmentForm, phone: e.target.value })} /></div>
+                  <div><Label>Designation</Label><Input value={adminAccess ? accountForm.designation : employmentForm.designation} onChange={e => adminAccess ? setAccountForm({ ...accountForm, designation: e.target.value }) : setEmploymentForm({ ...employmentForm, designation: e.target.value })} /></div>
+                  <div><Label>Phone</Label><Input value={adminAccess ? accountForm.phone : employmentForm.phone} onChange={e => adminAccess ? setAccountForm({ ...accountForm, phone: e.target.value }) : setEmploymentForm({ ...employmentForm, phone: e.target.value })} /></div>
                   <div><Label>Employment Type</Label>
                     <Select value={employmentForm.employmentType} onValueChange={v => setEmploymentForm({ ...employmentForm, employmentType: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -678,6 +866,28 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
                   <Textarea rows={4} value={reviewForm.reviewRemarks} onChange={e => setReviewForm({ ...reviewForm, reviewRemarks: e.target.value })} placeholder="Performance summary, achievements, areas of improvement..." />
                 </div>
                 <Button onClick={saveReview} disabled={saving} className="w-full"><Save className="w-4 h-4 mr-2" />Save Review</Button>
+                {(adminAccess || readOnly) && (
+                  <div className="space-y-3 pt-3">
+                    <SectionTitle icon={Award} title={`Review History (${data?.reviews?.length || 0})`} />
+                    {!data?.reviews?.length ? (
+                      <p className="text-sm text-muted-foreground">No reviews have been added yet.</p>
+                    ) : data.reviews.map(review => (
+                      <Card key={review.id}>
+                        <CardContent className="space-y-2 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <StarRating value={review.rating} />
+                            <span className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm">{review.remarks || 'No remarks provided.'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Rated by <span className="font-medium text-foreground">{review.reviewer?.name || 'Staff member'}</span>
+                            {review.reviewer?.role && ` · ${review.reviewer.role.replace(/_/g, ' ')}`}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
 
             </div>

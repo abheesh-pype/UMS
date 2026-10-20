@@ -121,7 +121,6 @@ export function getOpsNavItems(isSubDeptManager: boolean) {
     { id: 'pending_verification', label: 'Pending Verification' },
     { id: 'program_allocations', label: 'Program Allocations' },
     { id: 'enrollment_review', label: 'Enrollment Review' },
-    { id: 'status_requests', label: 'Status Requests' },
     { id: 'sessions', label: 'Admission Sessions' },
     { id: 'marks', label: 'Internal Marks' },
     { id: 'center_admissions', label: 'Centers Admissions' },

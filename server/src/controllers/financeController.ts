@@ -241,6 +241,7 @@ export const approveExpense = asyncHandler(async (req: AuthRequest, res: Respons
 // Targets
 export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) => {
   const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  const isFinanceAdmin = req.user.role === 'finance_admin';
   let departmentId = req.user.departmentId || req.user.department?.id;
   if (!canViewAll && !departmentId && req.user.role === 'finance_admin') {
     const financeDepartment = await prisma.department.findFirst({
@@ -258,12 +259,13 @@ export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) =
   const targets = await prisma.target.findMany({
     where: {
       organizationId: req.user.organizationId,
-      ...(!canViewAll ? {
+      ...(!canViewAll && isFinanceAdmin ? {
         OR: [
           { employeeId: req.user.id },
           ...(departmentId ? [{ departmentId }] : []),
         ],
       } : {}),
+      ...(!canViewAll && !isFinanceAdmin ? { employeeId: req.user.id } : {}),
     },
     include: {
       department: { select: { id: true, name: true, type: true } },
@@ -284,8 +286,14 @@ export const getTargets = asyncHandler(async (req: AuthRequest, res: Response) =
   res.json({ success: true, count: mapped.length, data: mapped });
 });
 export const getTarget = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const target = await prisma.target.findUnique({
-    where: { id: req.params.id },
+  const canViewAll = ['ceo', 'org_admin', 'superadmin', 'university_admin'].includes(req.user.role);
+  const isFinanceAdmin = req.user.role === 'finance_admin';
+  const target = await prisma.target.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      ...(!canViewAll && !isFinanceAdmin ? { employeeId: req.user.id } : {}),
+    },
     include: {
       department: { select: { id: true, name: true, type: true } },
       employee: {

@@ -57,6 +57,7 @@ import {
   verifyCenter,
   getProgramAllocations,
   allocateProgram,
+  updateProgramAllocationStatus,
   removeAllocation,
   getUniversityAllocations,
   allocateUniversity,
@@ -182,6 +183,7 @@ router.route('/announcements/:id')
 router.route('/centers/:id/allocations')
   .get(authorize('ops_admin', 'ops_sub_admin', 'employee'), getProgramAllocations)
   .post(authorize('ops_admin', 'ops_sub_admin', 'employee'), allocateProgram);
+router.put('/centers/:id/allocations/:allocId', authorize('ops_admin', 'ops_sub_admin', 'employee'), updateProgramAllocationStatus);
 router.delete('/centers/:id/allocations/:allocId', authorize('ops_admin', 'ops_sub_admin', 'employee'), removeAllocation);
 
 // Onboarding — university allocation
