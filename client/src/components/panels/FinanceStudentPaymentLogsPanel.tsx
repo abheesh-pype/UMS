@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, Plus, Receipt, IndianRupee } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Search, ChevronDown, ChevronUp, Plus, Receipt, Pencil, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 
+interface StudentFeeReceipt {
+  id: string;
+  amount: number;
+  paymentMode: string;
+  referenceNo?: string | null;
+  remarks?: string | null;
+  receiptDate: string;
+}
+
 export function FinanceStudentPaymentLogsPanel() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +26,7 @@ export function FinanceStudentPaymentLogsPanel() {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
   // Dialog states
-  const [receiptDialog, setReceiptDialog] = useState<{ open: boolean, enrId: string | null }>({ open: false, enrId: null });
+  const [receiptDialog, setReceiptDialog] = useState<{ open: boolean, enrId: string | null, receiptId?: string }>({ open: false, enrId: null });
   const [extraFeeDialog, setExtraFeeDialog] = useState<{ open: boolean, enrId: string | null }>({ open: false, enrId: null });
   
   // Forms
@@ -60,13 +69,51 @@ export function FinanceStudentPaymentLogsPanel() {
   const handleRecordReceipt = async () => {
     if (!receiptDialog.enrId) return;
     try {
-      await api.post(`/finance/student-payments/${receiptDialog.enrId}/receipt`, receiptForm);
-      toast.success('Receipt recorded successfully');
+      if (receiptDialog.receiptId) {
+        await api.put(`/finance/student-payments/${receiptDialog.enrId}/receipts/${receiptDialog.receiptId}`, receiptForm);
+        toast.success('Receipt updated successfully');
+      } else {
+        await api.post(`/finance/student-payments/${receiptDialog.enrId}/receipt`, receiptForm);
+        toast.success('Receipt recorded successfully');
+      }
       setReceiptDialog({ open: false, enrId: null });
       setReceiptForm({ amount: '', paymentMode: 'Bank Transfer', referenceNo: '', remarks: '', receiptDate: new Date().toISOString().split('T')[0] });
       fetchLogs();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to record receipt');
+    }
+  };
+
+  const handleEditReceipt = (enrId: string, receipt: StudentFeeReceipt) => {
+    setReceiptForm({
+      amount: String(receipt.amount),
+      paymentMode: receipt.paymentMode || 'Bank Transfer',
+      referenceNo: receipt.referenceNo || '',
+      remarks: receipt.remarks || '',
+      receiptDate: String(receipt.receiptDate || '').slice(0, 10)
+    });
+    setReceiptDialog({ open: true, enrId, receiptId: receipt.id });
+  };
+
+  const openRecordReceipt = (enrId: string) => {
+    setReceiptForm({
+      amount: '',
+      paymentMode: 'Bank Transfer',
+      referenceNo: '',
+      remarks: '',
+      receiptDate: new Date().toISOString().split('T')[0]
+    });
+    setReceiptDialog({ open: true, enrId });
+  };
+
+  const handleDeleteReceipt = async (enrId: string, receiptId: string) => {
+    if (!confirm('Delete this receipt? The invoice payment balance will also be updated.')) return;
+    try {
+      await api.delete(`/finance/student-payments/${enrId}/receipts/${receiptId}`);
+      toast.success('Receipt deleted successfully');
+      fetchLogs();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to delete receipt');
     }
   };
 
@@ -85,6 +132,16 @@ export function FinanceStudentPaymentLogsPanel() {
 
   const toggleRow = (id: string) => {
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const formatBillingCycle = (billingCycle?: string) => {
+    if (!billingCycle) return 'Not specified';
+    const normalizedCycle = billingCycle.toLowerCase().replace(/[_-]/g, ' ');
+    if (normalizedCycle.includes('semester')) return 'Per semester';
+    if (normalizedCycle.includes('year')) return 'Per year';
+    if (normalizedCycle.includes('month')) return 'Per month';
+    if (normalizedCycle.includes('one time')) return 'One time';
+    return billingCycle.replace(/[_-]/g, ' ');
   };
 
   return (
@@ -173,10 +230,11 @@ export function FinanceStudentPaymentLogsPanel() {
                           {log.program?.name}
                           {log.program?.billingCycle && (
                             <span className="text-xs text-slate-500 ml-1">
-                              ({log.program.billingCycle === 'per_semester' ? 'Semester' : log.program.billingCycle === 'per_year' || log.program.billingCycle === 'yearly' ? 'Yearly' : log.program.billingCycle === 'one_time' ? 'One Time' : log.program.billingCycle})
+                              ({formatBillingCycle(log.program.billingCycle)})
                             </span>
                           )}
                         </p>
+                        {log.sessionName && <p className="text-xs text-slate-500">{log.sessionName}</p>}
                       </div>
                       <div className="col-span-1 text-right font-semibold">₹{log.totalFee?.toLocaleString()}</div>
                       <div className="col-span-2 text-right font-medium text-green-600">₹{log.received?.toLocaleString()}</div>
@@ -201,7 +259,7 @@ export function FinanceStudentPaymentLogsPanel() {
                             <Button size="sm" variant="outline" onClick={() => setExtraFeeDialog({ open: true, enrId: log.id })}>
                               <Plus className="w-3.5 h-3.5 mr-1" /> Add Extra Fee
                             </Button>
-                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setReceiptDialog({ open: true, enrId: log.id })}>
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => openRecordReceipt(log.id)}>
                               <Receipt className="w-3.5 h-3.5 mr-1" /> Record Receipt
                             </Button>
                           </div>
@@ -215,8 +273,71 @@ export function FinanceStudentPaymentLogsPanel() {
                             </div>
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between"><span className="text-slate-500">Amount:</span><span className="font-semibold">₹{log.baseFee?.toLocaleString()}</span></div>
+                              <div className="flex justify-between"><span className="text-slate-500">Extra fees:</span><span className="font-semibold">₹{(log.totalFee - log.baseFee)?.toLocaleString()}</span></div>
+                              <div className="flex justify-between border-t pt-2"><span className="text-slate-700 font-medium">Total payable:</span><span className="font-bold">₹{log.payable?.toLocaleString()}</span></div>
+                              <div className="flex justify-between"><span className="text-slate-500">Paid:</span><span className="font-semibold text-green-700">₹{log.received?.toLocaleString()}</span></div>
+                              <div className="flex justify-between"><span className="text-slate-500">Balance due:</span><span className="font-semibold text-orange-700">₹{log.balance?.toLocaleString()}</span></div>
                             </div>
                           </div>
+
+                          <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 shadow-sm">
+                            <div className="flex justify-between items-start mb-3">
+                              <Badge variant="outline" className="bg-white text-indigo-700 uppercase text-[10px] tracking-wider border-indigo-200">
+                                Payment Period
+                              </Badge>
+                              <span className="text-[10px] text-slate-500">
+                                {log.sessionName || 'Academic period not set'}
+                              </span>
+                            </div>
+                            <p className="text-sm font-semibold text-slate-800">
+                              {formatBillingCycle(log.program?.billingCycle)}
+                            </p>
+                            {log.periodPayments?.length > 0 ? (
+                              <div className="mt-3 space-y-2 border-t border-indigo-100 pt-3">
+                                {log.periodPayments.map((periodPayment: any) => (
+                                  <div key={periodPayment.id} className="flex items-start justify-between gap-3 text-xs">
+                                    <div>
+                                      <p className="font-medium text-slate-700">{periodPayment.semesterOrYear}</p>
+                                      <p className="text-slate-500">
+                                        {periodPayment.paidAt
+                                          ? new Date(periodPayment.paidAt).toLocaleDateString()
+                                          : periodPayment.createdAt
+                                            ? new Date(periodPayment.createdAt).toLocaleDateString()
+                                            : 'Date not recorded'}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="font-semibold text-slate-800">₹{Number(periodPayment.amount || 0).toLocaleString()}</p>
+                                      <Badge variant="outline" className={
+                                        periodPayment.status?.toLowerCase() === 'paid'
+                                          ? 'mt-1 bg-green-50 text-green-700 border-green-200'
+                                          : 'mt-1 bg-amber-50 text-amber-700 border-amber-200'
+                                      }>
+                                        {periodPayment.status || 'Pending'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-500 mt-2">
+                                No semester, year, or month-specific fee records found.
+                              </p>
+                            )}
+                          </div>
+
+                          {log.walletPayment && (
+                            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 shadow-sm">
+                              <div className="flex justify-between items-start mb-3">
+                                <Badge variant="outline" className="bg-white text-blue-700 uppercase text-[10px] tracking-wider border-blue-200">Admission Payment</Badge>
+                                <span className="text-[10px] text-slate-400">{new Date(log.walletPayment.date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between"><span className="text-slate-500">Received:</span><span className="font-semibold text-blue-700">₹{log.walletPayment.amount?.toLocaleString()}</span></div>
+                                <div className="text-xs text-slate-600">Paid by study centre wallet</div>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Extra Fees */}
                           {log.extraFees?.map((fee: any, idx: number) => (
@@ -233,7 +354,7 @@ export function FinanceStudentPaymentLogsPanel() {
                           ))}
 
                           {/* Receipts */}
-                          {log.receipts?.map((receipt: any) => (
+                          {log.receipts?.map((receipt: StudentFeeReceipt) => (
                             <div key={receipt.id} className="bg-green-50/50 border border-green-100 rounded-xl p-4 shadow-sm">
                               <div className="flex justify-between items-start mb-3">
                                 <Badge variant="outline" className="bg-white text-green-600 uppercase text-[10px] tracking-wider border-green-200">Receipt</Badge>
@@ -243,9 +364,23 @@ export function FinanceStudentPaymentLogsPanel() {
                                 <div className="flex justify-between"><span className="text-slate-500">Received:</span><span className="font-semibold text-green-700">₹{receipt.amount?.toLocaleString()}</span></div>
                                 <div className="flex justify-between"><span className="text-slate-500">Mode:</span><span className="text-slate-700 truncate ml-2">{receipt.paymentMode}</span></div>
                                 {receipt.referenceNo && <div className="flex justify-between"><span className="text-slate-500">Ref:</span><span className="text-slate-700 truncate ml-2 text-xs">{receipt.referenceNo}</span></div>}
+                                {receipt.remarks && <div className="text-xs text-slate-600">{receipt.remarks}</div>}
+                                <div className="flex justify-end gap-1 pt-2 border-t border-green-100">
+                                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleEditReceipt(log.id, receipt)}>
+                                    <Pencil className="w-3 h-3 mr-1" /> Update
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-red-600 hover:text-red-700" onClick={() => handleDeleteReceipt(log.id, receipt.id)}>
+                                    <Trash2 className="w-3 h-3 mr-1" /> Delete
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                           ))}
+                          {(!log.receipts || log.receipts.length === 0) && (
+                            <div className="bg-white border border-dashed rounded-xl p-4 text-sm text-slate-500 flex items-center justify-center">
+                              No recorded receipts yet
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -261,7 +396,7 @@ export function FinanceStudentPaymentLogsPanel() {
       <Dialog open={receiptDialog.open} onOpenChange={(val) => setReceiptDialog({ ...receiptDialog, open: val })}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record Receipt</DialogTitle>
+            <DialogTitle>{receiptDialog.receiptId ? 'Update Receipt' : 'Record Receipt'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -295,7 +430,7 @@ export function FinanceStudentPaymentLogsPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiptDialog({ open: false, enrId: null })}>Cancel</Button>
-            <Button onClick={handleRecordReceipt}>Save Receipt</Button>
+            <Button onClick={handleRecordReceipt}>{receiptDialog.receiptId ? 'Update Receipt' : 'Save Receipt'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

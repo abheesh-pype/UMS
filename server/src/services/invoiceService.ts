@@ -311,8 +311,10 @@ export const generateInvoiceForEnrollment = async (
     }
   }
 
-  // Fallback if no items configured
-  if (items.length === 0) {
+  const extraFees = Array.isArray(enrollment.extraFees) ? enrollment.extraFees : [];
+
+  // Use the legacy fallback only when the enrollment has no explicit or extra fees.
+  if (items.length === 0 && extraFees.length === 0) {
     const feeAmt = enrollment.totalFee || 25000;
     items.push({
       description: `Course Enrollment Fee - ${program?.name || 'Academic Course'}`,
@@ -324,6 +326,20 @@ export const generateInvoiceForEnrollment = async (
     });
   }
 
+  extraFees.forEach((fee: any, index: number) => {
+    const amount = Number(fee.amount) || 0;
+    if (amount <= 0) return;
+    items.push({
+      description: fee.reason || 'Additional Fee',
+      category: 'extra_fee',
+      quantity: 1,
+      rate: amount,
+      taxRate: taxRatePercent,
+      amount,
+      extraFeeId: fee.id || `legacy-extra-fee-${index}`
+    });
+  });
+
   subtotal = items.reduce((sum, item) => sum + item.amount, 0);
 
   // If enrollment.totalFee is explicitly recorded and differs, ensure consistency
@@ -333,8 +349,12 @@ export const generateInvoiceForEnrollment = async (
   }
 
   let totalPayable = subtotal + taxAmount;
-  if (enrollment.totalFee && Math.abs(enrollment.totalFee - totalPayable) < 5) {
-    totalPayable = enrollment.totalFee;
+  const recordedEnrollmentFee = Number(enrollment.totalFee || 0) + extraFees.reduce(
+    (sum: number, fee: any) => sum + (Number(fee.amount) || 0),
+    0
+  );
+  if (recordedEnrollmentFee && Math.abs(recordedEnrollmentFee - totalPayable) < 5) {
+    totalPayable = recordedEnrollmentFee;
   }
 
   // 3. Tax breakdown (CGST + SGST or IGST)
@@ -485,16 +505,19 @@ export const generateInvoiceForEnrollment = async (
           invoiceId: invoice.id,
           amount: Number(r.amount),
           method: r.paymentMode || 'Direct Deposit',
+          studentFeeReceiptId: r.id,
           referenceNo: r.referenceNo || null,
           receiptNo,
           receiptDate: r.receiptDate || new Date(),
           receivedBy: r.recordedBy || defaultReceiverId,
           receivedAt: r.receiptDate || new Date(),
-          notes: r.remarks || 'Receipt synced from enrollment approval'
+          notes: r.remarks || `Receipt synced from enrollment approval (${r.id})`
         }
       });
     }
-  } else if (initialWalletPayment > 0 && defaultReceiverId) {
+  }
+
+  if (initialWalletPayment > 0 && defaultReceiverId) {
     const receiptNo = await generateNextReceiptNumber(enrollment.organizationId);
     await prisma.paymentEntry.create({
       data: {
@@ -635,25 +658,10 @@ export const recordPaymentForInvoice = async (
     receiverUserId = fallbackUser?.id || paymentData.receivedBy;
   }
 
-  // 2. Create PaymentEntry
-  const payment = await prisma.paymentEntry.create({
-    data: {
-      organizationId: invoice.organizationId,
-      invoiceId: invoice.id,
-      amount: paymentAmount,
-      method: paymentData.method || 'Online Transfer',
-      referenceNo: paymentData.referenceNo || null,
-      receiptNo,
-      receiptDate: receivedAtDate,
-      receivedBy: receiverUserId,
-      receivedAt: receivedAtDate,
-      notes: paymentData.notes || null
-    }
-  });
-
-  // 3. If linked to an enrollment, also create StudentFeeReceipt so the legacy view stays in sync
+  // If linked to an enrollment, create the legacy receipt and link it to this invoice payment.
+  let studentFeeReceiptId: string | undefined;
   if (invoice.enrollmentId) {
-    await prisma.studentFeeReceipt.create({
+    const studentFeeReceipt = await prisma.studentFeeReceipt.create({
       data: {
         organizationId: invoice.organizationId,
         enrollmentId: invoice.enrollmentId,
@@ -665,9 +673,25 @@ export const recordPaymentForInvoice = async (
         recordedBy: receiverUserId
       }
     });
+    studentFeeReceiptId = studentFeeReceipt.id;
   }
 
-  // 4. Recalculate invoice balance
+  const payment = await prisma.paymentEntry.create({
+    data: {
+      organizationId: invoice.organizationId,
+      invoiceId: invoice.id,
+      studentFeeReceiptId,
+      amount: paymentAmount,
+      method: paymentData.method || 'Online Transfer',
+      referenceNo: paymentData.referenceNo || null,
+      receiptNo,
+      receiptDate: receivedAtDate,
+      receivedBy: receiverUserId,
+      receivedAt: receivedAtDate,
+      notes: paymentData.notes || null
+    }
+  });
+
   const updatedInvoice = await recalculateInvoiceBalance(invoice.id);
 
   return {

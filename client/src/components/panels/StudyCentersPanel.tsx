@@ -809,7 +809,13 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Payment Status</p>
-                  <Badge className="mt-2">{selectedCenter.status || 'Not provided'}</Badge>
+                  <Badge className="mt-2">
+                    {selectedCenter.status === 'finance_resubmitted'
+                      ? 'Resubmitted to Finance'
+                      : selectedCenter.status === 'finance_rejected' || selectedCenter.status === 'rejected_from_finance'
+                        ? 'Rejected from Finance'
+                        : (selectedCenter.status || 'Not provided').replace(/_/g, ' ')}
+                  </Badge>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Submitted On</p>
@@ -1176,6 +1182,8 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                               || c.status === 'finance_rejected'
                               || c.onboardingStatus?.code === 'finance_rejected'
                               || (c.status === 'rejected' && c.verifiedBy && c.paymentRemarks);
+                            const isFinanceResubmitted = c.status === 'finance_resubmitted'
+                              || c.onboardingStatus?.code === 'finance_resubmitted';
                             const isOpsRejected = (c.status === 'ops_rejected'
                               || (c.status === 'rejected' && !isFinanceRejected)
                               || c.onboardingStatus?.code === 'ops_rejected'
@@ -1225,11 +1233,13 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                                   "text-xs",
                                   isOpsRejected && "bg-destructive/10 text-destructive border-destructive/30",
                                   isFinanceRejected && "bg-destructive/10 text-destructive border-destructive/30",
-                                  c.status === 'ops_resubmitted' && "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                  (c.status === 'ops_resubmitted' || isFinanceResubmitted) && "bg-blue-500/10 text-blue-600 border-blue-500/30"
                                 )}>
                                   {c.onboardingStatus?.name || (
                                     isFinanceRejected
                                       ? 'Rejected from Finance'
+                                      : isFinanceResubmitted
+                                      ? 'Resubmitted to Finance'
                                       : isOpsRejected
                                       ? 'Rejected from Operation'
                                       : c.status === 'ops_resubmitted'

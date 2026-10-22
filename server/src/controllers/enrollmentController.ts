@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
+import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -533,17 +534,52 @@ export const submitMyCenterPayment = asyncHandler(async (req: AuthRequest, res: 
     return;
   }
 
+  const existingCenter = await prisma.studyCenter.findFirst({
+    where: {
+      id: centerId,
+      organizationId: req.user.organizationId
+    },
+    include: { onboardingStatus: true }
+  });
+  if (!existingCenter) {
+    res.status(404).json({ success: false, message: 'Study center not found' });
+    return;
+  }
+
+  const currentStatus = existingCenter.onboardingStatus?.code || existingCenter.status;
+  if (!['pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance', 'rejected'].includes(currentStatus)) {
+    res.status(400).json({ success: false, message: 'Payment proof cannot be submitted for the current study center status' });
+    return;
+  }
+
+  const targetStatus = await getOnboardingStatusByCode('pending_payment');
+  const remarks = typeof req.body.remarks === 'string' ? req.body.remarks.trim() : '';
+  const statusHistory = Array.isArray(existingCenter.statusHistory) ? existingCenter.statusHistory as any[] : [];
   const center = await prisma.studyCenter.update({
-    where: { id: centerId },
+    where: { id: existingCenter.id },
     data: {
+      onboardingStatusId: targetStatus?.id || existingCenter.onboardingStatusId,
       status: 'pending_payment' as any,
       paymentProof: {
         url: `/uploads/${req.file.filename}`,
         uploadedAt: new Date().toISOString(),
-        remarks: req.body.remarks || ''
+        remarks
       },
-      paymentRemarks: req.body.remarks || null
-    }
+      statusHistory: [
+        ...statusHistory,
+        {
+          status: targetStatus?.code || 'pending_payment',
+          statusName: targetStatus?.name || 'Pending Finance Verification',
+          stage: targetStatus?.stage || 'finance',
+          state: targetStatus?.state || 'pending',
+          actorId: req.user.id,
+          actorName: req.user.name,
+          remarks: remarks || 'Payment proof submitted by study center',
+          timestamp: new Date().toISOString()
+        }
+      ]
+    },
+    include: { onboardingStatus: true }
   });
   res.json({ success: true, message: 'Payment submitted', data: center });
 });

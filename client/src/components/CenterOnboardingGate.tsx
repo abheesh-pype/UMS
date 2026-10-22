@@ -117,15 +117,15 @@ export function CenterOnboardingGate({ children }: Props) {
           <Step label="Registration" done />
           <div className="flex-1 h-px bg-border mx-2" />
           <Step
-            label={['ops_verified', 'pending_payment', 'active'].includes(centerStatus) ? 'Ops Approved' : 'Ops Review'}
-            done={['ops_verified', 'pending_payment', 'active'].includes(centerStatus)}
+            label={['ops_verified', 'pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance', 'active'].includes(centerStatus) ? 'Ops Approved' : 'Ops Review'}
+            done={['ops_verified', 'pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance', 'active'].includes(centerStatus)}
             active={centerStatus === 'pending_verification'}
           />
           <div className="flex-1 h-px bg-border mx-2" />
           <Step
             label="Payment"
             done={centerStatus === 'active'}
-            active={centerStatus === 'pending_payment' || centerStatus === 'ops_verified'}
+            active={['pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance', 'ops_verified'].includes(centerStatus)}
           />
           <div className="flex-1 h-px bg-border mx-2" />
           <Step label="Active" done={centerStatus === 'active'} />
@@ -160,21 +160,40 @@ export function CenterOnboardingGate({ children }: Props) {
           </Card>
         )}
 
-        {centerStatus === 'pending_payment' && (
+        {['pending_payment', 'finance_resubmitted', 'finance_rejected', 'rejected_from_finance'].includes(centerStatus || '') && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-primary" />
                 Authorization Fee Payment
               </CardTitle>
+              <Badge variant="outline" className="w-fit">
+                {centerStatus === 'finance_resubmitted'
+                  ? 'Resubmitted to Finance'
+                  : ['finance_rejected', 'rejected_from_finance'].includes(centerStatus || '')
+                    ? 'Rejected by Finance'
+                    : 'Pending Finance Verification'}
+              </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
               {data?.paymentProof ? (
                 <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 space-y-3">
                   <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
                     <Clock className="w-4 h-4" />
-                    <span className="font-medium text-sm">Payment proof submitted — awaiting finance verification</span>
+                    <span className="font-medium text-sm">
+                      {['finance_rejected', 'rejected_from_finance'].includes(centerStatus || '')
+                        ? 'Payment proof was rejected by Finance'
+                        : centerStatus === 'finance_resubmitted'
+                          ? 'Resubmitted to Finance — awaiting verification'
+                          : 'Payment proof submitted — awaiting finance verification'}
+                    </span>
                   </div>
+                  {['finance_rejected', 'rejected_from_finance'].includes(centerStatus || '') && data?.paymentRemarks && (
+                    <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                      <p className="font-semibold">Finance rejection reason</p>
+                      <p>{data.paymentRemarks}</p>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Submitted on {new Date(data.paymentProof.uploadedAt).toLocaleDateString()}
                   </p>
@@ -198,11 +217,13 @@ export function CenterOnboardingGate({ children }: Props) {
                       </Dialog>
                     </>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={openProofPicker}>
-                      Re-upload image
-                    </Button>
-                  </div>
+                  {centerStatus !== 'finance_rejected' && centerStatus !== 'rejected_from_finance' && (
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={openProofPicker}>
+                        Re-upload image
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -240,7 +261,7 @@ export function CenterOnboardingGate({ children }: Props) {
                 </>
               )}
 
-              {(showReuploadForm || !data?.paymentProof) && (
+              {(showReuploadForm || !data?.paymentProof || centerStatus === 'finance_rejected' || centerStatus === 'rejected_from_finance' || centerStatus === 'finance_resubmitted') && (
                 <form onSubmit={(e) => handlePaymentSubmit(e, !!data?.paymentProof)} className="space-y-3">
                   <div>
                     <label className="text-sm font-medium block mb-1">Payment Screenshot / Proof *</label>

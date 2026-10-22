@@ -1049,9 +1049,10 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
     } else {
       where.OR = [
         {
-          status: { in: ['pending_payment', 'active', 'inactive', 'suspended'] },
+          status: { in: ['pending_payment', 'finance_resubmitted', 'active', 'inactive', 'suspended'] },
           verifiedBy: { not: null },
         },
+        { onboardingStatus: { code: 'finance_resubmitted' } },
         {
           status: 'rejected',
           verifiedBy: { not: null },
@@ -1572,6 +1573,10 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
     res.status(400).json({ success: false, message: 'Remarks are required when rejecting a center' });
     return;
   }
+  if (action === 'resubmit' && !req.file) {
+    res.status(400).json({ success: false, message: 'A replacement payment proof is required when resubmitting to Finance' });
+    return;
+  }
 
   const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
   const isAssignedOperationsUser = req.user.role === 'ops_sub_admin'
@@ -1669,8 +1674,12 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
     ],
   };
 
-  if (req.body.paymentProof) {
-    updateData.paymentProof = req.body.paymentProof;
+  if (req.file) {
+    updateData.paymentProof = {
+      url: `/uploads/${req.file.filename}`,
+      uploadedAt: new Date().toISOString(),
+      remarks: remarks?.trim() || ''
+    };
   }
 
   const center = await prisma.studyCenter.update({

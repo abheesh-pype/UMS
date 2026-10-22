@@ -30,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
 import { RecordInvoicePaymentModal } from '@/components/dialogs/RecordInvoicePaymentModal';
+import { toast } from 'sonner';
 
 export function InvoicesPanel() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -45,6 +46,7 @@ export function InvoicesPanel() {
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [invoicePartyFilter, setInvoicePartyFilter] = useState('all');
 
   // Modals
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<any | null>(null);
@@ -68,13 +70,14 @@ export function InvoicesPanel() {
   useEffect(() => {
     fetchInvoices();
     fetchCenters();
-  }, [statusFilter]);
+  }, [statusFilter, invoicePartyFilter]);
 
   const fetchInvoices = async () => {
     setLoading(true);
     try {
       const params: any = {};
       if (statusFilter !== 'all') params.status = statusFilter;
+      if (invoicePartyFilter !== 'all') params.party = invoicePartyFilter;
       if (search.trim()) params.search = search.trim();
 
       const res = await api.get('/finance/invoices', { params });
@@ -124,6 +127,15 @@ export function InvoicesPanel() {
       fetchInvoices();
     } catch (err: any) {
       console.error('Failed to recalculate balance:', err);
+    }
+  };
+
+  const handleOpenInvoice = async (invoice: any) => {
+    try {
+      const response = await api.get(`/finance/invoices/${invoice.id}`);
+      setSelectedInvoiceForPrint(response.data.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to load the latest invoice payment history');
     }
   };
 
@@ -238,14 +250,14 @@ export function InvoicesPanel() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-black tracking-tight text-slate-900">
-              Student Fee Invoices
+              Finance Invoices & Payment History
             </h1>
             <Badge variant="secondary" className="font-mono text-xs">
               Automated Billing
             </Badge>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Auto-generated upon enrollment approval with instant payment balance deduction and official receipt generation.
+            View student and study-centre invoices. Print or save an invoice as PDF to include its complete recorded payment history.
           </p>
         </div>
 
@@ -465,26 +477,35 @@ export function InvoicesPanel() {
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-muted/40 p-3 rounded-xl border">
-        {/* Status Filter Tabs */}
-        <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-auto">
-          <TabsList className="bg-background shadow-xs h-9">
-            <TabsTrigger value="all" className="text-xs px-3">
-              All ({summary.counts.all})
-            </TabsTrigger>
-            <TabsTrigger value="unpaid" className="text-xs px-3">
-              Unpaid ({summary.counts.unpaid})
-            </TabsTrigger>
-            <TabsTrigger value="partially_paid" className="text-xs px-3">
-              Partially Paid ({summary.counts.partially_paid})
-            </TabsTrigger>
-            <TabsTrigger value="paid" className="text-xs px-3">
-              Paid ({summary.counts.paid})
-            </TabsTrigger>
-            <TabsTrigger value="overdue" className="text-xs px-3 text-rose-700">
-              Overdue ({summary.counts.overdue})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex flex-col gap-2">
+          <Tabs value={invoicePartyFilter} onValueChange={setInvoicePartyFilter} className="w-auto">
+            <TabsList className="bg-background shadow-xs h-9">
+              <TabsTrigger value="all" className="text-xs px-3">All Invoices</TabsTrigger>
+              <TabsTrigger value="student" className="text-xs px-3">Students</TabsTrigger>
+              <TabsTrigger value="study_center" className="text-xs px-3">Study Centres</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-auto">
+            <TabsList className="bg-background shadow-xs h-9">
+              <TabsTrigger value="all" className="text-xs px-3">
+                All ({summary.counts.all})
+              </TabsTrigger>
+              <TabsTrigger value="unpaid" className="text-xs px-3">
+                Unpaid ({summary.counts.unpaid})
+              </TabsTrigger>
+              <TabsTrigger value="partially_paid" className="text-xs px-3">
+                Partially Paid ({summary.counts.partially_paid})
+              </TabsTrigger>
+              <TabsTrigger value="paid" className="text-xs px-3">
+                Paid ({summary.counts.paid})
+              </TabsTrigger>
+              <TabsTrigger value="overdue" className="text-xs px-3 text-rose-700">
+                Overdue ({summary.counts.overdue})
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
         {/* Search Input */}
         <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
@@ -572,6 +593,9 @@ export function InvoicesPanel() {
                         <Badge variant="outline" className="text-[10px] uppercase font-mono mt-1 px-1.5 py-0">
                           {inv.invoiceType || 'Tuition'}
                         </Badge>
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          {inv.payments?.length || 0} payment record{inv.payments?.length === 1 ? '' : 's'}
+                        </div>
                       </td>
 
                       {/* Student & Program */}
@@ -648,9 +672,9 @@ export function InvoicesPanel() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedInvoiceForPrint(inv)}
+                            onClick={() => handleOpenInvoice(inv)}
                             className="h-8 px-2 text-slate-700 hover:text-primary hover:bg-primary/10 gap-1 font-semibold text-xs"
-                            title="View & Print Official Invoice"
+                            title="Download invoice with complete payment history"
                           >
                             <Printer className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Invoice</span>
@@ -718,13 +742,19 @@ export function InvoicesPanel() {
           if (!open) setSelectedInvoiceForPay(null);
         }}
         invoice={selectedInvoiceForPay}
-        onSuccess={(updatedInvoice, receiptNo) => {
+        onSuccess={async (updatedInvoice, receiptNo) => {
           setSuccessToast({
             message: `Payment recorded successfully for Invoice #${selectedInvoiceForPay?.invoiceNo}!`,
             receiptNo
           });
           setTimeout(() => setSuccessToast(null), 6000);
-          fetchInvoices();
+          await fetchInvoices();
+          setSelectedInvoiceForPay(null);
+          if (updatedInvoice?.id && Array.isArray(updatedInvoice.payments)) {
+            setSelectedInvoiceForPrint(updatedInvoice);
+          } else if (selectedInvoiceForPay?.id) {
+            await handleOpenInvoice(selectedInvoiceForPay);
+          }
         }}
       />
     </div>

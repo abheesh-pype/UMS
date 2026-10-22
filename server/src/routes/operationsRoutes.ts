@@ -139,7 +139,7 @@ router.put('/examinations/:id/modules', authorize('org_admin', 'superadmin', 'op
 
 // Onboarding — document verification (must be before /centers/:id to avoid route conflict)
 router.get('/centers/pending-verification', authorize('ops_admin', 'ops_sub_admin', 'employee'), getPendingVerificationCenters);
-router.put('/centers/:id/verify', authorize('ops_admin', 'ops_sub_admin', 'employee'), verifyCenter);
+router.put('/centers/:id/verify', authorize('ops_admin', 'ops_sub_admin', 'employee'), upload.single('paymentProof'), verifyCenter);
 
 // Study Centers Bulk Import
 router.post('/centers/bulk-import', authorize('org_admin', 'superadmin', 'ops_admin'), bulkImportStudyCenters);

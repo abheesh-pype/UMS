@@ -31,6 +31,7 @@ import {
   updateAuthFee,
   getPendingPaymentCenters,
   assignFinanceCenter,
+  updateCenterPaymentProof,
   financeVerifyCenter,
   createStudyCenter,
   getIncomeExpenditureReport,
@@ -66,6 +67,8 @@ import {
 import {
   getStudentPaymentLogs,
   recordReceipt,
+  updateReceipt,
+  deleteReceipt,
   addExtraFee,
 } from '../controllers/financeStudentPaymentController.js';
 import {
@@ -140,6 +143,7 @@ router.put('/auth-fees/:id', authorize('finance_admin'), updateAuthFee);
 // Study Center Payment Verification & Creation
 router.get('/centers/pending-payment', authorize('finance_admin', 'finance_sub_admin'), getPendingPaymentCenters);
 router.put('/centers/:id/assign', authorize('finance_admin'), assignFinanceCenter);
+router.put('/centers/:id/payment-proof', authorize('finance_admin', 'finance_sub_admin'), upload.single('proofFile'), updateCenterPaymentProof);
 router.post('/centers', authorize('finance_admin', 'org_admin', 'superadmin'), createStudyCenter);
 router.put('/centers/:id/finance-verify', authorize('finance_admin', 'finance_sub_admin'), financeVerifyCenter);
 
@@ -159,6 +163,8 @@ router.get('/wallet-ledger', authorize('finance_admin'), getWalletLedger);
 // Student Payments (Finance)
 router.get('/student-payments', authorize('finance_admin'), getStudentPaymentLogs);
 router.post('/student-payments/:id/receipt', authorize('finance_admin'), recordReceipt);
+router.put('/student-payments/:id/receipts/:receiptId', authorize('finance_admin'), updateReceipt);
+router.delete('/student-payments/:id/receipts/:receiptId', authorize('finance_admin'), deleteReceipt);
 router.post('/student-payments/:id/extra-fee', authorize('finance_admin'), addExtraFee);
 
 // Finance Enrollment Review

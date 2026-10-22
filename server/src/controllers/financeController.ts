@@ -5,6 +5,13 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
+import {
+  calculateFinancialYear,
+  generateNextInvoiceNumber,
+  generateNextReceiptNumber,
+  recordPaymentForInvoice,
+  recalculateInvoiceBalance
+} from '../services/invoiceService.js';
 
 // Invoices
 export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -117,45 +124,106 @@ export const createPayment = asyncHandler(async (req: AuthRequest, res: Response
     return;
   }
 
-  const payment = await prisma.paymentEntry.create({
-    data: {
-      invoiceId,
-      amount: amount !== undefined ? parseFloat(amount) : 0,
-      method,
-      referenceNo,
-      receivedAt: rawReceivedAt ? new Date(rawReceivedAt) : undefined,
-      notes,
-      organizationId: req.user.organizationId,
-      receivedBy: req.user.id
-    }
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, organizationId: req.user.organizationId }
   });
-  res.status(201).json({ success: true, data: payment });
+  if (!invoice) {
+    res.status(404).json({ success: false, message: 'Invoice not found' });
+    return;
+  }
+
+  const result = await recordPaymentForInvoice(invoice.id, {
+    amount: Number(amount),
+    method,
+    referenceNo,
+    receivedAt: rawReceivedAt ? new Date(rawReceivedAt) : undefined,
+    notes,
+    receivedBy: req.user.id
+  });
+  res.status(201).json({ success: true, data: result.payment, receiptNo: result.receiptNo });
 });
 export const updatePayment = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const exists = await prisma.paymentEntry.findUnique({ where: { id: req.params.id } });
+  const exists = await prisma.paymentEntry.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
   if (!exists) {
     res.status(404).json({ success: false, message: 'Payment not found' });
     return;
   }
   const { invoiceId, amount, method, referenceNo, receivedAt, notes } = req.body;
-  const data: any = {};
-  if (invoiceId !== undefined) data.invoiceId = invoiceId;
-  if (amount !== undefined) data.amount = parseFloat(amount);
-  if (method !== undefined) data.method = method;
-  if (referenceNo !== undefined) data.referenceNo = referenceNo;
-  if (receivedAt !== undefined) data.receivedAt = new Date(receivedAt);
-  if (notes !== undefined) data.notes = notes;
+  if (amount !== undefined && (!Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
+    res.status(400).json({ success: false, message: 'Valid payment amount is required' });
+    return;
+  }
+  const nextInvoiceId = invoiceId ?? exists.invoiceId;
+  const nextInvoice = await prisma.invoice.findFirst({
+    where: { id: nextInvoiceId, organizationId: req.user.organizationId },
+    select: { id: true, enrollmentId: true }
+  });
+  if (!nextInvoice) {
+    res.status(404).json({ success: false, message: 'Invoice not found' });
+    return;
+  }
+  if (exists.studentFeeReceiptId) {
+    const receipt = await prisma.studentFeeReceipt.findUnique({
+      where: { id: exists.studentFeeReceiptId },
+      select: { enrollmentId: true }
+    });
+    if (receipt && nextInvoice.enrollmentId !== receipt.enrollmentId) {
+      res.status(400).json({ success: false, message: 'Student payment must stay linked to an invoice for the same enrollment' });
+      return;
+    }
+  }
 
-  const payment = await prisma.paymentEntry.update({ where: { id: req.params.id }, data });
+  const data: any = {};
+  const receiptData: any = {};
+  if (invoiceId !== undefined) data.invoiceId = nextInvoiceId;
+  if (amount !== undefined) {
+    data.amount = parseFloat(amount);
+    receiptData.amount = parseFloat(amount);
+  }
+  if (method !== undefined) {
+    data.method = method;
+    receiptData.paymentMode = method;
+  }
+  if (referenceNo !== undefined) {
+    data.referenceNo = referenceNo;
+    receiptData.referenceNo = referenceNo;
+  }
+  if (receivedAt !== undefined) {
+    data.receivedAt = new Date(receivedAt);
+    receiptData.receiptDate = new Date(receivedAt);
+  }
+  if (notes !== undefined) {
+    data.notes = notes;
+    receiptData.remarks = notes;
+  }
+
+  const payment = await prisma.paymentEntry.update({
+    where: { id: req.params.id },
+    data,
+    include: { studentFeeReceipt: true }
+  });
+  if (payment.studentFeeReceipt && Object.keys(receiptData).length > 0) {
+    await prisma.studentFeeReceipt.update({
+      where: { id: payment.studentFeeReceipt.id },
+      data: receiptData
+    });
+  }
+  await recalculateInvoiceBalance(exists.invoiceId);
+  if (nextInvoiceId !== exists.invoiceId) await recalculateInvoiceBalance(nextInvoiceId);
   res.json({ success: true, data: payment });
 });
 export const deletePayment = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const exists = await prisma.paymentEntry.findUnique({ where: { id: req.params.id } });
+  const exists = await prisma.paymentEntry.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
   if (!exists) {
     res.status(404).json({ success: false, message: 'Payment not found' });
     return;
   }
   await prisma.paymentEntry.delete({ where: { id: req.params.id } });
+  await recalculateInvoiceBalance(exists.invoiceId);
   res.json({ success: true, data: {} });
 });
 
@@ -728,6 +796,57 @@ export const assignFinanceCenter = asyncHandler(async (req: AuthRequest, res: Re
   res.json({ success: true, data: updatedCenter });
 });
 
+export const updateCenterPaymentProof = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, message: 'Payment proof file is required' });
+    return;
+  }
+
+  const center = await prisma.studyCenter.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      OR: [
+        { onboardingStatus: { stage: 'finance', state: { in: ['pending', 'resubmitted'] } } },
+        { status: { in: ['pending_payment', 'finance_resubmitted'] } }
+      ]
+    },
+    include: { onboardingStatus: true }
+  });
+  if (!center) {
+    res.status(404).json({ success: false, message: 'Pending finance study center not found' });
+    return;
+  }
+
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isFinanceAssignee = req.user.role === 'finance_sub_admin'
+    || (req.user.role === 'employee' && departmentType === 'finance');
+  if (isFinanceAssignee && center.assignedFinanceUserId !== req.user.id) {
+    res.status(403).json({ success: false, message: 'This study center is not assigned to you' });
+    return;
+  }
+
+  const paymentProof = {
+    url: `/uploads/${req.file.filename}`,
+    uploadedAt: new Date().toISOString(),
+    remarks: typeof req.body.remarks === 'string' ? req.body.remarks.trim() : ''
+  };
+  const updatedCenter = await prisma.studyCenter.update({
+    where: { id: center.id },
+    data: {
+      paymentProof,
+      paymentRemarks: paymentProof.remarks || null
+    },
+    include: {
+      onboardingStatus: true,
+      verifier: { select: { id: true, name: true, email: true } },
+      assignedFinanceUser: { select: { id: true, name: true, role: true } }
+    }
+  });
+
+  res.json({ success: true, data: updatedCenter });
+});
+
 export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
   if (!['approve', 'reject'].includes(action)) {
@@ -767,6 +886,58 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
     return;
   }
 
+  let admissionInvoice: any = null;
+  if (action === 'approve') {
+    const [universities, authFees] = await Promise.all([
+      prisma.university.findMany({
+        where: {
+          id: { in: existingCenter.universityIds || [] },
+          organizationId: req.user.organizationId
+        },
+        select: { id: true, name: true, code: true }
+      }),
+      prisma.universityAuthFee.findMany({
+        where: {
+          organizationId: req.user.organizationId,
+          universityId: { in: existingCenter.universityIds || [] }
+        },
+        select: { universityId: true, feeDetails: true }
+      })
+    ]);
+    const universityById = new Map(universities.map(university => [university.id, university]));
+    const feeByUniversity = new Map(authFees.map(fee => {
+      const details = (fee.feeDetails as any) || {};
+      return [fee.universityId, Number(details.amount) || 0];
+    }));
+    const items = (existingCenter.universityIds || []).flatMap((universityId: string) => {
+      const university = universityById.get(universityId);
+      const amount = feeByUniversity.get(universityId) || 0;
+      if (!university || amount <= 0) return [];
+      return [{
+        description: `Authorization Fee - ${university.name} (${university.code})`,
+        category: 'admission',
+        quantity: 1,
+        rate: amount,
+        taxRate: 0,
+        amount
+      }];
+    });
+    const total = items.reduce((sum, item) => sum + item.amount, 0);
+    if (total > 0) {
+      const proofUploadedAt = paymentProof && typeof paymentProof === 'object' && paymentProof.uploadedAt
+        ? new Date(paymentProof.uploadedAt as string)
+        : new Date();
+      const receivedAt = Number.isNaN(proofUploadedAt.getTime()) ? new Date() : proofUploadedAt;
+      admissionInvoice = {
+        items,
+        amount: total,
+        receivedAt,
+        invoiceNo: await generateNextInvoiceNumber(req.user.organizationId),
+        receiptNo: await generateNextReceiptNumber(req.user.organizationId)
+      };
+    }
+  }
+
   // Workflow Rule:
   // When Finance approves: Only after final approval should the centre be activated! (active).
   // When Finance rejects: keep at Finance stage (finance_rejected).
@@ -784,24 +955,80 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
     timestamp: new Date().toISOString(),
   };
 
-  const center = await prisma.studyCenter.update({
-    where: { id: req.params.id },
-    data: {
-      onboardingStatusId: targetStatus?.id || null,
-      status: targetStatusCode,
-      financeApprovedBy: action === 'approve' ? req.user.id : undefined,
-      financeApprovedAt: action === 'approve' ? new Date() : undefined,
-      paymentRemarks: remarks?.trim() || null,
-      statusHistory: [
-        ...((existingCenter.statusHistory as any[]) || []),
-        historyEntry
-      ],
-    },
-    include: {
-      onboardingStatus: true,
-      verifier: { select: { id: true, name: true, email: true } },
-      assignedFinanceUser: { select: { id: true, name: true, role: true } },
+  const center = await prisma.$transaction(async tx => {
+    const updatedCenter = await tx.studyCenter.update({
+      where: { id: req.params.id },
+      data: {
+        onboardingStatusId: targetStatus?.id || null,
+        status: targetStatusCode,
+        financeApprovedBy: action === 'approve' ? req.user.id : undefined,
+        financeApprovedAt: action === 'approve' ? new Date() : undefined,
+        paymentRemarks: remarks?.trim() || null,
+        statusHistory: [
+          ...((existingCenter.statusHistory as any[]) || []),
+          historyEntry
+        ],
+      },
+      include: {
+        onboardingStatus: true,
+        verifier: { select: { id: true, name: true, email: true } },
+        assignedFinanceUser: { select: { id: true, name: true, role: true } },
+      }
+    });
+
+    if (admissionInvoice) {
+      const existingInvoice = await tx.invoice.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          centerId: existingCenter.id,
+          invoiceType: 'study_center_admission'
+        },
+        select: { id: true }
+      });
+      if (!existingInvoice) {
+        const invoice = await tx.invoice.create({
+          data: {
+            organizationId: req.user.organizationId,
+            centerId: existingCenter.id,
+            invoiceNo: admissionInvoice.invoiceNo,
+            invoiceType: 'study_center_admission',
+            financialYear: calculateFinancialYear(admissionInvoice.receivedAt),
+            period: 'Study Centre Authorization Fee',
+            amount: admissionInvoice.amount,
+            tax: 0,
+            total: admissionInvoice.amount,
+            paidAmount: admissionInvoice.amount,
+            balanceAmount: 0,
+            status: 'paid',
+            items: admissionInvoice.items,
+            studentDetails: {
+              fullName: existingCenter.name,
+              enrollmentNumber: existingCenter.code,
+              programName: 'Study Centre Authorization',
+              programCode: existingCenter.code,
+              admissionType: 'Study Centre Admission'
+            },
+            issuedAt: admissionInvoice.receivedAt,
+            paidAt: admissionInvoice.receivedAt
+          }
+        });
+        await tx.paymentEntry.create({
+          data: {
+            organizationId: req.user.organizationId,
+            invoiceId: invoice.id,
+            amount: admissionInvoice.amount,
+            method: 'Study Centre Admission Payment',
+            referenceNo: paymentProofUrl,
+            receiptNo: admissionInvoice.receiptNo,
+            receiptDate: admissionInvoice.receivedAt,
+            receivedBy: req.user.id,
+            receivedAt: admissionInvoice.receivedAt,
+            notes: 'Payment proof approved by Finance'
+          }
+        });
+      }
     }
+    return updatedCenter;
   });
   res.json({ success: true, data: center });
 });

@@ -15,7 +15,7 @@ import {
  * Get all invoices with filtering, search, and summary stats
  */
 export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { status, search, financialYear, academicYear, centerId } = req.query;
+  const { status, search, financialYear, academicYear, centerId, party } = req.query;
   const organizationId = req.user.organizationId;
 
   // Run overdue check quietly to ensure real-time accuracy
@@ -43,9 +43,20 @@ export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) 
     where.centerId = centerId as string;
   }
 
+  if (party === 'student') {
+    where.OR = [
+      { studentId: { not: null } },
+      { enrollmentId: { not: null } }
+    ];
+  } else if (party === 'study_center') {
+    where.studentId = null;
+    where.enrollmentId = null;
+    if (!centerId || centerId === 'all') where.centerId = { not: null };
+  }
+
   if (search && String(search).trim()) {
     const q = String(search).trim();
-    where.OR = [
+    const searchConditions = [
       { invoiceNo: { contains: q, mode: 'insensitive' } },
       { enrollment: { studentName: { contains: q, mode: 'insensitive' } } },
       { enrollment: { studentEmail: { contains: q, mode: 'insensitive' } } },
@@ -53,6 +64,12 @@ export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) 
       { student: { name: { contains: q, mode: 'insensitive' } } },
       { student: { enrollmentNo: { contains: q, mode: 'insensitive' } } }
     ];
+    if (where.OR) {
+      where.AND = [{ OR: where.OR }, { OR: searchConditions }];
+      delete where.OR;
+    } else {
+      where.OR = searchConditions;
+    }
   }
 
   const [invoices, allInvoicesForSummary] = await Promise.all([

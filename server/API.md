@@ -404,6 +404,18 @@ Authorization: Bearer <token>
 }
 ```
 
+##### Manage Student Payment Receipts
+```http
+POST /finance/student-payments/{enrollmentId}/receipt
+PUT /finance/student-payments/{enrollmentId}/receipts/{receiptId}
+DELETE /finance/student-payments/{enrollmentId}/receipts/{receiptId}
+Authorization: ******
+```
+
+Recording or changing a student receipt synchronizes it with the enrollment invoice and recalculates the invoice balance. Deleting a receipt also removes its linked invoice payment.
+
+Finance approval of a study-centre admission payment proof creates a paid authorization invoice and receipt using the configured university authorization fees.
+
 #### Expenses
 
 ##### List Expenses

@@ -53,6 +53,7 @@ export function OpsCenterVerificationPanel() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [replacementPaymentProof, setReplacementPaymentProof] = useState<File | null>(null);
 
   const fetch = async () => {
     setLoading(true);
@@ -180,12 +181,26 @@ export function OpsCenterVerificationPanel() {
       toast.error('Remarks are required when rejecting');
       return;
     }
+    if (dialog.action === 'resubmit' && !replacementPaymentProof) {
+      toast.error('Upload the replacement payment proof before resubmitting to Finance');
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.put(`/operations/centers/${dialog.center.id}/verify`, {
-        action: dialog.action,
-        remarks,
-      });
+      if (dialog.action === 'resubmit') {
+        const formData = new FormData();
+        formData.append('action', dialog.action);
+        formData.append('remarks', remarks);
+        formData.append('paymentProof', replacementPaymentProof);
+        await api.put(`/operations/centers/${dialog.center.id}/verify`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        await api.put(`/operations/centers/${dialog.center.id}/verify`, {
+          action: dialog.action,
+          remarks,
+        });
+      }
       if (dialog.action === 'resubmit') {
         toast.success('Center resubmitted to Finance for payment verification');
       } else if (dialog.action === 'approve') {
@@ -195,6 +210,7 @@ export function OpsCenterVerificationPanel() {
       }
       setDialog(null);
       setRemarks('');
+      setReplacementPaymentProof(null);
       fetch();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Action failed');
@@ -380,7 +396,7 @@ export function OpsCenterVerificationPanel() {
                         <Button
                           size="sm"
                           className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                          onClick={() => { setDialog({ center: c, action: 'resubmit' }); setRemarks(''); }}
+                          onClick={() => { setDialog({ center: c, action: 'resubmit' }); setRemarks(''); setReplacementPaymentProof(null); }}
                         >
                           <RefreshCw className="w-4 h-4 mr-1" />Resubmit to Finance
                         </Button>
@@ -420,6 +436,21 @@ export function OpsCenterVerificationPanel() {
                   <AlertCircle className="w-3.5 h-3.5" /> Original Finance Rejection Reason:
                 </p>
                 <p className="text-foreground/90">{dialog.center.paymentRemarks}</p>
+              </div>
+            )}
+
+            {dialog?.action === 'resubmit' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="replacement-payment-proof">Replacement Payment Proof *</Label>
+                <Input
+                  id="replacement-payment-proof"
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={event => setReplacementPaymentProof(event.target.files?.[0] || null)}
+                />
+                {replacementPaymentProof && (
+                  <p className="text-xs text-muted-foreground">{replacementPaymentProof.name}</p>
+                )}
               </div>
             )}
 

@@ -403,14 +403,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </div>
             </div>
 
-            {/* Verified Payments & Generated Receipts (if any) */}
-            {payments.length > 0 && (
-              <div className="space-y-2 pt-2">
+            {/* Complete payment history linked to this invoice */}
+            <div className="space-y-2 pt-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 uppercase">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Payment Receipts Recorded Against This Invoice</span>
+                  <span>Complete Payment History ({payments.length})</span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-300">
+                {payments.length > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-slate-300">
                   <table className="w-full text-xs">
                     <thead className="bg-slate-100 text-slate-700 uppercase font-semibold text-[10px]">
                       <tr>
@@ -418,6 +418,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                         <th className="py-2 px-3 text-left">Payment Date</th>
                         <th className="py-2 px-3 text-left">Method</th>
                         <th className="py-2 px-3 text-left">Reference / UTR</th>
+                        <th className="py-2 px-3 text-left">Received By</th>
+                        <th className="py-2 px-3 text-left">Notes</th>
                         <th className="py-2 px-3 text-right">Amount (₹)</th>
                         <th className="py-2 px-3 text-center">Status</th>
                       </tr>
@@ -429,19 +431,25 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                           <td className="py-2 px-3 text-slate-700">{formatDate(p.receivedAt || p.createdAt)}</td>
                           <td className="py-2 px-3 text-slate-700 capitalize font-sans">{p.method || 'Online'}</td>
                           <td className="py-2 px-3 text-slate-500">{p.referenceNo || 'N/A'}</td>
+                          <td className="py-2 px-3 text-slate-700">{p.receiver?.name || 'N/A'}</td>
+                          <td className="py-2 px-3 text-slate-600">{p.notes || '—'}</td>
                           <td className="py-2 px-3 text-right font-bold text-emerald-700">{formatCurrency(p.amount)}</td>
                           <td className="py-2 px-3 text-center">
                             <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
-                              VERIFIED
+                              RECORDED
                             </span>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
+                    No payment transactions are recorded against this invoice.
+                  </p>
+                )}
               </div>
-            )}
 
             {/* Footer Terms & Signatory */}
             <div className="pt-8 border-t border-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-6 items-end text-xs text-slate-600">
