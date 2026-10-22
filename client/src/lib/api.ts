@@ -1,9 +1,11 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
+import { finishOperationRequest, startOperationRequest } from './operationTracker';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 class ApiService {
   private api: AxiosInstance;
+  private operationRequests = new WeakMap<object, string>();
 
   constructor() {
     this.api = axios.create({
@@ -20,6 +22,9 @@ class ApiService {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
+          this.operationRequests.set(config, startOperationRequest());
+        }
         return config;
       },
       (error) => Promise.reject(error)
@@ -27,8 +32,12 @@ class ApiService {
 
     // Response interceptor for error handling
     this.api.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        finishOperationRequest(this.operationRequests.get(response.config));
+        return response;
+      },
       (error: AxiosError) => {
+        finishOperationRequest(error.config ? this.operationRequests.get(error.config) : undefined);
         const isLoginRequest = error.config?.url?.includes('/auth/login');
         const authFailureMessages = ['Not authorized', 'Invalid token', 'User not found'];
         const isAuthenticationFailure = authFailureMessages.includes(

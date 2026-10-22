@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, IndianRupee } from 'lucide-react';
+import { Plus, Edit, Trash2, IndianRupee, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
+import { PaymentReceiptPrintModal } from '@/components/dialogs/PaymentReceiptPrintModal';
 
 export function PaymentsPanel() {
   const [payments, setPayments] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<any | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     invoiceId: '',
@@ -186,9 +188,28 @@ export function PaymentsPanel() {
                         <div className="text-sm text-muted-foreground">
                           {payment.method} • {payment.referenceNo || 'No reference'}
                         </div>
+                        <div className="text-xs text-muted-foreground">
+                          {payment.invoice?.invoiceNo || 'Invoice unavailable'}
+                          {' • '}
+                          {payment.invoice?.studentDetails?.fullName
+                            || payment.invoice?.student?.name
+                            || payment.invoice?.enrollment?.studentName
+                            || payment.invoice?.center?.name
+                            || 'Payer unavailable'}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedPaymentForReceipt(payment)}
+                        className="gap-1.5"
+                        title="Download payment receipt"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Download Receipt</span>
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(payment)}>
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -203,6 +224,13 @@ export function PaymentsPanel() {
           )}
         </CardContent>
       </Card>
+
+      <PaymentReceiptPrintModal
+        payment={selectedPaymentForReceipt}
+        onOpenChange={open => {
+          if (!open) setSelectedPaymentForReceipt(null);
+        }}
+      />
     </div>
   );
 }

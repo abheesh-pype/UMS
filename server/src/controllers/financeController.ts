@@ -103,7 +103,32 @@ export const approveInvoice = asyncHandler(async (req: AuthRequest, res: Respons
 
 // Payments
 export const getPayments = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const payments = await prisma.paymentEntry.findMany({ where: { organizationId: req.user.organizationId } });
+  const payments = await prisma.paymentEntry.findMany({
+    where: { organizationId: req.user.organizationId },
+    include: {
+      invoice: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceType: true,
+          period: true,
+          studentDetails: true,
+          student: { select: { name: true, enrollmentNo: true } },
+          center: { select: { name: true, code: true } },
+          enrollment: {
+            select: {
+              studentName: true,
+              enrollmentNumber: true,
+              program: { select: { name: true } },
+              studyCenter: { select: { name: true, code: true } }
+            }
+          }
+        }
+      },
+      receiver: { select: { name: true, email: true } }
+    },
+    orderBy: { receivedAt: 'desc' }
+  });
   res.json({ success: true, count: payments.length, data: payments });
 });
 export const getPayment = asyncHandler(async (req: AuthRequest, res: Response) => {

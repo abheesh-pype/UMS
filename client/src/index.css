@@ -99,3 +99,24 @@
     letter-spacing: 0;
   }
 }
+button[data-operation-pending="true"] {
+  pointer-events: none;
+}
+
+button[data-operation-pending="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: operation-button-spin 0.7s linear infinite;
+}
+
+@keyframes operation-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
