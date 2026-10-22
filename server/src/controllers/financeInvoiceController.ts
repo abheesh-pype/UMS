@@ -8,7 +8,9 @@ import {
   recalculateInvoiceBalance,
   recordPaymentForInvoice,
   autoGenerateMissingInvoices,
-  checkOverdueInvoices
+  checkOverdueInvoices,
+  syncStudentFeeReceiptsToInvoices,
+  syncPaidUniversityFeeInvoices
 } from '../services/invoiceService.js';
 
 /**
@@ -17,6 +19,9 @@ import {
 export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { status, search, financialYear, academicYear, centerId, party } = req.query;
   const organizationId = req.user.organizationId;
+
+  await syncStudentFeeReceiptsToInvoices(organizationId);
+  await syncPaidUniversityFeeInvoices(organizationId);
 
   // Run overdue check quietly to ensure real-time accuracy
   try {
@@ -160,6 +165,9 @@ export const getInvoices = asyncHandler(async (req: AuthRequest, res: Response) 
  * Get single invoice with full details
  */
 export const getInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
+  await syncStudentFeeReceiptsToInvoices(req.user.organizationId);
+  await syncPaidUniversityFeeInvoices(req.user.organizationId);
+
   const invoice = await prisma.invoice.findFirst({
     where: {
       id: req.params.id,

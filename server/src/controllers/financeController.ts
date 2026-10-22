@@ -10,7 +10,8 @@ import {
   generateNextInvoiceNumber,
   generateNextReceiptNumber,
   recordPaymentForInvoice,
-  recalculateInvoiceBalance
+  recalculateInvoiceBalance,
+  syncPaidUniversityFeeInvoices
 } from '../services/invoiceService.js';
 
 // Invoices
@@ -1365,7 +1366,12 @@ export const payUniversityFee = asyncHandler(async (req: AuthRequest, res: Respo
     }
   });
 
-  res.json({ success: true, data: updated });
+  await syncPaidUniversityFeeInvoices(req.user.organizationId);
+  const paymentWithInvoice = await prisma.universityFeePayment.findUnique({
+    where: { id: updated.id }
+  });
+
+  res.json({ success: true, data: paymentWithInvoice });
 });
 
 // ─── Total Data Report ─────────────────────────────────────────────────────────

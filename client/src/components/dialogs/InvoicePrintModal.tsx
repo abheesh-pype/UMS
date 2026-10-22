@@ -81,7 +81,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const uniEnrollmentNumber = student.uniEnrollmentNumber || invoice.enrollment?.uniEnrollmentNumber || studentId;
   const programName = student.programName || invoice.enrollment?.program?.name || 'Academic Degree Program';
   const programCode = student.programCode || invoice.enrollment?.program?.code || 'PRG';
-  const sessionName = student.sessionName || invoice.academicYear || invoice.enrollment?.session?.name || '2026-2027';
+  const sessionName = student.sessionName || invoice.period || invoice.academicYear || invoice.enrollment?.session?.name || '2026-2027';
   const admissionType = student.admissionType || (invoice.center ? `Study Centre (${invoice.center.name})` : 'Direct University');
 
   const status = invoice.status || 'unpaid';

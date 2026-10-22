@@ -701,6 +701,178 @@ export const recordPaymentForInvoice = async (
   };
 };
 
+export const syncStudentFeeReceiptsToInvoices = async (organizationId: string) => {
+  const receipts = await prisma.studentFeeReceipt.findMany({
+    where: {
+      organizationId,
+      invoicePayment: null
+    },
+    orderBy: { receiptDate: 'asc' }
+  });
+  const syncedInvoiceIds = new Set<string>();
+
+  for (const receipt of receipts) {
+    let invoice = await prisma.invoice.findFirst({
+      where: { enrollmentId: receipt.enrollmentId, organizationId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!invoice) {
+      invoice = await generateInvoiceForEnrollment(receipt.enrollmentId);
+    } else {
+      const possibleLegacyPayments = await prisma.paymentEntry.findMany({
+        where: {
+          organizationId,
+          invoiceId: invoice.id,
+          studentFeeReceiptId: null,
+          amount: Number(receipt.amount),
+          method: receipt.paymentMode || 'Direct Deposit',
+          referenceNo: receipt.referenceNo || null,
+          receivedAt: receipt.receiptDate
+        }
+      });
+
+      if (possibleLegacyPayments.length === 1) {
+        await prisma.paymentEntry.update({
+          where: { id: possibleLegacyPayments[0].id },
+          data: { studentFeeReceiptId: receipt.id }
+        });
+      } else {
+        await prisma.paymentEntry.create({
+          data: {
+            organizationId,
+            invoiceId: invoice.id,
+            studentFeeReceiptId: receipt.id,
+            amount: Number(receipt.amount),
+            method: receipt.paymentMode || 'Direct Deposit',
+            referenceNo: receipt.referenceNo || null,
+            receiptNo: await generateNextReceiptNumber(organizationId),
+            receiptDate: receipt.receiptDate,
+            receivedBy: receipt.recordedBy,
+            receivedAt: receipt.receiptDate,
+            notes: receipt.remarks || `Student fee receipt ${receipt.id}`
+          }
+        });
+      }
+    }
+
+    syncedInvoiceIds.add(invoice.id);
+  }
+
+  for (const invoiceId of syncedInvoiceIds) {
+    await recalculateInvoiceBalance(invoiceId);
+  }
+
+  return { syncedReceipts: receipts.length };
+};
+
+export const syncPaidUniversityFeeInvoices = async (organizationId: string) => {
+  const feePayments = await prisma.universityFeePayment.findMany({
+    where: { organizationId, status: 'paid', invoiceId: null },
+    include: {
+      student: {
+        include: {
+          program: { select: { id: true, name: true, code: true } },
+          center: { select: { id: true, name: true, code: true } }
+        }
+      }
+    },
+    orderBy: { paidAt: 'asc' }
+  });
+  const receiver = await prisma.user.findFirst({
+    where: { organizationId },
+    select: { id: true }
+  });
+  if (feePayments.length > 0 && !receiver) {
+    throw new Error(`Cannot invoice university fee payments for organization ${organizationId}: no receipt receiver user exists`);
+  }
+
+  let generated = 0;
+  for (const feePayment of feePayments) {
+    if (!feePayment.student) {
+      throw new Error(`Cannot invoice university fee payment ${feePayment.id}: student record not found`);
+    }
+    const receivedAt = feePayment.paidAt || feePayment.createdAt;
+    const invoiceNo = `INV-UF-${feePayment.id}`;
+    let invoice = await prisma.invoice.findUnique({ where: { invoiceNo } });
+    if (!invoice) {
+      const student = feePayment.student;
+      const item = {
+        description: `${feePayment.semesterOrYear} University Fee`,
+        category: 'university',
+        quantity: 1,
+        rate: Number(feePayment.amount),
+        taxRate: 0,
+        amount: Number(feePayment.amount)
+      };
+      invoice = await prisma.invoice.create({
+        data: {
+          organizationId,
+          centerId: student.centerId || null,
+          studentId: student.id,
+          invoiceNo,
+          invoiceType: 'university_fee',
+          financialYear: calculateFinancialYear(receivedAt),
+          period: feePayment.semesterOrYear,
+          amount: Number(feePayment.amount),
+          tax: 0,
+          total: Number(feePayment.amount),
+          paidAmount: Number(feePayment.amount),
+          balanceAmount: 0,
+          status: 'paid',
+          items: [item],
+          studentDetails: {
+            id: student.id,
+            fullName: student.name,
+            studentId: student.enrollmentNo || student.id,
+            enrollmentNumber: student.enrollmentNo || 'N/A',
+            programName: student.program?.name || 'University Fee',
+            programCode: student.program?.code || '',
+            admissionType: student.center ? `Study Centre (${student.center.name})` : 'Direct University'
+          },
+          issuedAt: receivedAt,
+          paidAt: receivedAt
+        }
+      });
+    }
+
+    const linkedPayment = await prisma.paymentEntry.findFirst({
+      where: {
+        organizationId,
+        invoiceId: invoice.id,
+        notes: `University fee payment ${feePayment.id}`
+      }
+    });
+    if (!linkedPayment) {
+      await prisma.paymentEntry.create({
+        data: {
+          organizationId,
+          invoiceId: invoice.id,
+          amount: Number(feePayment.amount),
+          method: 'University Fee Payment',
+          referenceNo: feePayment.referenceNo || feePayment.screenshot || null,
+          receiptNo: await generateNextReceiptNumber(organizationId),
+          receiptDate: receivedAt,
+          receivedBy: receiver!.id,
+          receivedAt,
+          notes: `University fee payment ${feePayment.id}`
+        }
+      });
+    }
+
+    if (!feePayment.invoiceId) {
+      await prisma.universityFeePayment.update({
+        where: { id: feePayment.id },
+        data: { invoiceId: invoice.id }
+      });
+    }
+    await recalculateInvoiceBalance(invoice.id);
+    generated += 1;
+  }
+
+  return { syncedPayments: generated };
+};
+
 /**
  * Auto-generates missing invoices for all enrolled students in the organization.
  */
