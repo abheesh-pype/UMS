@@ -132,39 +132,18 @@ export const getWalletTransactions = asyncHandler(async (req: AuthRequest, res: 
 export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = {
     organizationId: req.user.organizationId,
-    universityId: req.user.universityId,
     status: 'active' as any
   };
-  const center = req.user.studyCenterId
-    ? await prisma.studyCenter.findUnique({
-      where: { id: req.user.studyCenterId },
-      select: { universityIds: true }
-    })
-    : null;
-  const isLinkedToPrimaryUniversity = center?.universityIds?.includes(req.user.universityId);
-
   if (req.user.studyCenterId) {
-    where.OR = [
-      ...(isLinkedToPrimaryUniversity ? [{ universityId: req.user.universityId }] : []),
-      {
-        programAllocations: {
-          some: {
-            centerId: req.user.studyCenterId,
-            isActive: true
-          }
-        }
+    where.programAllocations = {
+      some: {
+        organizationId: req.user.organizationId,
+        centerId: req.user.studyCenterId,
+        isActive: true,
       },
-      {
-        university: {
-          universityAllocations: {
-            some: {
-              centerId: req.user.studyCenterId,
-              isActive: true
-            }
-          }
-        }
-      }
-    ];
+    };
+  } else {
+    where.universityId = req.user.universityId;
   }
 
   const programs = await prisma.program.findMany({
@@ -230,33 +209,18 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
 
   let selectedProgram: any = null;
   if (studyCenterId) {
-    const linkedCenter = await prisma.studyCenter.findUnique({
-      where: { id: studyCenterId },
-      select: { universityIds: true }
-    });
-    const isLinkedToPrimaryUniversity = linkedCenter?.universityIds?.includes(req.user.universityId);
-
     selectedProgram = await prisma.program.findFirst({
       where: {
         id: programId,
         organizationId,
-        universityId: req.user.universityId,
         status: 'active' as any,
-        OR: [
-          ...(isLinkedToPrimaryUniversity ? [{ universityId: req.user.universityId }] : []),
-          {
-            programAllocations: {
-              some: { centerId: studyCenterId, isActive: true }
-            }
+        programAllocations: {
+          some: {
+            organizationId,
+            centerId: studyCenterId,
+            isActive: true,
           },
-          {
-            university: {
-              universityAllocations: {
-                some: { centerId: studyCenterId, isActive: true }
-              }
-            }
-          }
-        ]
+        },
       },
       select: { id: true, universityId: true }
     });
@@ -617,10 +581,18 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
       where: {
         id: programId,
         organizationId: req.user.organizationId,
-        universityId: req.user.universityId,
-        status: 'active' as any
+        status: 'active' as any,
+        ...(req.user.studyCenterId ? {
+          programAllocations: {
+            some: {
+              organizationId: req.user.organizationId,
+              centerId: req.user.studyCenterId,
+              isActive: true,
+            },
+          },
+        } : { universityId: req.user.universityId }),
       },
-      select: { id: true }
+      select: { id: true, universityId: true }
     });
     if (!program) {
       res.status(404).json({ success: false, message: 'Selected program is invalid or inactive' });
@@ -629,7 +601,7 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
 
     where.AND = [
       { OR: [{ programId: program.id }, { programId: null }] },
-      { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+      { OR: [{ universityId: program.universityId }, { universityId: null }] }
     ];
   } else {
     where.OR = [
@@ -714,6 +686,26 @@ export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
 
   let finalSessionId = sessionId || enrollment.sessionId;
   const targetProgramId = programId || enrollment.programId;
+
+  const allocatedProgram = await prisma.program.findFirst({
+    where: {
+      id: targetProgramId,
+      organizationId,
+      status: 'active' as any,
+      programAllocations: {
+        some: {
+          organizationId,
+          centerId: studyCenterId,
+          isActive: true,
+        },
+      },
+    },
+    select: { id: true },
+  });
+  if (!allocatedProgram) {
+    res.status(403).json({ success: false, message: 'This program is not actively allocated to your study center' });
+    return;
+  }
 
   // Check for duplicate email in same program+session (excluding this enrollment)
   const existing = await prisma.enrollment.findFirst({

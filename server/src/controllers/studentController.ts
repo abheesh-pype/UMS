@@ -26,6 +26,14 @@ export const getStudents = asyncHandler(async (req: AuthRequest, res: Response) 
   if (req.query.status) {
     where.status = req.query.status as string;
   }
+  if (req.query.enrollmentStatus) {
+    where.enrollments = {
+      some: {
+        ...(where.enrollments?.some || {}),
+        status: req.query.enrollmentStatus as string,
+      },
+    };
+  }
   if (req.query.centerId && req.user.role !== 'center_admin') {
     const cid = req.query.centerId as string;
     if (cid === 'direct' || cid === 'none') {
@@ -46,7 +54,12 @@ export const getStudents = asyncHandler(async (req: AuthRequest, res: Response) 
     where.programId = req.query.programId as string;
   }
   if (req.query.sessionId) {
-    where.enrollments = { some: { ...where.enrollments?.some, sessionId: req.query.sessionId as string } };
+    where.enrollments = {
+      some: {
+        ...(where.enrollments?.some || {}),
+        sessionId: req.query.sessionId as string,
+      },
+    };
   }
   if (req.query.search) {
     const search = req.query.search as string;

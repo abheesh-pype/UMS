@@ -56,21 +56,34 @@ export function OpsProgramAllocationPanel() {
     fetchAllocations(id);
   };
 
-  const handleProgramStatus = async (program: Program, allocation?: Allocation) => {
+  const handleProgramAllocation = async (program: Program, allocation?: Allocation) => {
     if (!selectedCenter) return;
     setSubmitting(true);
     try {
       if (!allocation) {
         await api.post(`/operations/centers/${selectedCenter}/allocations`, { programId: program.id });
-        toast.success('Program allocated and activated');
+        toast.success('Program allocated');
       } else {
-        const isActive = !allocation.isActive;
-        await api.put(`/operations/centers/${selectedCenter}/allocations/${allocation.id}`, { isActive });
-        toast.success(`Program ${isActive ? 'activated' : 'deactivated'}`);
+        await api.delete(`/operations/centers/${selectedCenter}/allocations/${allocation.id}`);
+        toast.success('Program allocation removed');
       }
       await fetchAllocations(selectedCenter);
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to update program allocation');
+      toast.error(e.response?.data?.message || 'Failed to change program allocation');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleProgramActiveStatus = async (allocation: Allocation) => {
+    setSubmitting(true);
+    try {
+      const isActive = !allocation.isActive;
+      await api.put(`/operations/centers/${selectedCenter}/allocations/${allocation.id}`, { isActive });
+      toast.success(`Program ${isActive ? 'activated' : 'deactivated'}`);
+      await fetchAllocations(selectedCenter);
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to update program status');
     } finally {
       setSubmitting(false);
     }
@@ -178,7 +191,7 @@ export function OpsProgramAllocationPanel() {
               <CardHeader>
                 <CardTitle className="text-base">Programs ({programs.length})</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Activate programs to make them available in the selected study center.
+                  Allocate programs to this study center, then activate them to make them available for enrollment.
                 </p>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -203,21 +216,20 @@ export function OpsProgramAllocationPanel() {
                       <div className="flex items-center gap-1">
                         <Button
                           size="sm"
-                          variant={allocation?.isActive ? 'outline' : 'default'}
+                          variant={allocation ? 'outline' : 'default'}
                           disabled={submitting}
-                          onClick={() => handleProgramStatus(program, allocation)}
+                          onClick={() => handleProgramAllocation(program, allocation)}
                         >
-                          {!allocation ? 'Allocate' : allocation.isActive ? 'Deactivate' : 'Activate'}
+                          {allocation ? 'Not Allocate' : 'Allocate'}
                         </Button>
                         {allocation && (
                           <Button
-                            variant="ghost"
                             size="sm"
-                            className="text-error hover:text-error"
-                            onClick={() => handleRemove(allocation.id)}
-                            title="Remove allocation"
+                            variant={allocation.isActive ? 'default' : 'outline'}
+                            disabled={submitting}
+                            onClick={() => handleProgramActiveStatus(allocation)}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            {allocation.isActive ? 'Active' : 'Inactive'}
                           </Button>
                         )}
                       </div>

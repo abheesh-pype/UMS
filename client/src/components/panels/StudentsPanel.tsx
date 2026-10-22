@@ -80,7 +80,11 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
     setLoading(true);
     try {
       const query = new URLSearchParams();
-      if (statusFilter && statusFilter !== 'all') query.append('status', statusFilter);
+      if (operationsMode && statusFilter === 'enrolled') {
+        query.append('enrollmentStatus', 'enrolled');
+      } else if (statusFilter && statusFilter !== 'all') {
+        query.append('status', statusFilter);
+      }
       if (universityFilter && universityFilter !== 'all') query.append('universityId', universityFilter);
       if (centerFilter && centerFilter !== 'all') query.append('centerId', centerFilter);
       if (programFilter && programFilter !== 'all') query.append('programId', programFilter);
@@ -93,7 +97,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, universityFilter, centerFilter, programFilter, sessionFilter, searchQuery]);
+  }, [statusFilter, universityFilter, centerFilter, programFilter, sessionFilter, searchQuery, operationsMode]);
 
   const fetchPrograms = useCallback(async () => {
     try {
@@ -361,13 +365,21 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
       </div>
 
       <div className="flex gap-2 flex-wrap mb-4">
-        {[
-          { key: '', label: 'All' },
-          { key: 'enrolled', label: 'Enrolled' },
-          { key: 'active', label: 'Active' },
-          { key: 'hold', label: 'Hold' },
-          { key: 'dropout', label: 'Dropout' }
-        ].map(tab => (
+        {(operationsMode
+          ? [
+              { key: '', label: 'All' },
+              { key: 'enrolled', label: 'Enrolled' },
+              { key: 'active', label: 'Active' },
+              { key: 'inactive', label: 'Inactive' },
+              { key: 'completed', label: 'Completed' }
+            ]
+          : [
+              { key: '', label: 'All' },
+              { key: 'enrolled', label: 'Enrolled' },
+              { key: 'active', label: 'Active' },
+              { key: 'hold', label: 'Hold' },
+              { key: 'dropout', label: 'Dropout' }
+            ]).map(tab => (
           <button
             key={tab.key}
             onClick={() => setStatusFilter(tab.key)}
@@ -482,7 +494,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge>{student.status}</Badge>
+                      <Badge>{operationsMode && student.enrollments?.some((enrollment: any) => enrollment.status === 'enrolled') ? 'Enrolled' : student.status}</Badge>
                       {canEdit && (
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}><Edit className="w-4 h-4" /></Button>
                       )}

@@ -115,7 +115,6 @@ export function ProgramDetailPanel({
 
   const [program, setProgram] = useState<Program | null>(null);
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [byCategory, setByCategory] = useState<Record<string, Material[]>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -148,7 +147,6 @@ export function ProgramDetailPanel({
       }));
       setProgram(detail.program);
       setMaterials(loadedMaterials);
-      setByCategory(detail.byCategory || {});
       setLoadError('');
     } catch (err: any) {
       const message = err.response?.data?.message || err.message || 'Failed to load program detail';
@@ -401,23 +399,28 @@ export function ProgramDetailPanel({
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      {/* Material category filters */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {CATEGORIES.map(cat => {
-          const count = byCategory[cat.value]?.length || 0;
+          const count = materials.filter(material => material.category === cat.value).length;
+          const isSelected = activeTab === cat.value;
           return (
-            <Card key={cat.value} className={cn(
-              'cursor-pointer transition-all hover:border-primary/30',
-              activeTab === cat.value && 'border-primary ring-1 ring-primary/20'
-            )} onClick={() => setActiveTab(activeTab === cat.value ? 'all' : cat.value)}>
-              <CardContent className="p-3 flex items-center gap-3">
+            <button
+              key={cat.value}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => setActiveTab(isSelected ? 'all' : cat.value)}
+              className={cn(
+                'flex min-h-[84px] items-center gap-4 rounded-2xl border bg-card px-5 py-4 text-left shadow-sm transition-colors hover:border-primary/40',
+                isSelected ? 'border-primary ring-1 ring-primary/20' : 'border-border'
+              )}
+            >
                 <span className="text-lg">{cat.icon}</span>
                 <div>
                   <p className="text-lg font-bold">{count}</p>
                   <p className="text-[10px] text-muted-foreground">{cat.label}</p>
                 </div>
-              </CardContent>
-            </Card>
+            </button>
           );
         })}
       </div>
