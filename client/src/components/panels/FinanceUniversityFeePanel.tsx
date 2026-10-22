@@ -41,9 +41,7 @@ interface UniversityFeePayment {
 
 export function FinanceUniversityFeePanel() {
   const [payments, setPayments] = useState<UniversityFeePayment[]>([]);
-  const [universities, setUniversities] = useState<any[]>([]);
   const [centers, setCenters] = useState<any[]>([]);
-  const [universityFilter, setUniversityFilter] = useState('');
   const [centerFilter, setCenterFilter] = useState('');
   const [programFilter, setProgramFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -58,13 +56,6 @@ export function FinanceUniversityFeePanel() {
     screenshot: null as File | null
   });
   const [expandedStudents, setExpandedStudents] = useState<Record<string, boolean>>({});
-
-  const fetchUniversities = useCallback(async () => {
-    try {
-      const res = await api.get('/operations/universities');
-      setUniversities(res.data.data || []);
-    } catch (err) {}
-  }, []);
 
   const fetchPrograms = useCallback(async () => {
     try {
@@ -85,7 +76,6 @@ export function FinanceUniversityFeePanel() {
     try {
       const query = new URLSearchParams();
       // Fetch all to allow showing paid details in pending tab
-      if (universityFilter && universityFilter !== 'all') query.append('universityId', universityFilter);
       if (centerFilter && centerFilter !== 'all') query.append('centerId', centerFilter);
       if (programFilter && programFilter !== 'all') query.append('programId', programFilter);
       if (search) query.append('search', search);
@@ -98,14 +88,13 @@ export function FinanceUniversityFeePanel() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, universityFilter, centerFilter, programFilter, search]);
+  }, [activeTab, centerFilter, programFilter, search]);
 
   useEffect(() => {
     fetchPayments();
-    fetchUniversities();
     fetchCenters();
     fetchPrograms();
-  }, [fetchPayments, fetchUniversities, fetchCenters, fetchPrograms]);
+  }, [fetchPayments, fetchCenters, fetchPrograms]);
 
   const handlePayClick = (p: UniversityFeePayment) => {
     setPayDialog({ open: true, payment: p });
@@ -193,16 +182,6 @@ export function FinanceUniversityFeePanel() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <Select value={universityFilter} onValueChange={setUniversityFilter}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="All Universities" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Universities</SelectItem>
-            {universities.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
         <Select value={centerFilter} onValueChange={setCenterFilter}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="All Centers" />
