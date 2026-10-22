@@ -768,7 +768,7 @@ export const syncStudentFeeReceiptsToInvoices = async (organizationId: string) =
 
 export const syncPaidUniversityFeeInvoices = async (organizationId: string) => {
   const feePayments = await prisma.universityFeePayment.findMany({
-    where: { organizationId, status: 'paid', invoiceId: null },
+    where: { organizationId, status: 'paid' },
     include: {
       student: {
         include: {
@@ -795,6 +795,17 @@ export const syncPaidUniversityFeeInvoices = async (organizationId: string) => {
     const receivedAt = feePayment.paidAt || feePayment.createdAt;
     const invoiceNo = `INV-UF-${feePayment.id}`;
     let invoice = await prisma.invoice.findUnique({ where: { invoiceNo } });
+    if (!invoice && feePayment.invoiceId) {
+      const linkedInvoice = await prisma.invoice.findFirst({
+        where: {
+          id: feePayment.invoiceId,
+          organizationId,
+          invoiceType: 'university_fee',
+          period: feePayment.semesterOrYear
+        }
+      });
+      if (linkedInvoice) invoice = linkedInvoice;
+    }
     if (!invoice) {
       const student = feePayment.student;
       const item = {
@@ -860,7 +871,7 @@ export const syncPaidUniversityFeeInvoices = async (organizationId: string) => {
       });
     }
 
-    if (!feePayment.invoiceId) {
+    if (feePayment.invoiceId !== invoice.id) {
       await prisma.universityFeePayment.update({
         where: { id: feePayment.id },
         data: { invoiceId: invoice.id }
