@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmployeeProfilePanel } from '@/components/panels/EmployeeProfilePanel';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -33,6 +34,7 @@ export interface MyTeamPanelProps {
 }
 
 export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelProps) {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,7 +72,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
     try {
       // Query users API with departmentType parameter
       const res = await api.get('/users', {
-        params: { departmentType }
+        params: { departmentType, includeAssignedReports: true }
       });
       setUsers(res.data.data || []);
     } catch (err: any) {
@@ -84,24 +86,6 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
   useEffect(() => {
     fetchTeam();
   }, [departmentType]);
-
-  // Match Department helper
-  const isDeptMatch = (user: any) => {
-    const target = departmentType.toLowerCase();
-    const deptType = user.department?.type?.toLowerCase() || '';
-    const deptName = user.department?.name?.toLowerCase() || '';
-    const subDeptType = user.subDepartment?.type?.toLowerCase() || '';
-    const subDeptParentType = user.subDepartment?.parentDept?.type?.toLowerCase() || '';
-    const subDeptParentName = user.subDepartment?.parentDept?.name?.toLowerCase() || '';
-
-    return (
-      deptType === target ||
-      deptName.includes(target) ||
-      subDeptType === target ||
-      subDeptParentType === target ||
-      subDeptParentName.includes(target)
-    );
-  };
 
   // Match Role helper
   const isSubAdminRole = (role: string = '') => {
@@ -118,29 +102,22 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
     return r.includes('sub_admin');
   };
 
-  const isRoleMatch = (role: string = '') => {
-    const r = role.toLowerCase();
-    if (r === 'employee') return true;
-    return isSubAdminRole(r);
-  };
-
-  // Filter team based on exact department and role specifications
+  // Explicit reporting assignments determine team membership.
   const teamMembers = useMemo(() => {
     return users.filter((user: any) => {
-      // Must match department
-      if (!isDeptMatch(user)) return false;
+      const reportingToId = typeof user.reportingTo === 'object'
+        ? user.reportingTo?.id
+        : user.reportingTo;
 
-      // Must match employee or sub-admin role
-      if (!isRoleMatch(user.role)) return false;
+      if (!currentUser?.id || reportingToId !== currentUser.id) return false;
 
-      // Exclude generic admins or students
-      if (['student', 'center_admin', 'superadmin', 'org_admin', 'ceo'].includes(user.role)) {
+      if (['student', 'center_admin', 'superadmin', 'org_admin', 'ceo'].includes(user.role?.toLowerCase())) {
         return false;
       }
 
       return true;
     });
-  }, [users, departmentType]);
+  }, [users, departmentType, currentUser?.id]);
 
   // Apply search and filter toggles
   const filteredMembers = useMemo(() => {

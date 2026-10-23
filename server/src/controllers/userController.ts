@@ -20,12 +20,15 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
 
   if (req.query.departmentType) {
     const deptType = (req.query.departmentType as string).trim().toLowerCase();
-    where.OR = [
+    const departmentMatches = [
       { department: { type: { equals: deptType, mode: 'insensitive' } } },
       { department: { name: { contains: deptType, mode: 'insensitive' } } },
       { subDepartment: { parentDept: { type: { equals: deptType, mode: 'insensitive' } } } },
       { subDepartment: { parentDept: { name: { contains: deptType, mode: 'insensitive' } } } },
     ];
+    where.OR = req.query.includeAssignedReports === 'true'
+      ? [...departmentMatches, { reportingTo: req.user.id }]
+      : departmentMatches;
   }
 
   const users = await prisma.user.findMany({
@@ -154,7 +157,7 @@ export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { role, designation, departmentId, subDepartmentId, reportingTo } = req.body;
+  const { role, designation, departmentId, subDepartmentId, reportingTo, changeType } = req.body;
   const user = await prisma.user.findFirst({
     where: { id: req.params.id, organizationId: req.user.organizationId },
     select: { id: true },
@@ -166,6 +169,23 @@ export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Respons
   if (typeof role !== 'string' || !role.trim()) {
     res.status(400).json({ success: false, message: 'A role must be selected' });
     return;
+  }
+
+  if (changeType === 'demotion') {
+    const subordinate = await prisma.user.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        reportingTo: user.id,
+      },
+      select: { id: true },
+    });
+    if (subordinate) {
+      res.status(400).json({
+        success: false,
+        message: 'Cannot demote this user while they have direct reports. Reassign or remove all direct reports first.',
+      });
+      return;
+    }
   }
 
   const targetDepartmentId = departmentId || null;

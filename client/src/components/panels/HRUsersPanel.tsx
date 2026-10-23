@@ -239,6 +239,7 @@ export function HRUsersPanel() {
     try {
       const userId = selectedUser.id || selectedUser.id;
       await api.put(`/users/${userId}/role`, {
+        changeType: promotionData.type,
         designation: promotionData.newDesignation,
         role: promotionData.newRole,
         departmentId: promotionData.departmentId && promotionData.departmentId !== 'none' ? promotionData.departmentId : null,
@@ -324,13 +325,16 @@ export function HRUsersPanel() {
 
   const openPromotionDialog = (user: User, type: 'promotion' | 'demotion') => {
     setSelectedUser(user);
+    const reportingToId = typeof user.reportingTo === 'object' && user.reportingTo !== null
+      ? user.reportingTo.id
+      : user.reportingTo;
     setPromotionData({
       newDesignation: user.designation || '',
       newRole: user.role,
       departmentId: typeof user.departmentId === 'object' && user.departmentId !== null
         ? user.departmentId.id || ''
         : user.departmentId || '',
-      reportingTo: user.reportingTo || '',
+      reportingTo: reportingToId || '',
       type,
     });
     setPromotionDialogOpen(true);

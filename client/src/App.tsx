@@ -376,19 +376,19 @@ function App() {
       if (deptType) {
         if (isSubDeptManager) {
           switch (deptType) {
-            case 'operations': return getOpsNavItems(true).filter(item => item.id !== 'my_team');
+            case 'operations': return getOpsNavItems(true).filter(item => !['my_team', 'leave_approvals'].includes(item.id));
             case 'hr': return getHRNavItems();
-            case 'finance': return getFinanceNavItems().filter(item => item.id !== 'my_team');
-            case 'sales': return getSalesNavItems().filter(item => item.id !== 'my_team');
+            case 'finance': return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+            case 'sales': return getSalesNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems().filter(item => item.id !== 'my_team');
+          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
         } else if (deptType === 'operations') {
-          return getOpsNavItems(false).filter(item => item.id !== 'my_team');
+          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals'].includes(item.id));
         } else if (deptType === 'hr') {
           return getHRNavItems();
         } else if (deptType === 'finance') {
-          return getFinanceNavItems().filter(item => item.id !== 'my_team');
+          return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
         }
       }
       return EMPLOYEE_NAV_ITEMS;

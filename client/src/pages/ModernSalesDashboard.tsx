@@ -114,6 +114,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
       case 'student_enrollment': return <SalesStudentEnrollmentPanel />;
       case 'tasks': return <TasksPanel />;
       case 'my_leaves': return <LeavesPanel isPersonalView />;
+      case 'leave_approvals': return <LeavesPanel />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
       case 'my_payslips': return <PayrollPanel />;
       case 'my_documents': return <MyDocumentsPanel />;
@@ -162,6 +163,7 @@ export function getSalesNavItems(includeStudentEnrollment = true) {
 
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
+    { id: 'leave_approvals', label: 'Leave Approvals' },
     { id: 'my_attendance', label: 'Attendance' },
     { id: 'my_payslips', label: 'Pay Slips' },
     { id: 'my_documents', label: 'My Documents' },
