@@ -358,6 +358,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
   };
 
   const isFieldMandatory = (key: string, defaultRequired: boolean = false) => {
+    if (key === 'abcId' || key === 'debId') return true;
     if (mode === 'public' && key === 'dob') return true;
     // Check if the university made it optional (for Premium universities)
     const uniOptFields = selectedProgram?.university?.optionalFields;
@@ -385,7 +386,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     const parsedConfig = typeof config === 'string' ? JSON.parse(config) : config;
     const status = parsedConfig?.[key] || 'optional';
 
-    if (status === 'hidden') return null;
+    if (status === 'hidden' && key !== 'abcId' && key !== 'debId') return null;
 
     const isRequired = isFieldMandatory(key, false);
     const isNumericId = key === 'abcId' || key === 'debId';
@@ -461,6 +462,26 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
           placeholder={isNumericId ? `Enter 12-digit ${label}` : `Enter ${label.toLowerCase()}`}
           required={isRequired}
         />
+        {key === 'abcId' && (
+          <a
+            href="https://www.digilocker.gov.in/"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            Create ABC ID through DigiLocker
+          </a>
+        )}
+        {key === 'debId' && (
+          <a
+            href="https://deb.ugc.ac.in/"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            Create DEB ID using ABC ID
+          </a>
+        )}
       </div>
     );
   };
@@ -469,7 +490,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     if (!selectedProgram) return;
     for (const [field, label] of [['abcId', 'ABCID'], ['debId', 'DEBID']] as const) {
       const value = form[field];
-      if (value && !/^\d{12}$/.test(value)) {
+      if (!value.trim()) {
+        toast.error(`${label} is required`);
+        return;
+      }
+      if (!/^\d{12}$/.test(value)) {
         toast.error(`${label} must be exactly 12 digits`);
         return;
       }
@@ -484,7 +509,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     }
     
     // Validate standard base required fields
-    const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress', ...(mode === 'public' ? ['dob'] : [])];
+    const baseRequired = ['studentName', 'studentEmail', 'studentPhone', 'studentAddress', 'abcId', 'debId', ...(mode === 'public' ? ['dob'] : [])];
     const missing = [];
     for (const key of baseRequired) {
       if (!(form as any)[key]?.trim()) {
@@ -589,6 +614,16 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
 
   const validateStep = (stepNum: number) => {
     if (stepNum === 1) {
+      for (const [field, label] of [['abcId', 'ABC ID'], ['debId', 'DEB ID']] as const) {
+        if (!form[field].trim()) {
+          toast.error(`${label} is required`);
+          return false;
+        }
+        if (!/^\d{12}$/.test(form[field])) {
+          toast.error(`${label} must be exactly 12 digits`);
+          return false;
+        }
+      }
       if (!selectedProgram) {
         toast.error('Please select a Program');
         return false;

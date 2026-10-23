@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -60,6 +60,17 @@ interface CenterData {
   hoursAtCurrentStage?: number;
   studentStats?: { total: number; enrolled: number; pending: number; rejected: number };
   referredBy?: { name: string; email: string };
+  branchName?: string;
+  pendingDocuments?: { name: string; url: string }[];
+  paymentProof?: { url?: string; uploadedAt?: string; remarks?: string } | string | null;
+  universityIds?: string[];
+  programIds?: string[];
+  allowedPrograms?: { id: string; name: string; code?: string }[];
+  associatedUniversities?: { id: string; name: string; code?: string; status?: string }[];
+  onboardingStatus?: { name?: string; stage?: string; state?: string; description?: string } | null;
+  allowInternalMarks?: boolean;
+  enrollments?: { id: string; studentName: string; studentEmail: string; enrollmentNumber?: string | null; status: string; program?: { name: string; code?: string } }[];
+  stats?: { totalStudents: number; enrolled: number; pending: number; rejected: number };
 }
 
 interface Summary {
@@ -133,6 +144,8 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [editingCenter, setEditingCenter] = useState<CenterData | null>(null);
   const [resubmitting, setResubmitting] = useState(false);
+  const [centerDetails, setCenterDetails] = useState<any | null>(null);
+  const [loadingCenterDetails, setLoadingCenterDetails] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -191,6 +204,19 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
       toast.error(error.response?.data?.message || 'Failed to resubmit study center');
     } finally {
       setResubmitting(false);
+    }
+  };
+
+  const handleViewCenterDetails = async (center: CenterData) => {
+    setLoadingCenterDetails(true);
+    setCenterDetails(null);
+    try {
+      const response = await api.get(`/sales/my-centers/${center.id}`);
+      setCenterDetails(response.data.data);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load center details');
+    } finally {
+      setLoadingCenterDetails(false);
     }
   };
 
@@ -297,6 +323,7 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
               setExpanded={setExpanded}
               showReferrer={mode === 'ceo'}
               onResubmit={mode === 'sales' ? setEditingCenter : undefined}
+              onViewDetails={mode === 'sales' ? handleViewCenterDetails : undefined}
             />
           </TabsContent>
 
@@ -312,8 +339,30 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
           setExpanded={setExpanded}
           showReferrer={false}
           onResubmit={setEditingCenter}
+          onViewDetails={handleViewCenterDetails}
         />
       )}
+      <Dialog open={loadingCenterDetails || !!centerDetails} onOpenChange={open => !open && !loadingCenterDetails && setCenterDetails(null)}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          {loadingCenterDetails ? (
+            <div className="space-y-3 py-8">
+              <div className="h-6 w-48 animate-pulse rounded bg-muted" />
+              <div className="h-24 animate-pulse rounded bg-muted" />
+              <div className="h-24 animate-pulse rounded bg-muted" />
+            </div>
+          ) : centerDetails?.center ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{centerDetails.center.name}</DialogTitle>
+                <DialogDescription>
+                  Center profile, onboarding status, linked programs, and admissions.
+                </DialogDescription>
+              </DialogHeader>
+              <CenterDetailsContent details={centerDetails} />
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!editingCenter} onOpenChange={open => !open && setEditingCenter(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Update and Resubmit Study Center</DialogTitle></DialogHeader>
@@ -349,6 +398,175 @@ export function CenterOnboardingOverviewPanel({ mode = 'ceo' }: { mode?: 'ceo' |
   );
 }
 
+function CenterDetailsContent({ details }: { details: any }) {
+  const center: CenterData = details.center;
+  const proof = typeof center.paymentProof === 'string'
+    ? { url: center.paymentProof }
+    : center.paymentProof;
+  const fileUrl = (url: string) => url.startsWith('/') ? url : `/uploads/${url}`;
+  const statusLabel = STATUS_CONFIG[center.status]?.label || center.status.replace(/_/g, ' ');
+  const infoRows: [string, string][] = [
+    ['Center Code', center.code],
+    ['Email', center.email || 'Not provided'],
+    ['Contact', center.contact || 'Not provided'],
+    ['Address', center.address || 'Not provided'],
+    ['City', center.city || 'Not provided'],
+    ['State', center.state || 'Not provided'],
+    ['Coordinator', center.coordinatorName || 'Not provided'],
+    ['Branch', center.branchName || 'Not provided'],
+    ['Referred By', center.referredBy?.name || 'Not provided'],
+    ['Registered', center.createdAt ? new Date(center.createdAt).toLocaleString() : 'Not provided'],
+    ['Last Updated', center.updatedAt ? new Date(center.updatedAt).toLocaleString() : 'Not provided'],
+    ['Onboarding Stage', center.onboardingStatus?.stage || 'Not provided'],
+    ['Onboarding State', center.onboardingStatus?.state || 'Not provided'],
+    ['Operations Verified At', center.verifiedAt ? new Date(center.verifiedAt).toLocaleString() : 'Not provided'],
+    ['Finance Approved At', center.financeApprovedAt ? new Date(center.financeApprovedAt).toLocaleString() : 'Not provided'],
+    ['Internal Marks', center.allowInternalMarks ? 'Enabled' : 'Disabled'],
+  ];
+
+  return (
+    <div className="space-y-5 py-3">
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Center Profile</h3>
+        <div className="grid grid-cols-1 gap-3 rounded-xl border bg-muted/10 p-4 text-sm sm:grid-cols-2">
+          {infoRows.map(([label, value]) => (
+            <div key={label}>
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="break-words font-medium">{value}</p>
+            </div>
+          ))}
+          <div>
+            <p className="text-xs text-muted-foreground">Current Status</p>
+            <Badge className={cn('mt-1 border', STATUS_CONFIG[center.status]?.color || 'bg-muted text-muted-foreground')}>
+              {statusLabel}
+            </Badge>
+          </div>
+        </div>
+      </section>
+
+      {(center.opsRemarks || center.paymentRemarks) && (
+        <section>
+          <h3 className="mb-2 text-sm font-semibold">Review Remarks</h3>
+          <div className="space-y-2 rounded-xl border bg-muted/10 p-4 text-sm">
+            {center.opsRemarks && <p><span className="font-medium">Operations: </span>{center.opsRemarks}</p>}
+            {center.paymentRemarks && <p><span className="font-medium">Finance: </span>{center.paymentRemarks}</p>}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Linked Universities</h3>
+        {center.associatedUniversities?.length ? (
+          <div className="flex flex-wrap gap-2">
+            {center.associatedUniversities.map(university => (
+              <Badge key={university.id} variant="outline">
+                {university.name}{university.code ? ` (${university.code})` : ''}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {center.universityIds?.length ? `${center.universityIds.length} university assignment(s)` : 'No universities assigned.'}
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Allowed Programs</h3>
+        {center.allowedPrograms?.length ? (
+          <div className="flex flex-wrap gap-2">
+            {center.allowedPrograms.map(program => (
+              <Badge key={program.id} variant="outline">
+                {program.name}{program.code ? ` (${program.code})` : ''}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {center.programIds?.length ? `${center.programIds.length} program assignment(s)` : 'No programs assigned.'}
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Onboarding Documents</h3>
+        {center.pendingDocuments?.length ? (
+          <div className="space-y-2">
+            {center.pendingDocuments.map((document, index) => (
+              <div key={`${document.url}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+                <span className="break-words">{document.name}</span>
+                <a href={fileUrl(document.url)} target="_blank" rel="noreferrer" className="shrink-0 text-primary hover:underline">
+                  View
+                </a>
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-sm text-muted-foreground">No onboarding documents uploaded.</p>}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Payment Details</h3>
+        <div className="space-y-2 rounded-xl border bg-muted/10 p-4 text-sm">
+          <p><span className="font-medium">Payment Remarks: </span>{center.paymentRemarks || 'None'}</p>
+          {proof?.uploadedAt && <p><span className="font-medium">Proof Uploaded: </span>{new Date(proof.uploadedAt).toLocaleString()}</p>}
+          {proof?.remarks && <p><span className="font-medium">Proof Remarks: </span>{proof.remarks}</p>}
+          {proof?.url ? (
+            <a href={fileUrl(proof.url)} target="_blank" rel="noreferrer" className="inline-block text-primary hover:underline">
+              View Payment Proof
+            </a>
+          ) : (
+            <p className="text-muted-foreground">No payment proof uploaded.</p>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">
+          Student Admissions ({details.stats?.totalStudents ?? details.enrollments?.length ?? 0})
+        </h3>
+        {details.enrollments?.length ? (
+          <div className="space-y-2">
+            {details.enrollments.map((enrollment: any) => (
+              <div key={enrollment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+                <div>
+                  <p className="font-medium">{enrollment.studentName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {enrollment.studentEmail}{enrollment.enrollmentNumber ? ` · ${enrollment.enrollmentNumber}` : ''}
+                    {enrollment.program?.name ? ` · ${enrollment.program.name}` : ''}
+                  </p>
+                </div>
+                <Badge variant="outline">{enrollment.status.replace(/_/g, ' ')}</Badge>
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-sm text-muted-foreground">No student admissions recorded.</p>}
+      </section>
+
+      <section>
+        <h3 className="mb-2 text-sm font-semibold">Status Timeline</h3>
+        {center.statusHistory?.length ? (
+          <div className="space-y-3">
+            {center.statusHistory.map((history, index) => {
+              const actor = history.actorName
+                || (typeof history.actorId === 'object' ? history.actorId?.name : undefined);
+              return (
+                <div key={index} className="border-l-2 border-primary/30 pl-3 text-sm">
+                  <p className="font-medium">{STATUS_CONFIG[history.status]?.label || history.status.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {history.timestamp ? new Date(history.timestamp).toLocaleString() : 'Date not recorded'}
+                    {actor ? ` · ${actor}` : ''}
+                  </p>
+                  {history.remarks && <p className="mt-1 text-muted-foreground">{history.remarks}</p>}
+                </div>
+              );
+            })}
+          </div>
+        ) : <p className="text-sm text-muted-foreground">No status history recorded.</p>}
+      </section>
+    </div>
+  );
+}
+
 // ─── Center List ────────────────────────────────────────────────────────────────
 function CenterList({
   centers,
@@ -357,6 +575,7 @@ function CenterList({
   setExpanded,
   showReferrer,
   onResubmit,
+  onViewDetails,
 }: {
   centers: CenterData[];
   loading: boolean;
@@ -364,6 +583,7 @@ function CenterList({
   setExpanded: (id: string | null) => void;
   showReferrer: boolean;
   onResubmit?: (center: CenterData) => void;
+  onViewDetails?: (center: CenterData) => void;
 }) {
   if (loading) {
     return (
@@ -474,10 +694,10 @@ function CenterList({
                   </span>
                   <button
                     className="text-xs text-primary flex items-center gap-1 hover:underline"
-                    onClick={() => setExpanded(isExpanded ? null : center.id)}
+                    onClick={() => onViewDetails ? onViewDetails(center) : setExpanded(isExpanded ? null : center.id)}
                   >
-                    {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    {isExpanded ? 'Hide' : 'Details'}
+                    {onViewDetails ? <ChevronDown className="w-3 h-3" /> : isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    {onViewDetails || !isExpanded ? 'Details' : 'Hide'}
                   </button>
                   {isRejected(center.status) && onResubmit && (
                     <Button size="sm" onClick={() => onResubmit(center)}>

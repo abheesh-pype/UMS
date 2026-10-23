@@ -19,9 +19,11 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
   const canDelete = ['org_admin', 'superadmin'].includes(user?.role || '');
   const [students, setStudents] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
+  const [activeSessionPrograms, setActiveSessionPrograms] = useState<any[]>([]);
   const [centers, setCenters] = useState<any[]>([]);
   const [universities, setUniversities] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [studentSessions, setStudentSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -32,6 +34,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
     address: '',
     enrollmentNo: '',
     programId: '',
+    sessionId: '',
     centerId: '',
     status: 'pending'
   });
@@ -107,6 +110,15 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
     }
   }, []);
 
+  const fetchActiveSessionPrograms = useCallback(async () => {
+    try {
+      const response = await api.get('/operations/programs?activeSessionOnly=true');
+      setActiveSessionPrograms(response.data.data || []);
+    } catch {
+      toast.error('Failed to load programs with active admission sessions');
+    }
+  }, []);
+
   const fetchCenters = useCallback(async () => {
     try {
       if (user?.role === 'center_admin') {
@@ -138,19 +150,35 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
 
   const fetchSessions = useCallback(async () => {
     try {
-      const response = await api.get('/operations/admission-sessions');
+      const response = await api.get('/operations/sessions');
       setSessions(response.data.data || []);
     } catch (error) {
     }
   }, []);
 
+  const fetchStudentSessions = async (programId: string, activeOnly: boolean) => {
+    if (!programId) {
+      setStudentSessions([]);
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ programId });
+      if (activeOnly) params.set('status', 'active');
+      const response = await api.get(`/operations/sessions?${params.toString()}`);
+      setStudentSessions(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load admission sessions');
+    }
+  };
+
   useEffect(() => {
     fetchStudents();
     fetchPrograms();
+    fetchActiveSessionPrograms();
     fetchCenters();
     fetchUniversities();
     fetchSessions();
-  }, [fetchStudents, fetchPrograms, fetchCenters, fetchUniversities, fetchSessions]);
+  }, [fetchStudents, fetchPrograms, fetchActiveSessionPrograms, fetchCenters, fetchUniversities, fetchSessions]);
 
   const fetchInstallments = async (studentId: string) => {
     setFetchingInstallments(true);
@@ -197,6 +225,10 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingId && (!formData.programId || !formData.sessionId)) {
+      toast.error('Select an active program and admission session');
+      return;
+    }
     try {
       const payload = {
         ...formData,
@@ -231,11 +263,13 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
       address: student.address || '',
       enrollmentNo: student.enrollmentNo || '',
       programId: programId?.toString() || '',
+      sessionId: student.sessionId || '',
       centerId: user?.role === 'center_admin'
         ? user.studyCenterId || centers[0]?.centerId || centers[0]?.id || ''
         : centerId?.toString() || '',
       status: student.status || 'active'
     });
+    fetchStudentSessions(programId?.toString() || '', false);
     setDialogOpen(true);
   };
 
@@ -250,6 +284,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
 
   const resetForm = () => {
     setEditingId(null);
+    setStudentSessions([]);
     setFormData({
       name: '',
       email: '',
@@ -257,6 +292,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
       address: '',
       enrollmentNo: '',
       programId: '',
+      sessionId: '',
       centerId: user?.role === 'center_admin'
         ? user.studyCenterId || centers[0]?.centerId || centers[0]?.id || ''
         : '',
@@ -307,14 +343,37 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label>Program</Label>
-                  <Select value={formData.programId} onValueChange={(value) => setFormData({...formData, programId: value})}>
+                  <Label>Program {!editingId && <span className="text-destructive">*</span>}</Label>
+                  <Select
+                    value={formData.programId}
+                    onValueChange={value => {
+                      setFormData({ ...formData, programId: value, sessionId: '' });
+                      fetchStudentSessions(value, !editingId);
+                    }}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
                     <SelectContent>
-                      {programs.filter(p => p && (p.id || p.id)).map((prog) => (
-                        <SelectItem key={prog.id || prog.id} value={(prog.id || prog.id).toString()}>
+                      {[...activeSessionPrograms, ...(editingId ? programs.filter(program => program.id === formData.programId && !activeSessionPrograms.some(activeProgram => activeProgram.id === program.id)) : [])]
+                        .filter(program => program && program.id)
+                        .map((prog) => (
+                        <SelectItem key={prog.id} value={prog.id.toString()}>
                           {prog.name}
                         </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Admission Session {!editingId && <span className="text-destructive">*</span>}</Label>
+                  <Select
+                    value={formData.sessionId}
+                    onValueChange={value => setFormData({ ...formData, sessionId: value })}
+                    disabled={!formData.programId || studentSessions.length === 0}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select active session" /></SelectTrigger>
+                    <SelectContent>
+                      {studentSessions.map(session => (
+                        <SelectItem key={session.id} value={session.id}>{session.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

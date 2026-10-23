@@ -146,6 +146,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'student_payment_log': return <FinanceStudentPaymentLogsPanel />;
       case 'commissions': return <CommissionsPanel />;
       case 'rereg_report': return <FinanceReregReportWrapper />;
+      case 'rereg_report_admission': return <FinanceReregReportWrapper />;
       default: return null;
     }
   };
@@ -159,39 +160,54 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
 
 export function getFinanceNavItems() {
   return [
-    { id: '__finance_section', label: 'Finance Management', isSection: true },
+    { id: '__dashboard_section', label: 'Dashboard', isSection: true },
     { id: 'overview', label: 'Overview' },
     { id: 'my_team', label: 'My Team' },
+    { id: 'tasks', label: 'Task' },
+    { id: 'escalations', label: 'Escalation' },
+
+    { id: '__fee_payment_section', label: 'Fee & Payment Management', isSection: true },
+    { id: 'university_fees', label: 'University Fee' },
+    { id: 'fees', label: 'Fee Structure' },
+    { id: 'invoices', label: 'Invoice' },
+    { id: 'payments', label: 'Payment' },
     { id: 'student_payment_log', label: 'Student Payment Log' },
-    { id: 'invoices', label: 'Invoices' },
-    { id: 'payments', label: 'Payments' },
-    { id: 'university_fees', label: 'University Fees' },
-    { id: 'expenses', label: 'Expenses' },
-    { id: 'targets', label: 'Targets' },
-    { id: 'fees', label: 'Fee Structures' },
-    { id: 'payroll', label: 'Payroll' },
-    { id: 'payroll-batches', label: 'Payroll Batches' },
-    { id: 'students', label: 'Students' },
-    { id: 'study_centers', label: 'Study Centers' },
     { id: 'pending_payment', label: 'Pending Payment' },
-    { id: 'broadcast_notifications', label: 'Send Notifications' },
-    { id: 'admission_sessions', label: 'Admissions' },
-    { id: 'auth_fees', label: 'Auth Fees' },
-    { id: 'program_fees', label: 'Program Fees' },
-    { id: 'wallet_topups', label: 'Wallet Top-Ups' },
-    { id: 'enrollments_finance', label: 'Enrollments' },
-    { id: 'status_requests', label: 'Status Requests' },
-    { id: 'center_admissions', label: 'Centers Admissions' },
+    { id: 'wallet_topups', label: 'Wallet Top Ups' },
+
+    { id: '__student_admission_finance_section', label: 'Student & Admission Finance', isSection: true },
+    { id: 'students', label: 'Students' },
+    { id: 'admission_sessions', label: 'Admission' },
+    { id: 'enrollments_finance', label: 'Enrollment' },
+    { id: 'rereg_report_admission', label: 'Re-Registration Report' },
+    { id: 'auth_fees', label: 'Auth Fee' },
+    { id: 'program_fees', label: 'Program Fee' },
+
+    { id: '__study_center_finance_section', label: 'Study Centre Finance', isSection: true },
+    { id: 'study_centers', label: 'Study Centre' },
+    { id: 'center_admissions', label: 'Centre Admission' },
+    { id: 'status_requests', label: 'Status Request' },
+    { id: 'commissions', label: 'Commission' },
+
+    { id: '__accounting_reports_section', label: 'Accounting & Financial Reports', isSection: true },
+    { id: 'expenses', label: 'Expense' },
     { id: 'income_expenditure', label: 'Income & Expenditure' },
     { id: 'profit_loss', label: 'Profit & Loss' },
-    { id: 'salary_approvals', label: 'Salary Approvals' },
-    { id: 'sales_targets', label: 'Sales Targets' },
     { id: 'total_report', label: 'Total Data Report' },
+
+    { id: '__payroll_section', label: 'Payroll & Employee Finance', isSection: true },
+    { id: 'payroll', label: 'Payroll' },
+    { id: 'payroll-batches', label: 'Payroll Batches' },
+    { id: 'salary_approvals', label: 'Salary Approvals' },
+    { id: 'leaves', label: 'Leave Request' },
+
+    { id: '__targets_section', label: 'Targets & Performance', isSection: true },
+    { id: 'targets', label: 'Target' },
+    { id: 'sales_targets', label: 'Sales Targets' },
+
+    { id: '__reports_section', label: 'Reports', isSection: true },
     { id: 'rereg_report', label: 'Re-Registration Report' },
-    { id: 'commissions', label: 'Commissions' },
-    { id: 'leaves', label: 'Leave Requests' },
-    { id: 'tasks', label: 'Tasks' },
-    { id: 'escalations', label: 'Escalations' },
+
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
     { id: 'my_attendance', label: 'My Attendance' },
@@ -199,6 +215,7 @@ export function getFinanceNavItems() {
     { id: 'my_documents', label: 'My Documents' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'notice-board', label: 'Notice Board' },
+    { id: 'broadcast_notifications', label: 'Send Notifications' },
     { id: 'subdepartments', label: 'Sub-Departments' },
   ];
 }

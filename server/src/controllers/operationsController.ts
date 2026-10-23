@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateUserId, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '../utils/courseTypeHelper.js';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
+import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 
 // Universities
 export const getUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -161,6 +162,9 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
   if (req.query.academicSessionId && req.query.academicSessionId !== 'all') {
     where.academicSessionId = String(req.query.academicSessionId);
   }
+  if (req.query.activeSessionOnly === 'true') {
+    where.status = 'active';
+  }
   const programs = await prisma.program.findMany({ 
     where,
     include: {
@@ -174,7 +178,10 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
     },
     orderBy: { name: 'asc' },
   });
-  const mapped = programs.map(p => ({
+  const programsForResponse = req.query.activeSessionOnly === 'true'
+    ? await filterProgramsWithActiveSessions(req.user.organizationId, programs)
+    : programs;
+  const mapped = programsForResponse.map(p => ({
     ...p,
     _id: p.id,
     courseType: mapPrismaToFrontendCourseType(p.courseType)
@@ -1358,10 +1365,25 @@ const normalizeSessionDate = (value: unknown, fieldName: string) => {
 
 export const getAdmissionSessions = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId };
+  if (req.query.status) where.status = req.query.status as string;
   if (req.query.universityId) {
     where.universityId = req.query.universityId as string;
   }
-  const sessions = await prisma.admissionSession.findMany({ where });
+  if (req.query.programId) {
+    const program = await prisma.program.findFirst({
+      where: { id: req.query.programId as string, organizationId: req.user.organizationId },
+      select: { id: true, universityId: true },
+    });
+    if (!program) {
+      res.status(404).json({ success: false, message: 'Program not found' });
+      return;
+    }
+    where.AND = [
+      { OR: [{ programId: program.id }, { programId: null }] },
+      { OR: [{ universityId: program.universityId }, { universityId: null }] },
+    ];
+  }
+  const sessions = await prisma.admissionSession.findMany({ where, orderBy: { name: 'asc' } });
   res.json({ success: true, count: sessions.length, data: sessions });
 });
 export const getAdmissionSession = asyncHandler(async (req: AuthRequest, res: Response) => {

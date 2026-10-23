@@ -299,7 +299,7 @@ export const registerForExamination = asyncHandler(async (req: AuthRequest, res:
 });
 
 export const createStudent = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { firstName, lastName, name, enrollmentNo, centerId, email, programId } = req.body;
+  const { firstName, lastName, name, enrollmentNo, centerId, email, programId, sessionId } = req.body;
   const finalName = name || `${firstName || ''} ${lastName || ''}`.trim() || 'Unknown Student';
   const finalEnrollmentNo = enrollmentNo || `ENR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -317,7 +317,58 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
     return;
   }
 
-  // Create User if not exists
+  // Check if Student already exists
+  const existingStudent = await prisma.student.findUnique({ where: { email } });
+  if (existingStudent) {
+    res.status(400).json({ success: false, message: 'A student with this email already exists' });
+    return;
+  }
+
+  if (!programId || !sessionId) {
+    res.status(400).json({ success: false, message: 'An active program and admission session are required' });
+    return;
+  }
+
+  const program = await prisma.program.findFirst({
+    where: {
+      id: programId,
+      organizationId: req.user.organizationId,
+      status: 'active',
+      isDeleted: false,
+      ...(req.user.role === 'center_admin' ? {
+        programAllocations: {
+          some: {
+            organizationId: req.user.organizationId,
+            centerId: finalCenterId || '__unassigned_center__',
+            isActive: true,
+          },
+        },
+      } : {}),
+    },
+    select: { id: true, universityId: true },
+  });
+  if (!program) {
+    res.status(400).json({ success: false, message: 'Select an active program available to your account' });
+    return;
+  }
+
+  const activeSession = await prisma.admissionSession.findFirst({
+    where: {
+      id: sessionId,
+      organizationId: req.user.organizationId,
+      status: 'active',
+      AND: [
+        { OR: [{ programId: program.id }, { programId: null }] },
+        { OR: [{ universityId: program.universityId }, { universityId: null }] },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!activeSession) {
+    res.status(400).json({ success: false, message: 'Select an active admission session for the program' });
+    return;
+  }
+
   let user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     const rawPassword = 'password123';
@@ -336,20 +387,7 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
     });
   }
 
-  // Check if Student already exists
-  const existingStudent = await prisma.student.findUnique({ where: { email } });
-  if (existingStudent) {
-    res.status(400).json({ success: false, message: 'A student with this email already exists' });
-    return;
-  }
-
-  let finalProgramId = programId;
-  if (!finalProgramId || finalProgramId === 'null') {
-    const firstProg = await prisma.program.findFirst({ where: { organizationId: req.user.organizationId } });
-    if (firstProg) finalProgramId = firstProg.id;
-  }
-
-  const allowedFields = ['sessionId', 'dob', 'joinDate', 'enrolledAt', 'reregStatus', 'referredBy', 'phone', 'address'];
+  const allowedFields = ['dob', 'joinDate', 'enrolledAt', 'reregStatus', 'referredBy', 'phone', 'address'];
   const dbData: any = {
     name: finalName,
     enrollmentNo: finalEnrollmentNo,
@@ -359,13 +397,12 @@ export const createStudent = asyncHandler(async (req: AuthRequest, res: Response
     user: { connect: { email: email } }
   };
 
-  if (finalProgramId) {
-    dbData.program = { connect: { id: finalProgramId } };
-  }
+  dbData.program = { connect: { id: program.id } };
 
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) dbData[field] = req.body[field];
   }
+  dbData.sessionId = activeSession.id;
 
   const student = await prisma.student.create({
     data: dbData

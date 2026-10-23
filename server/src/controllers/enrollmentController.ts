@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
+import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -133,7 +134,8 @@ export const getWalletTransactions = asyncHandler(async (req: AuthRequest, res: 
 export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = {
     organizationId: req.user.organizationId,
-    status: 'active' as any
+    status: 'active' as any,
+    isDeleted: false
   };
   if (req.user.studyCenterId) {
     where.programAllocations = {
@@ -158,7 +160,8 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
       }
     }
   });
-  res.json({ success: true, count: programs.length, data: programs });
+  const activeSessionPrograms = await filterProgramsWithActiveSessions(req.user.organizationId, programs);
+  res.json({ success: true, count: activeSessionPrograms.length, data: activeSessionPrograms });
 });
 
 export const checkEmailUniqueness = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -198,9 +201,12 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'Missing required fields' });
     return;
   }
-  if (invalidNumericId(abcId) || invalidNumericId(debId)) {
-    const field = invalidNumericId(abcId) ? 'ABCID' : 'DEBID';
-    res.status(400).json({ success: false, message: `${field} must be exactly 12 digits` });
+  if (!abcId || !debId) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID are required' });
+    return;
+  }
+  if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
     return;
   }
   if (req.user.role === 'center_admin' && !studyCenterId) {
@@ -291,7 +297,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         status: 'active',
         AND: [
           { OR: [{ programId }, { programId: null }] },
-          { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+          { OR: [{ universityId: selectedProgram.universityId }, { universityId: null }] }
         ]
       }
     });
@@ -307,7 +313,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         status: 'active',
         AND: [
           { OR: [{ programId }, { programId: null }] },
-          { OR: [{ universityId: req.user.universityId }, { universityId: null }] }
+          { OR: [{ universityId: selectedProgram.universityId }, { universityId: null }] }
         ]
       },
       orderBy: { createdAt: 'desc' }
@@ -596,6 +602,8 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
     where,
     include: {
       studyCenter: { select: { name: true, code: true, referredBy: true } },
+      session: { select: { name: true } },
+      payment: { select: { amount: true, debitedAt: true } },
       program: {
         include: { university: { select: { name: true, code: true } } }
       }

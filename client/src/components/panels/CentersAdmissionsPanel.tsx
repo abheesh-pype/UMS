@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Search, School, Building2 } from 'lucide-react';
+import { RefreshCw, Search, School, Building2, Eye, FileText, Calendar, User, GraduationCap, CreditCard } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,6 +17,40 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  studentAddress?: string;
+  studentPhoto?: string;
+  uniEnrollmentNumber?: string;
+  abcId?: string;
+  debId?: string;
+  dob?: string;
+  religion?: string;
+  caste?: string;
+  fatherName?: string;
+  motherName?: string;
+  parentMobile?: string;
+  pincode?: string;
+  alternativePhone?: string;
+  maritalStatus?: string;
+  currentlyWorking?: string;
+  admissionDate?: string;
+  specialisation?: string;
+  sessionId?: string;
+  totalFee?: number;
+  paymentMethod?: string;
+  paymentType?: string;
+  emiDetails?: unknown;
+  refundStatus?: string;
+  refundAmount?: number;
+  extraFees?: unknown;
+  departmentRemarks?: string;
+  financeRemarks?: string;
+  universityRemarks?: string;
+  enrolledAt?: string;
+  documents?: { name: string; url: string; reqName?: string; uploadedAt?: string; remarks?: string }[];
+  educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
+  statusHistory?: { status?: string; timestamp?: string; note?: string; actorName?: string }[];
+  session?: { name: string } | null;
+  payment?: { amount: number; debitedAt: string } | null;
   program?: { 
     name: string; 
     code: string;
@@ -46,6 +81,7 @@ export function CentersAdmissionsPanel() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
   const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
   const isFinanceDepartment = ['finance_admin', 'finance_sub_admin'].includes(user?.role || '') || departmentType === 'finance';
 
@@ -180,6 +216,16 @@ export function CentersAdmissionsPanel() {
                       <p>{e.studentEmail}</p>
                       <p>{e.studentPhone}</p>
                     </div>
+                    {['sales_admin', 'bde'].includes(user?.role || '') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 self-end"
+                        onClick={() => setSelectedEnrollment(e)}
+                      >
+                        <Eye className="w-4 h-4 mr-2" /> View Profile
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -187,6 +233,161 @@ export function CentersAdmissionsPanel() {
           ))}
         </div>
       )}
+
+      <Dialog open={!!selectedEnrollment} onOpenChange={open => !open && setSelectedEnrollment(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {selectedEnrollment && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  {selectedEnrollment.studentPhoto && (
+                    <img
+                      src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                      alt={selectedEnrollment.studentName}
+                      className="w-14 h-14 rounded-full object-cover border"
+                    />
+                  )}
+                  <div>
+                    <DialogTitle>{selectedEnrollment.studentName}</DialogTitle>
+                    <p className="text-sm text-muted-foreground">{selectedEnrollment.enrollmentNumber || `ID: ${selectedEnrollment.id}`}</p>
+                  </div>
+                  <Badge className={cn('ml-auto uppercase', STATUS_COLOR[selectedEnrollment.status] || 'bg-muted text-muted-foreground')}>
+                    {selectedEnrollment.status.replace(/_/g, ' ')}
+                  </Badge>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-5 py-3">
+                <section>
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><User className="w-4 h-4 text-primary" /> Personal &amp; Contact Details</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border bg-muted/10 p-4 text-sm">
+                    {[
+                      ['Email', selectedEnrollment.studentEmail],
+                      ['Phone', selectedEnrollment.studentPhone],
+                      ['Alternative Phone', selectedEnrollment.alternativePhone],
+                      ['Address', selectedEnrollment.studentAddress],
+                      ['Pincode', selectedEnrollment.pincode],
+                      ['Date of Birth', selectedEnrollment.dob],
+                      ['Father Name', selectedEnrollment.fatherName],
+                      ['Mother Name', selectedEnrollment.motherName],
+                      ['Parent Mobile', selectedEnrollment.parentMobile],
+                      ['Religion', selectedEnrollment.religion],
+                      ['Caste / Category', selectedEnrollment.caste],
+                      ['Marital Status', selectedEnrollment.maritalStatus],
+                      ['Currently Working', selectedEnrollment.currentlyWorking],
+                      ['ABC ID', selectedEnrollment.abcId],
+                      ['DEB ID', selectedEnrollment.debId],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="font-medium break-words">{value || 'N/A'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><GraduationCap className="w-4 h-4 text-primary" /> Admission Details</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border bg-muted/10 p-4 text-sm">
+                    {[
+                      ['University', selectedEnrollment.program?.university?.name],
+                      ['Program', `${selectedEnrollment.program?.name || 'N/A'}${selectedEnrollment.program?.code ? ` (${selectedEnrollment.program.code})` : ''}`],
+                      ['Specialisation', selectedEnrollment.specialisation],
+                      ['Admission Session', selectedEnrollment.session?.name || selectedEnrollment.sessionId],
+                      ['Study Centre', `${selectedEnrollment.studyCenter?.name || 'Direct / Sales Direct'}${selectedEnrollment.studyCenter?.code ? ` (${selectedEnrollment.studyCenter.code})` : ''}`],
+                      ['Enrollment Number', selectedEnrollment.enrollmentNumber],
+                      ['University Enrollment Number', selectedEnrollment.uniEnrollmentNumber],
+                      ['Admission Date', selectedEnrollment.admissionDate ? new Date(selectedEnrollment.admissionDate).toLocaleDateString() : 'N/A'],
+                      ['Submitted', selectedEnrollment.createdAt ? new Date(selectedEnrollment.createdAt).toLocaleString() : 'N/A'],
+                      ['Enrolled At', selectedEnrollment.enrolledAt ? new Date(selectedEnrollment.enrolledAt).toLocaleString() : 'N/A'],
+                      ['Total Fee', selectedEnrollment.totalFee != null ? `₹${Number(selectedEnrollment.totalFee).toLocaleString()}` : 'N/A'],
+                      ['Payment Method', selectedEnrollment.paymentMethod],
+                      ['Payment Type', selectedEnrollment.paymentType],
+                      ['Center Admission Payment', selectedEnrollment.payment ? `₹${Number(selectedEnrollment.payment.amount).toLocaleString()} (${new Date(selectedEnrollment.payment.debitedAt).toLocaleString()})` : 'N/A'],
+                      ['Refund Status', selectedEnrollment.refundStatus],
+                      ['Refund Amount', selectedEnrollment.refundAmount != null ? `₹${Number(selectedEnrollment.refundAmount).toLocaleString()}` : 'N/A'],
+                      ['Installment Details', selectedEnrollment.emiDetails ? JSON.stringify(selectedEnrollment.emiDetails) : 'N/A'],
+                      ['Extra Fees', selectedEnrollment.extraFees ? JSON.stringify(selectedEnrollment.extraFees) : 'N/A'],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="font-medium break-words">{value || 'N/A'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><GraduationCap className="w-4 h-4 text-primary" /> Educational History</h3>
+                  {selectedEnrollment.educationalDetails?.length ? (
+                    <div className="space-y-2">
+                      {selectedEnrollment.educationalDetails.map((education, index) => (
+                        <div key={index} className="grid grid-cols-1 sm:grid-cols-4 gap-2 rounded-lg border bg-muted/10 p-3 text-sm">
+                          <span>{education.qualification || 'N/A'}</span>
+                          <span>{education.institution || 'N/A'}</span>
+                          <span>{education.passingYear || 'N/A'}</span>
+                          <span>{education.percentage ? `${education.percentage}%` : 'N/A'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground">No educational details recorded.</p>}
+                </section>
+
+                <section>
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> Uploaded Documents</h3>
+                  {selectedEnrollment.documents?.length ? (
+                    <div className="space-y-2">
+                      {selectedEnrollment.documents.map((document, index) => (
+                        <div key={`${document.url}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/10 p-3 text-sm">
+                          <div>
+                            <p className="font-medium">{document.reqName || document.name}</p>
+                            {document.uploadedAt && <p className="text-xs text-muted-foreground">Uploaded {new Date(document.uploadedAt).toLocaleString()}</p>}
+                            {document.remarks && <p className="text-xs text-muted-foreground">{document.remarks}</p>}
+                          </div>
+                          <a
+                            href={document.url.startsWith('/') ? document.url : `/uploads/${document.url}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            View document
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground">No documents uploaded.</p>}
+                </section>
+
+                {(selectedEnrollment.departmentRemarks || selectedEnrollment.financeRemarks || selectedEnrollment.universityRemarks) && (
+                  <section>
+                    <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4 text-primary" /> Review Remarks</h3>
+                    <div className="space-y-2 rounded-xl border bg-muted/10 p-4 text-sm">
+                      {selectedEnrollment.departmentRemarks && <p><span className="font-medium">Operations: </span>{selectedEnrollment.departmentRemarks}</p>}
+                      {selectedEnrollment.financeRemarks && <p><span className="font-medium">Finance: </span>{selectedEnrollment.financeRemarks}</p>}
+                      {selectedEnrollment.universityRemarks && <p><span className="font-medium">University: </span>{selectedEnrollment.universityRemarks}</p>}
+                    </div>
+                  </section>
+                )}
+
+                {selectedEnrollment.statusHistory?.length ? (
+                  <section>
+                    <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><Calendar className="w-4 h-4 text-primary" /> Status History</h3>
+                    <div className="space-y-2">
+                      {selectedEnrollment.statusHistory.map((history, index) => (
+                        <div key={index} className="rounded-lg border bg-muted/10 p-3 text-sm">
+                          <p className="font-medium">{history.status?.replace(/_/g, ' ') || 'Status update'}{history.actorName ? ` · ${history.actorName}` : ''}</p>
+                          {history.timestamp && <p className="text-xs text-muted-foreground">{new Date(history.timestamp).toLocaleString()}</p>}
+                          {history.note && <p className="mt-1">{history.note}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

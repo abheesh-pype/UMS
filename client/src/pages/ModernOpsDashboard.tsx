@@ -110,23 +110,33 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
 
 export function getOpsNavItems(isSubDeptManager: boolean) {
   return [
-    { id: '__ops_section', label: 'Operations', isSection: true },
+    { id: '__dashboard_section', label: 'Dashboard', isSection: true },
     { id: 'overview', label: 'Overview' },
+
+    { id: '__operations_team_section', label: 'Operation Team', isSection: true },
     ...(isSubDeptManager ? [{ id: 'my_subdept', label: 'My Sub-Dept' }] : []),
     { id: 'my_team', label: 'My Team' },
-    { id: 'targets', label: 'Targets' },
+    { id: 'targets', label: 'Target' },
+    { id: 'tasks', label: 'Task' },
+
+    { id: '__admission_section', label: 'Admission', isSection: true },
     { id: 'students', label: 'Students' },
-    { id: 'programs', label: 'Programs' },
-    { id: 'centers', label: 'Study Centers' },
-    { id: 'pending_verification', label: 'Pending Verification' },
-    { id: 'program_allocations', label: 'Program Allocations' },
     { id: 'enrollment_review', label: 'Enrollment Review' },
-    { id: 'sessions', label: 'Admission Sessions' },
+    { id: 'sessions', label: 'Admission Session' },
+    { id: 'status_requests', label: 'Student Status Requests' },
     { id: 'marks', label: 'Internal Marks' },
+
+    { id: '__programs_section', label: 'Programs', isSection: true },
+    { id: 'programs', label: 'Programs' },
+    { id: 'program_allocations', label: 'Program Allocation' },
+
+    { id: '__study_center_management_section', label: 'Study Center Management', isSection: true },
+    { id: 'centers', label: 'Study Centers' },
     { id: 'center_admissions', label: 'Centers Admissions' },
-    { id: 'announcements', label: 'Announcements' },
-    { id: 'broadcast_notifications', label: 'Send Notifications' },
-    { id: 'tasks', label: 'Tasks' },
+
+    { id: '__verification_section', label: 'Verification', isSection: true },
+    { id: 'pending_verification', label: 'Pending Verification' },
+
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
     { id: 'my_attendance', label: 'Attendance' },
@@ -134,6 +144,8 @@ export function getOpsNavItems(isSubDeptManager: boolean) {
     { id: 'my_documents', label: 'My Documents' },
     { id: 'manager_hiring', label: 'My Hiring Requests' },
     { id: 'holidays', label: 'Holidays' },
+    { id: 'announcements', label: 'Announcements' },
+    { id: 'broadcast_notifications', label: 'Send Notifications' },
     { id: 'notice-board', label: 'Notice Board' },
     { id: 'polls', label: 'Polls' },
   ];

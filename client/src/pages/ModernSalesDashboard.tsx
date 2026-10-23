@@ -140,18 +140,26 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
 
 export function getSalesNavItems(includeStudentEnrollment = true) {
   return [
-    { id: '__sales_section', label: 'Sales Management', isSection: true },
+    { id: '__dashboard_section', label: 'Dashboard', isSection: true },
     { id: 'overview', label: 'Overview' },
-    { id: 'targets', label: 'Targets' },
-    { id: 'invite_links', label: 'Invite Links' },
+
+    { id: '__sales_team_section', label: 'Sales Team', isSection: true },
+    { id: 'targets', label: 'Target' },
     { id: 'my_team', label: 'My Team' },
-    { id: 'student_enrollment', label: 'Student Enrollment' },
-    { id: 'study_centre', label: 'Study Centre' },
-    { id: 'pending_center_verification', label: 'Pending Verification' },
-    { id: 'center_admissions', label: 'Centers Admissions' },
+    { id: 'tasks', label: 'Task' },
+
+    { id: '__admission_section', label: 'Admission', isSection: true },
+    { id: 'invite_links', label: 'Invite Link' },
+    ...(includeStudentEnrollment ? [{ id: 'student_enrollment', label: 'Student Enrollment' }] : []),
+
+    { id: '__study_center_management_section', label: 'Study Center Management', isSection: true },
+    { id: 'study_centre', label: 'Study Center' },
+    { id: 'center_admissions', label: 'Center Admission' },
     { id: 'center_onboarding', label: 'Center Onboarding Status' },
-    ...(includeStudentEnrollment ? [] : []),
-    { id: 'tasks', label: 'Tasks' },
+
+    { id: '__verification_section', label: 'Verification', isSection: true },
+    { id: 'pending_center_verification', label: 'Pending Verification' },
+
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
     { id: 'my_attendance', label: 'Attendance' },

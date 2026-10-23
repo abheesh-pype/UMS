@@ -283,12 +283,22 @@ export function EditSalesStudentDialog({
       return;
     }
 
-    if (form.abcId && !/^\d{12}$/.test(form.abcId)) {
+    if (!form.abcId.trim()) {
+      toast.error('ABC ID is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!/^\d{12}$/.test(form.abcId)) {
       toast.error('ABC ID must be exactly 12 digits');
       setActiveTab('personal');
       return;
     }
-    if (form.debId && !/^\d{12}$/.test(form.debId)) {
+    if (!form.debId.trim()) {
+      toast.error('DEB ID is required');
+      setActiveTab('personal');
+      return;
+    }
+    if (!/^\d{12}$/.test(form.debId)) {
       toast.error('DEB ID must be exactly 12 digits');
       setActiveTab('personal');
       return;
@@ -577,26 +587,44 @@ export function EditSalesStudentDialog({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-abc">ABC ID (Academic Bank of Credits)</Label>
+                  <Label htmlFor="edit-abc">ABC ID (Academic Bank of Credits) <span className="text-destructive">*</span></Label>
                   <Input
                     id="edit-abc"
                     maxLength={12}
                     value={form.abcId}
                     onChange={(e) => setForm({ ...form, abcId: e.target.value.replace(/\D/g, '').slice(0, 12) })}
                     placeholder="12-digit ABC ID"
+                    required
                   />
                   <p className="text-[11px] text-muted-foreground">Must be exactly 12 numeric digits</p>
+                  <a
+                    href="https://www.digilocker.gov.in/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Create ABC ID through DigiLocker
+                  </a>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-deb">DEB ID (Distance Education Bureau)</Label>
+                  <Label htmlFor="edit-deb">DEB ID (Distance Education Bureau) <span className="text-destructive">*</span></Label>
                   <Input
                     id="edit-deb"
                     maxLength={12}
                     value={form.debId}
                     onChange={(e) => setForm({ ...form, debId: e.target.value.replace(/\D/g, '').slice(0, 12) })}
                     placeholder="12-digit DEB ID"
+                    required
                   />
                   <p className="text-[11px] text-muted-foreground">Must be exactly 12 numeric digits</p>
+                  <a
+                    href="https://deb.ugc.ac.in/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Create DEB ID using ABC ID
+                  </a>
                 </div>
               </div>
             </TabsContent>

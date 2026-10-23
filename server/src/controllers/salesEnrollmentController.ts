@@ -5,6 +5,7 @@ import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
+import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
   if (!req.user.organizationId) {
@@ -49,7 +50,8 @@ export const getSalesEnrollmentPrograms = asyncHandler(async (req: AuthRequest, 
     },
     orderBy: { name: 'asc' },
   });
-  res.json({ success: true, count: programs.length, data: programs });
+  const activeSessionPrograms = await filterProgramsWithActiveSessions(req.user.organizationId, programs);
+  res.json({ success: true, count: activeSessionPrograms.length, data: activeSessionPrograms });
 });
 
 export const getSalesEnrollmentSessions = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -115,8 +117,12 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     res.status(400).json({ success: false, message: 'Name, email, phone, address, program, and admission session are required' });
     return;
   }
-  if ((abcId && !/^\d{12}$/.test(abcId)) || (debId && !/^\d{12}$/.test(debId))) {
-    res.status(400).json({ success: false, message: 'ABCID and DEBID must be exactly 12 digits' });
+  if (!abcId || !debId) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID are required' });
+    return;
+  }
+  if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
     return;
   }
 
@@ -1022,8 +1028,14 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     res.status(400).json({ success: false, message: 'Student address is required' });
     return;
   }
-  if ((abcId && !/^\d{12}$/.test(abcId)) || (debId && !/^\d{12}$/.test(debId))) {
-    res.status(400).json({ success: false, message: 'ABCID and DEBID must be exactly 12 digits' });
+  const targetAbcId = abcId ?? enrollment.abcId;
+  const targetDebId = debId ?? enrollment.debId;
+  if (!targetAbcId || !targetDebId) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID are required' });
+    return;
+  }
+  if (!/^\d{12}$/.test(String(targetAbcId)) || !/^\d{12}$/.test(String(targetDebId))) {
+    res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
     return;
   }
 
