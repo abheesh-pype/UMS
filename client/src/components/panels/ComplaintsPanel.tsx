@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, CheckCircle, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, CheckCircle, MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -18,7 +18,6 @@ export function ComplaintsPanel() {
   const [complaints, setComplaints] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replySubmitting, setReplySubmitting] = useState(false);
@@ -27,7 +26,6 @@ export function ComplaintsPanel() {
     description: '',
     category: 'general',
     priority: 'medium',
-    status: 'open',
   });
 
   useEffect(() => { fetchComplaints(); }, []);
@@ -47,30 +45,14 @@ export function ComplaintsPanel() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingId) {
-        await api.put(`/hr/complaints/${editingId}`, formData);
-      } else {
-        await api.post('/hr/complaints', formData);
-      }
-      toast.success(editingId ? 'Complaint updated' : 'Complaint submitted to HR');
+      await api.post('/hr/complaints', formData);
+      toast.success('Complaint submitted to HR');
       setDialogOpen(false);
       resetForm();
       fetchComplaints();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save complaint');
     }
-  };
-
-  const handleEdit = (c: any) => {
-    setEditingId(c.id || c.id);
-    setFormData({
-      subject: c.subject || '',
-      description: c.description || '',
-      category: c.category || 'general',
-      priority: c.priority || 'medium',
-      status: c.status || 'open'
-    });
-    setDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -114,8 +96,7 @@ export function ComplaintsPanel() {
   };
 
   const resetForm = () => {
-    setEditingId(null);
-    setFormData({ subject: '', description: '', category: 'general', priority: 'medium', status: 'open' });
+    setFormData({ subject: '', description: '', category: 'general', priority: 'medium' });
   };
 
   const statusColors: any = {
@@ -145,7 +126,7 @@ export function ComplaintsPanel() {
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editingId ? 'Edit Complaint' : 'File New Complaint'}</DialogTitle>
+              <DialogTitle>File New Complaint</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -183,20 +164,6 @@ export function ComplaintsPanel() {
                   </Select>
                 </div>
               </div>
-              {isHrAdmin && editingId && (
-                <div>
-                  <Label>Status</Label>
-                  <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="open">Open</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
-                      <SelectItem value="closed">Closed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
               <div className="flex gap-2">
                 <Button type="submit" className="flex-1">Save</Button>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
@@ -256,7 +223,6 @@ export function ComplaintsPanel() {
                         )}
                         {isHrAdmin && (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(c)}><Edit className="w-4 h-4" /></Button>
                             <Button variant="ghost" size="sm" onClick={() => handleDelete(cid)}><Trash2 className="w-4 h-4" /></Button>
                           </>
                         )}
