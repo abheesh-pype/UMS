@@ -14,6 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 
 export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: boolean }) {
   const { user } = useAuth();
@@ -28,7 +29,10 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
   const [loading, setLoading] = useState(false);
   
   // Date Filtering & View Mode States
-  const [dateFilter, setDateFilter] = useState<Date | undefined>(new Date());
+  const [dateFilter, setDateFilter] = useState<Date | undefined>(isHR ? undefined : new Date());
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const [startDate, setStartDate] = useState(isHR ? today : '');
+  const [endDate, setEndDate] = useState(isHR ? today : '');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,17 +47,26 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
   });
 
   useEffect(() => {
-    fetchAttendance();
     if (canViewAll) fetchEmployees();
-  }, []);
+  }, [canViewAll]);
+
+  useEffect(() => {
+    fetchAttendance();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewAll, startDate, endDate]);
 
   const fetchAttendance = async () => {
     setLoading(true);
     try {
       const endpoint = canViewAll ? '/hr/attendance' : '/hr/attendance/my';
-      const response = await api.get(endpoint);
+      const response = await api.get(endpoint, {
+        params: canViewAll
+          ? { startDate: startDate || undefined, endDate: endDate || undefined }
+          : undefined,
+      });
       setAttendance(response.data.data || []);
-    } catch (error) {
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load attendance records');
     } finally {
       setLoading(false);
     }
@@ -63,7 +76,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
     try {
       const response = await api.get('/users');
       const allUsers = response.data.data || [];
-      setEmployees(allUsers.filter((u: any) => !['ceo', 'org_admin', 'superadmin', 'center_admin', 'student'].includes(u.role)));
+      setEmployees(allUsers.filter((u: any) => u.role !== 'student'));
     } catch (error) {
     }
   };
@@ -139,13 +152,15 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
       absent: 'bg-red-100 text-red-800',
       late: 'bg-yellow-100 text-yellow-800',
       half_day: 'bg-blue-100 text-blue-800',
-      leave: 'bg-purple-100 text-purple-800'
+      leave: 'bg-purple-100 text-purple-800',
+      not_marked: 'bg-muted text-muted-foreground',
     };
     return <Badge className={variants[status] || ''}>{status?.replace('_', ' ')}</Badge>;
   };
 
   const filteredAttendance = attendance.filter(rec => {
     if (!rec || (!rec.id && !rec.id)) return false;
+    if (isHR) return true;
     if (!dateFilter) return true;
     const recDate = new Date(rec.date);
     return recDate.getDate() === dateFilter.getDate() && 
@@ -153,13 +168,42 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
            recDate.getFullYear() === dateFilter.getFullYear();
   });
 
+  const recordsTitle = isHR
+    ? startDate && endDate
+      ? `${format(new Date(`${startDate}T00:00:00`), 'PPP')} - ${format(new Date(`${endDate}T00:00:00`), 'PPP')}`
+      : startDate
+        ? `From ${format(new Date(`${startDate}T00:00:00`), 'PPP')}`
+        : endDate
+          ? `Through ${format(new Date(`${endDate}T00:00:00`), 'PPP')}`
+          : 'All Dates'
+    : dateFilter
+      ? format(dateFilter, 'PPP')
+      : 'All Dates';
+
   const renderRecordsList = () => {
     if (loading) return <div className="text-center py-8">Loading...</div>;
-    if (filteredAttendance.length === 0) return <div className="text-center py-8 text-muted-foreground">No attendance records found for this date.</div>;
+    const recordsToDisplay = isHR && startDate && startDate === endDate
+      ? [
+          ...filteredAttendance,
+          ...employees
+            .filter(employee => !filteredAttendance.some(record => {
+              const recordUserId = record.userId || record.employeeId?.id || record.employeeId;
+              return recordUserId === employee.id;
+            }))
+            .map(employee => ({
+              id: `not-marked-${employee.id}`,
+              employeeId: employee,
+              date: `${startDate}T00:00:00`,
+              status: 'not_marked',
+              isUnmarked: true,
+            })),
+        ]
+      : filteredAttendance;
+    if (recordsToDisplay.length === 0) return <div className="text-center py-8 text-muted-foreground">No attendance records found for this date range.</div>;
     
     return (
       <div className="space-y-2">
-        {filteredAttendance.map((record) => {
+        {recordsToDisplay.map((record) => {
           const recId = record.id || record.id;
           return (
             <div key={recId} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
@@ -168,13 +212,13 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
                   {record.employeeId?.name || record.employee?.name || record.user?.name || 'Unknown'}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {new Date(record.date).toLocaleDateString()} • {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'} - {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}
+                  {record.isUnmarked ? 'No attendance recorded' : `${new Date(record.date).toLocaleDateString()} • ${record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'} - ${record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}`}
                 </div>
                 {record.notes && <div className="text-xs text-muted-foreground mt-1">{record.notes}</div>}
               </div>
               <div className="flex items-center gap-2">
                 {getStatusBadge(record.status)}
-                {isHR && (
+                {isHR && !record.isUnmarked && (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => handleEdit(record)}>
                       <Edit className="w-4 h-4" />
@@ -209,27 +253,56 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
             </ToggleGroupItem>
           </ToggleGroup>
           
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("w-[240px] justify-start text-left font-normal", !dateFilter && "text-muted-foreground")}>
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateFilter ? format(dateFilter, "PPP") : <span>Filter by date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={dateFilter}
-                onSelect={setDateFilter}
-                initialFocus
+          {isHR ? (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="attendance-start-date" className="sr-only">Start date</Label>
+              <Input
+                id="attendance-start-date"
+                type="date"
+                aria-label="Start date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="w-auto"
               />
-              <div className="p-2 border-t flex justify-center">
-                <Button variant="ghost" size="sm" onClick={() => setDateFilter(undefined)} className="w-full">
-                  Clear filter
+              <span className="text-sm text-muted-foreground">to</span>
+              <Label htmlFor="attendance-end-date" className="sr-only">End date</Label>
+              <Input
+                id="attendance-end-date"
+                type="date"
+                aria-label="End date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="w-auto"
+              />
+              {(startDate || endDate) && (
+                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                  Clear
                 </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+              )}
+            </div>
+          ) : (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className={cn("w-[240px] justify-start text-left font-normal", !dateFilter && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateFilter ? format(dateFilter, "PPP") : <span>Filter by date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="end">
+                <Calendar
+                  mode="single"
+                  selected={dateFilter}
+                  onSelect={setDateFilter}
+                  initialFocus
+                />
+                <div className="p-2 border-t flex justify-center">
+                  <Button variant="ghost" size="sm" onClick={() => setDateFilter(undefined)} className="w-full">
+                    Clear filter
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {isHR && (
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
@@ -331,7 +404,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>{dateFilter ? format(dateFilter, "PPP") : 'All Dates'} Records</CardTitle>
+              <CardTitle>{recordsTitle} Records</CardTitle>
             </CardHeader>
             <CardContent>
               {renderRecordsList()}
@@ -341,7 +414,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{dateFilter ? format(dateFilter, "PPP") : 'All Dates'} Records</CardTitle>
+            <CardTitle>{recordsTitle} Records</CardTitle>
           </CardHeader>
           <CardContent>
             {renderRecordsList()}

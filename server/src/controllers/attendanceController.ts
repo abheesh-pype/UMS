@@ -77,8 +77,37 @@ export const getMonthlyLateSummary = asyncHandler(async (req: AuthRequest, res: 
 });
 
 export const getAttendances = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const where: any = { organizationId: req.user.organizationId };
+  if (req.query.employeeId) {
+    where.userId = req.query.employeeId;
+  }
+
+  if (req.query.startDate || req.query.endDate) {
+    where.date = {};
+    if (req.query.startDate) {
+      const startDate = new Date(`${req.query.startDate}T00:00:00.000Z`);
+      if (Number.isNaN(startDate.getTime())) {
+        res.status(400).json({ success: false, message: 'Invalid start date' });
+        return;
+      }
+      where.date.gte = startDate;
+    }
+    if (req.query.endDate) {
+      const endDate = new Date(`${req.query.endDate}T23:59:59.999Z`);
+      if (Number.isNaN(endDate.getTime())) {
+        res.status(400).json({ success: false, message: 'Invalid end date' });
+        return;
+      }
+      where.date.lte = endDate;
+    }
+    if (where.date.gte && where.date.lte && where.date.gte > where.date.lte) {
+      res.status(400).json({ success: false, message: 'Start date must be on or before end date' });
+      return;
+    }
+  }
+
   const attendances = await prisma.attendance.findMany({ 
-    where: { organizationId: req.user.organizationId }, 
+    where,
     include: { user: true },
     orderBy: { date: 'desc' }
   });

@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { PunchWidget } from '@/components/attendance/PunchWidget';
 
 interface TableItem {
   id: string;
@@ -394,6 +395,8 @@ export function PrismaLayout({
               <ShieldCheck className="w-3.5 h-3.5 text-primary" />
               <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{schema}</span>
             </div>}
+
+            {!isStudent && <PunchWidget variant="header" />}
             
             <div className="h-8 w-px bg-border mx-1" />
             
