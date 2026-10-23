@@ -56,6 +56,8 @@ const TABLE_TO_TAB: Record<string, string> = {
   employees: 'employees',
   vacancies: 'vacancies',
   leave_requests: 'leaves',
+  my_leaves: 'my_leaves',
+  leave_approvals: 'leave_approvals',
   attendance: 'attendance',
   holidays: 'holidays',
   complaints: 'complaints',
@@ -299,6 +301,8 @@ function App() {
         { id: 'employees', label: 'Employees' },
         { id: 'team', label: 'Team' },
         { id: 'leave_requests', label: 'Leave Requests' },
+        { id: 'my_leaves', label: 'My Leaves' },
+        { id: 'leave_approvals', label: 'Leave Approvals' },
         { id: 'leads', label: 'Leads' },
         { id: 'manager_hiring', label: 'Hiring Requests' },
       ];

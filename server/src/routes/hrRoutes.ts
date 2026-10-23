@@ -90,6 +90,13 @@ const router = express.Router();
 
 router.use(protect);
 
+const authorizeDepartmentLeaveApprover = (req: any, res: any, next: any) => {
+  if (req.user?.branchId) {
+    return next();
+  }
+  return authorize('hr_admin', 'ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin', 'org_admin', 'ceo')(req, res, next);
+};
+
 // Leave Requests
 router.route('/leaves').get(getLeaveRequests).post(createLeaveRequest);
 router.route('/leaves/stats').get(authorize('hr_admin', 'dept_admin', 'ceo', 'org_admin', 'superadmin'), getLeaveStats);
@@ -99,7 +106,7 @@ router.route('/leaves/:id')
   .put(updateLeaveRequest)
   .delete(deleteLeaveRequest);
 router.put('/leaves/:id/approve', authorize('hr_admin', 'ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'org_admin', 'ceo'), approveLeave);
-router.patch('/leaves/:id/dept-approve', authorize('hr_admin', 'ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin', 'org_admin', 'ceo'), deptApproveLeave);
+router.patch('/leaves/:id/dept-approve', authorizeDepartmentLeaveApprover, deptApproveLeave);
 router.patch('/leaves/:id/hr-approve', authorize('hr_admin', 'org_admin', 'ceo'), hrApproveLeave);
 
 // Attendance

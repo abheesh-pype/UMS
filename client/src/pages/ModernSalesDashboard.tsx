@@ -114,7 +114,7 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
       case 'student_enrollment': return <SalesStudentEnrollmentPanel />;
       case 'tasks': return <TasksPanel />;
       case 'my_leaves': return <LeavesPanel isPersonalView />;
-      case 'leave_approvals': return <LeavesPanel />;
+      case 'leave_approvals': return <LeavesPanel approvalsOnly />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
       case 'my_payslips': return <PayrollPanel personalView />;
       case 'my_documents': return <MyDocumentsPanel />;

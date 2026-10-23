@@ -57,6 +57,7 @@ export function getBranchManagerNavItems() {
     { id: 'announcements', label: 'Announcements' },
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
+    { id: 'leave_approvals', label: 'Leave Approvals' },
     { id: 'my_attendance', label: 'Attendance' },
     { id: 'my_payslips', label: 'Pay Slips' },
     { id: 'my_documents', label: 'My Documents' },
@@ -123,6 +124,7 @@ export function ModernBranchManagerDashboard({ initialTab, onNavigate }: { initi
       case 'announcements': return <AnnouncementsPanel />;
       // Portal
       case 'my_leaves': return <LeavesPanel isPersonalView />;
+      case 'leave_approvals': return <LeavesPanel approvalsOnly />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
       case 'my_payslips': return <PayrollPanel personalView />;
       case 'my_documents': return <MyDocumentsPanel />;

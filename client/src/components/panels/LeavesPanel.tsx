@@ -66,7 +66,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 
 const DEPT_MANAGER_ROLES = ['ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin'];
 
-export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boolean }) {
+export function LeavesPanel({
+  isPersonalView = false,
+  approvalsOnly = false,
+}: {
+  isPersonalView?: boolean;
+  approvalsOnly?: boolean;
+}) {
   const { user } = useAuth();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,6 +201,12 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
 
   // Filter tabs
   const filtered = leaves.filter(l => {
+    if (approvalsOnly) {
+      const awaitingAction = isHR
+        ? ['pending', 'dept_approved'].includes(l.status)
+        : l.status === 'pending';
+      return awaitingAction && l.employeeId?.id !== userId;
+    }
     if (activeTab === 'all') return true;
     if (activeTab === 'mine') return l.employeeId?.id === userId;
     return l.status === activeTab;
@@ -215,7 +227,11 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
         <div>
           <h2 className="text-2xl font-bold">Leave Requests</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            {isDeptManager
+            {approvalsOnly
+              ? 'Review and approve or reject leave requests from your subordinates.'
+              : isPersonalView
+              ? 'Submit and track your leave requests.'
+              : isDeptManager
               ? 'Review and approve leave requests from your department.'
               : isHR
               ? 'Final approval for department-approved leave requests.'
@@ -231,7 +247,7 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
             Refresh
           </Button>
           {/* Employees and managers can submit leaves */}
-          {!isHR && (
+          {!isHR && !approvalsOnly && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               New Request
@@ -297,12 +313,18 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
-          <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
-          <TabsTrigger value="dept_approved">Dept Approved ({counts.dept_approved})</TabsTrigger>
-          <TabsTrigger value="approved">Approved ({counts.approved})</TabsTrigger>
-          <TabsTrigger value="rejected">Rejected ({counts.rejected})</TabsTrigger>
-          {!isEmployee && <TabsTrigger value="mine">My Requests</TabsTrigger>}
+          {approvalsOnly ? (
+            <TabsTrigger value="all">Awaiting Action ({filtered.length})</TabsTrigger>
+          ) : (
+            <>
+              <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
+              <TabsTrigger value="pending">Pending ({counts.pending})</TabsTrigger>
+              <TabsTrigger value="dept_approved">Dept Approved ({counts.dept_approved})</TabsTrigger>
+              <TabsTrigger value="approved">Approved ({counts.approved})</TabsTrigger>
+              <TabsTrigger value="rejected">Rejected ({counts.rejected})</TabsTrigger>
+              {!isEmployee && <TabsTrigger value="mine">My Requests</TabsTrigger>}
+            </>
+          )}
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-4">
@@ -326,7 +348,7 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
                 
                 const userDeptId = (user as any)?.departmentId || (user as any)?.department?.id;
                 const isSameDept = leave.departmentId?.id === userDeptId;
-                const canDeptAct = isDeptManager && leave.status === 'pending' && (isGodMode || isSameDept);
+                const canDeptAct = isDeptManager && leave.status === 'pending' && (isGodMode || isBranchManager || isSameDept);
                 const canHRAct = isHR && leave.status === 'dept_approved';
 
                 return (

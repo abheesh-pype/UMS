@@ -40,7 +40,6 @@ import { HiringPanel } from '@/components/panels/hr/HiringPanel';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 import { ShiftPanel } from '@/components/panels/hr/ShiftPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
-import { LeaveApprovalsPanel } from '@/components/panels/hr/LeaveApprovalsPanel';
 import { AttendanceCalendarPanel } from '@/components/panels/hr/AttendanceCalendarPanel';
 
 
@@ -65,7 +64,8 @@ export function ModernHRDashboard({ initialTab, onNavigate: _onNavigate }: { ini
       case 'users': return <HRUsersPanel />;
       case 'employees': return <EmployeesPanel />;
       case 'leaves': return <LeavesPanel />;
-      case 'leave-approvals': return <LeaveApprovalsPanel />;
+      case 'leave-approvals':
+      case 'leave_approvals': return <LeavesPanel approvalsOnly />;
       case 'attendance': return <AttendancePanel />;
       case 'attendance-calendar': return <AttendanceCalendarPanel />;
       case 'hiring': return <HiringPanel />;
@@ -129,6 +129,7 @@ export function getHRNavItems() {
     { id: 'activity_report', label: 'Activity Report' },
     { id: '__portal_section', label: 'My Portal', isSection: true },
     { id: 'my_leaves', label: 'My Leaves' },
+    { id: 'leave_approvals', label: 'Leave Approvals' },
     { id: 'my_attendance', label: 'My Attendance' },
     { id: 'my_payslips', label: 'Pay Slips' },
     { id: 'my_documents', label: 'My Documents' },

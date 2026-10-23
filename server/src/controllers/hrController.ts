@@ -25,8 +25,9 @@ export const getLeaveRequests = asyncHandler(async (req: AuthRequest, res: Respo
   const isDeptManager = ['ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin'].includes(req.user.role);
   const whereClause: any = { organizationId: req.user.organizationId };
 
-  // Dept managers only see their own department's leaves; fallback to all if no dept
-  if (!isGodMode && isDeptManager && req.user.departmentId) {
+  if (!isGodMode && req.user.branchId) {
+    whereClause.user = { is: { branchId: req.user.branchId } };
+  } else if (!isGodMode && isDeptManager && req.user.departmentId) {
     whereClause.departmentId = req.user.departmentId;
   }
 
@@ -207,6 +208,21 @@ export const deleteLeaveRequest = asyncHandler(async (req: AuthRequest, res: Res
 export const approveLeave = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
   const isHr = req.path.includes('hr-approve');
+
+  if (!isHr && req.user.branchId && !['hr_admin', 'org_admin', 'superadmin', 'ceo'].includes(req.user.role)) {
+    const branchLeave = await prisma.leaveRequest.findFirst({
+      where: {
+        id: req.params.id,
+        organizationId: req.user.organizationId,
+        user: { is: { branchId: req.user.branchId } },
+      },
+      select: { id: true },
+    });
+    if (!branchLeave) {
+      res.status(404).json({ success: false, message: 'Leave request not found in your branch' });
+      return;
+    }
+  }
 
   const updateData: any = {};
   if (isHr) {
