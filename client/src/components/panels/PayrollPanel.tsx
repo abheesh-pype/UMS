@@ -45,6 +45,8 @@ export function PayrollPanel() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateMonth, setGenerateMonth] = useState(new Date().toISOString().slice(0, 7));
   const [generateMode, setGenerateMode] = useState<'smart' | 'basic'>('smart');
+  const [generationErrors, setGenerationErrors] = useState<string[]>([]);
+  const [generationErrorsOpen, setGenerationErrorsOpen] = useState(false);
 
   // Edit
   const [editOpen, setEditOpen] = useState(false);
@@ -80,8 +82,16 @@ export function PayrollPanel() {
       const endpoint = generateMode === 'smart' ? '/hr/payroll/generate-smart' : '/payroll/generate';
       const res = await api.post(endpoint, { month: generateMonth });
       const count = res.data.data?.length || 0;
-      toast.success(`Generated ${count} payroll records`);
-      if (res.data.errors?.length) toast.error(`${res.data.errors.length} errors — check console`);
+      const errors = Array.isArray(res.data.errors) ? res.data.errors.map(String) : [];
+      if (count > 0) toast.success(`Generated ${count} payroll records`);
+      if (errors.length > 0) {
+        console.error('Payroll generation errors:', errors);
+        setGenerationErrors(errors);
+        setGenerationErrorsOpen(true);
+        toast.error(`${errors.length} payroll record${errors.length === 1 ? '' : 's'} could not be generated`);
+      } else if (count === 0) {
+        toast.info('No payroll records were generated');
+      }
       setGenerateOpen(false);
       fetchPayrolls();
     } catch (err: any) {
@@ -163,8 +173,7 @@ export function PayrollPanel() {
   const handleTransfer = async () => {
     if (!selectedIds.length) { toast.error('Select at least one confirmed payroll'); return; }
     try {
-      const month = payrolls.find(p => selectedIds.includes(p.id))?.month;
-      await api.post('/payroll/transfer-to-finance', { payrollIds: selectedIds, month, remarks: transferRemarks });
+      await api.post('/payroll/transfer-to-finance', { payrollIds: selectedIds, remarks: transferRemarks });
       toast.success(`Transferred ${selectedIds.length} payrolls to Finance`);
       setTransferOpen(false);
       setSelectedIds([]);
@@ -318,6 +327,25 @@ export function PayrollPanel() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancel</Button>
             <Button onClick={handleGenerate}>Generate</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={generationErrorsOpen} onOpenChange={setGenerationErrorsOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Payroll generation issues</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {generationErrors.length} payroll record{generationErrors.length === 1 ? '' : 's'} could not be generated:
+          </p>
+          <ul className="max-h-72 space-y-2 overflow-y-auto rounded-md border p-3 text-sm">
+            {generationErrors.map((error, index) => (
+              <li key={`${index}-${error}`} className="break-words">{error}</li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button onClick={() => setGenerationErrorsOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

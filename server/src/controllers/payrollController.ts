@@ -176,26 +176,56 @@ export const generateMonthlyPayroll = asyncHandler(async (req: AuthRequest, res:
 });
 
 export const transferToFinance = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { payrollIds, month, year, remarks } = req.body;
-  const payrolls = await prisma.payroll.findMany({ where: { id: { in: payrollIds } } });
-  const totalAmount = payrolls.reduce((sum, p) => sum + p.netSalary, 0);
+  const { payrollIds, remarks } = req.body;
+  if (!Array.isArray(payrollIds) || payrollIds.length === 0 ||
+      payrollIds.some(id => typeof id !== 'string')) {
+    res.status(400).json({ success: false, message: 'Select at least one payroll record to submit' });
+    return;
+  }
 
-  const batch = await prisma.payrollBatch.create({
-    data: {
+  const uniquePayrollIds = [...new Set(payrollIds)];
+  const payrolls = await prisma.payroll.findMany({
+    where: {
+      id: { in: uniquePayrollIds },
       organizationId: req.user.organizationId,
-      batchNumber: `PB-${month}-${year}-${Date.now()}`,
-      month: `${year}-${month}`,
-      payrollIds,
-      totalAmount,
-      employeeCount: payrolls.length,
-      transferredBy: req.user.id,
-      remarks,
-      status: 'pending_finance_approval' as any
+      status: 'confirmed'
     }
   });
+  if (payrolls.length !== uniquePayrollIds.length) {
+    res.status(400).json({ success: false, message: 'One or more selected payroll records are unavailable or not confirmed' });
+    return;
+  }
 
-  await prisma.payroll.updateMany({ where: { id: { in: payrollIds } }, data: { status: 'transferred_to_finance' as any } });
-  res.status(201).json({ success: true, data: batch });
+  const payrollsByMonth = new Map<string, typeof payrolls>();
+  for (const payroll of payrolls) {
+    payrollsByMonth.set(payroll.month, [...(payrollsByMonth.get(payroll.month) || []), payroll]);
+  }
+
+  const batches = await prisma.$transaction(async transaction => {
+    const createdBatches = [];
+    for (const [month, monthPayrolls] of payrollsByMonth) {
+      const batch = await transaction.payrollBatch.create({
+        data: {
+          organizationId: req.user.organizationId,
+          month,
+          payrollIds: monthPayrolls.map(payroll => payroll.id),
+          totalAmount: monthPayrolls.reduce((sum, payroll) => sum + payroll.netSalary, 0),
+          employeeCount: monthPayrolls.length,
+          transferredBy: req.user.id,
+          remarks,
+          status: 'pending_finance_approval'
+        }
+      });
+      createdBatches.push(batch);
+    }
+    await transaction.payroll.updateMany({
+      where: { id: { in: uniquePayrollIds }, organizationId: req.user.organizationId },
+      data: { status: 'transferred_to_finance', transferredToFinanceBy: req.user.id, transferredToFinanceAt: new Date() }
+    });
+    return createdBatches;
+  });
+
+  res.status(201).json({ success: true, count: batches.length, data: batches });
 });
 
 export const getPayrollBatches = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -220,10 +250,34 @@ export const financeApprovePayrollBatch = asyncHandler(async (req: AuthRequest, 
 });
 
 export const financeRejectPayrollBatch = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const batch = await prisma.payrollBatch.update({
-    where: { id: req.params.id },
-    data: { status: 'rejected_by_finance' as any, remarks: req.body.remarks }
+  const batch = await prisma.$transaction(async transaction => {
+    const currentBatch = await transaction.payrollBatch.findFirst({
+      where: { id: req.params.id, organizationId: req.user.organizationId }
+    });
+    if (!currentBatch) return null;
+
+    const rejectedBatch = await transaction.payrollBatch.update({
+      where: { id: currentBatch.id },
+      data: {
+        status: 'rejected',
+        rejectionReason: req.body.rejectionReason || req.body.remarks || null
+      }
+    });
+    await transaction.payroll.updateMany({
+      where: {
+        id: { in: currentBatch.payrollIds },
+        organizationId: req.user.organizationId,
+        status: 'transferred_to_finance'
+      },
+      data: { status: 'confirmed' }
+    });
+    return rejectedBatch;
   });
+
+  if (!batch) {
+    res.status(404).json({ success: false, message: 'Payroll batch not found' });
+    return;
+  }
   res.status(200).json({ success: true, data: batch });
 });
 
@@ -236,9 +290,47 @@ export const markBatchPaymentInProgress = asyncHandler(async (req: AuthRequest, 
 });
 
 export const completeBatchPayment = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const batch = await prisma.payrollBatch.update({
-    where: { id: req.params.id },
-    data: { status: 'paid' as any, completedAt: new Date() }
+  const { paymentDate, paymentMethod, paymentReference } = req.body;
+  if (!['bank_transfer', 'cash', 'cheque'].includes(paymentMethod)) {
+    res.status(400).json({ success: false, message: 'A valid payment method is required' });
+    return;
+  }
+
+  const batch = await prisma.$transaction(async transaction => {
+    const currentBatch = await transaction.payrollBatch.findFirst({
+      where: {
+        id: req.params.id,
+        organizationId: req.user.organizationId,
+        status: 'payment_in_progress'
+      }
+    });
+    if (!currentBatch) return null;
+
+    const updatedPayrolls = await transaction.payroll.updateMany({
+      where: {
+        id: { in: currentBatch.payrollIds },
+        organizationId: req.user.organizationId,
+        status: 'transferred_to_finance'
+      },
+      data: {
+        status: 'paid',
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        paymentMethod,
+        paymentReference: typeof paymentReference === 'string' ? paymentReference : null
+      }
+    });
+    if (updatedPayrolls.count !== currentBatch.payrollIds.length) {
+      throw new Error('Some payroll records in this batch are no longer available for payment');
+    }
+    return transaction.payrollBatch.update({
+      where: { id: currentBatch.id },
+      data: { status: 'completed', completedAt: new Date() }
+    });
   });
+
+  if (!batch) {
+    res.status(404).json({ success: false, message: 'Payroll batch not found or not in payment progress' });
+    return;
+  }
   res.status(200).json({ success: true, data: batch });
 });

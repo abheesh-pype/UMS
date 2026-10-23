@@ -187,7 +187,119 @@ export const bulkInitLeaveAllocations = asyncHandler(async (req: AuthRequest, re
 });
 
 export const generateSmartPayroll = asyncHandler(async (req: AuthRequest, res: Response) => {
-  res.json({ success: true, message: 'Smart payroll logic not implemented' });
+  const { month } = req.body;
+  if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    res.status(400).json({ success: false, message: 'Month is required in YYYY-MM format' });
+    return;
+  }
+
+  const [year, monthNumber] = month.split('-').map(Number);
+  const startDate = new Date(Date.UTC(year, monthNumber - 1, 1));
+  const endDate = new Date(Date.UTC(year, monthNumber, 1));
+
+  const users = await prisma.user.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      status: 'active' as any,
+      role: { notIn: ['ceo', 'org_admin', 'superadmin', 'center_admin', 'student'] }
+    },
+    include: { salaryConfig: true }
+  });
+
+  const configuredUsers = users.filter(user => user.salaryConfig);
+  const attendance = await prisma.attendance.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      userId: { in: configuredUsers.map(user => user.id) },
+      date: { gte: startDate, lt: endDate },
+      lateMinutes: { gt: 0 }
+    },
+    select: { userId: true, lateMinutes: true }
+  });
+  const lateMinutesByUser = new Map<string, number>();
+  for (const record of attendance) {
+    lateMinutesByUser.set(
+      record.userId,
+      (lateMinutesByUser.get(record.userId) || 0) + record.lateMinutes
+    );
+  }
+
+  const toAmountRecord = (value: any): Record<string, number> => {
+    if (Array.isArray(value)) {
+      return Object.fromEntries(value.map((item, index) => [
+        item?.name || item?.label || `item_${index + 1}`,
+        Number(item?.amount) || 0
+      ]));
+    }
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, amount]: [string, any]) => [
+        key,
+        Number(amount?.amount ?? amount) || 0
+      ]));
+    }
+    return {};
+  };
+
+  const generated = [];
+  const errors: string[] = [];
+  for (const user of users) {
+    const config = user.salaryConfig;
+    if (!config) {
+      errors.push(`${user.name}: missing salary configuration`);
+      continue;
+    }
+
+    const existingPayroll = await prisma.payroll.findUnique({
+      where: { employeeId_month: { employeeId: user.id, month } },
+      select: { id: true, status: true }
+    });
+    if (existingPayroll && existingPayroll.status !== 'draft') {
+      errors.push(`${user.name}: payroll for ${month} is already ${existingPayroll.status}`);
+      continue;
+    }
+
+    const basicSalary = Number(config.basicSalary) || 0;
+    const allowances = toAmountRecord(config.allowances);
+    const deductions = toAmountRecord(config.deductions);
+    const professionalTax = Number(config.professionalTax) || 0;
+    const labourWelfareFund = Number(config.labourWelfareFund) || 0;
+    const tds = Number(config.tds) || 0;
+    const lateDeduction = (lateMinutesByUser.get(user.id) || 0) *
+      (Number(config.lateDeductionPerMinute) || 0);
+
+    deductions.professionalTax = professionalTax;
+    deductions.labourWelfareFund = labourWelfareFund;
+    deductions.tds = tds;
+    deductions.lateAttendance = lateDeduction;
+
+    const grossSalary = basicSalary + Object.values(allowances).reduce((total, amount) => total + amount, 0);
+    const netSalary = grossSalary - Object.values(deductions).reduce((total, amount) => total + amount, 0);
+    const payrollData = {
+      organizationId: req.user.organizationId,
+      basicSalary,
+      professionalTax,
+      labourWelfareFund,
+      tds,
+      allowances,
+      deductions,
+      grossSalary,
+      netSalary
+    };
+
+    const payroll = await prisma.payroll.upsert({
+      where: { employeeId_month: { employeeId: user.id, month } },
+      update: payrollData,
+      create: {
+        ...payrollData,
+        employeeId: user.id,
+        month,
+        status: 'draft'
+      }
+    });
+    generated.push(payroll);
+  }
+
+  res.status(201).json({ success: true, count: generated.length, data: generated, errors });
 });
 
 export const approveSalaryConfig = asyncHandler(async (req: AuthRequest, res: Response) => {

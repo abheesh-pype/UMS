@@ -34,7 +34,7 @@ router.put('/batches/:id/complete-payment', authorize('finance_admin', 'org_admi
 
 // Payroll actions (must be before /:id to avoid param conflicts)
 router.post('/generate', authorize('hr_admin', 'finance_admin', 'org_admin', 'ceo', 'superadmin'), generateMonthlyPayroll);
-router.post('/transfer-to-finance', authorize('hr_admin', 'org_admin', 'superadmin'), transferToFinance);
+router.post('/transfer-to-finance', authorize('hr_admin', 'finance_admin', 'org_admin', 'superadmin'), transferToFinance);
 
 // Payroll CRUD
 router.route('/').get(getPayrolls).post(authorize('hr_admin', 'finance_admin', 'org_admin', 'ceo', 'superadmin'), createPayroll);

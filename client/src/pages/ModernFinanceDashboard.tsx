@@ -117,7 +117,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'targets': return <TargetsPanel endpoint="/finance/targets" title="Finance Targets" />;
       case 'fees': return <ProgramFeeStructurePanel />;
       case 'payroll': return <PayrollPanel />;
-      case 'payroll-batches': return <PayrollBatchesPanel />;
+      case 'payroll-batches': return <PayrollBatchesPanel allowBatchCreation />;
       case 'students': return <StudentsPanel />;
       case 'study_centers': return <StudyCentersPanel financeMode />;
       case 'broadcast_notifications': return <BroadcastNotificationsPanel />;

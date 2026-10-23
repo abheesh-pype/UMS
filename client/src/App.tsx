@@ -29,7 +29,15 @@ const EMPLOYEE_NAV_ITEMS = [
   { id: 'ld-portal', label: 'L&D Portal' },
 ];
 
-const HIDDEN_NAV_LINK_IDS = new Set(['marks', 'internal_marks', 'announcements', 'broadcast_notifications']);
+const HIDDEN_NAV_LINK_IDS = new Set([
+  'marks',
+  'internal_marks',
+  'announcements',
+  'broadcast_notifications',
+  'shift-settings',
+  'managers',
+  'polls'
+]);
 
 // Maps sidebar table IDs to the dashboard tab they should open
 const TABLE_TO_TAB: Record<string, string> = {

@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { useAuth } from '@/hooks/useAuth';
 
 interface PayrollBatch {
   id?: string;
@@ -30,11 +29,22 @@ interface PayrollBatch {
   createdAt: string;
 }
 
-export function PayrollBatchesPanel() {
-  const { user } = useAuth();
-  const isFinance = user?.role === 'finance_admin';
+interface ConfirmedPayroll {
+  id: string;
+  month: string;
+  netSalary: number;
+  user?: { name: string; email: string };
+}
+
+export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatchCreation?: boolean }) {
+  const isFinance = allowBatchCreation;
   const [batches, setBatches] = useState<PayrollBatch[]>([]);
+  const [availablePayrolls, setAvailablePayrolls] = useState<ConfirmedPayroll[]>([]);
+  const [selectedPayrollIds, setSelectedPayrollIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creatingBatch, setCreatingBatch] = useState(false);
+  const [batchRemarks, setBatchRemarks] = useState('');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<PayrollBatch | null>(null);
@@ -48,6 +58,7 @@ export function PayrollBatchesPanel() {
 
   useEffect(() => {
     fetchBatches();
+    if (isFinance) fetchAvailablePayrolls();
   }, []);
 
   const fetchBatches = async () => {
@@ -55,10 +66,52 @@ export function PayrollBatchesPanel() {
     try {
       const response = await api.get('/payroll/batches');
       setBatches(response.data.data || []);
-    } catch (error) {
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load payroll batches');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchAvailablePayrolls = async () => {
+    try {
+      const response = await api.get('/payroll');
+      setAvailablePayrolls((response.data.data || []).filter((payroll: ConfirmedPayroll & { status: string }) =>
+        payroll.status === 'confirmed'
+      ));
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load confirmed payroll records');
+    }
+  };
+
+  const handleCreateBatch = async () => {
+    if (selectedPayrollIds.length === 0) {
+      toast.error('Select at least one confirmed payroll record');
+      return;
+    }
+    setCreatingBatch(true);
+    try {
+      const response = await api.post('/payroll/transfer-to-finance', {
+        payrollIds: selectedPayrollIds,
+        remarks: batchRemarks
+      });
+      const count = response.data.count || response.data.data?.length || 1;
+      toast.success(`${count} payroll batch${count === 1 ? '' : 'es'} created`);
+      setCreateDialogOpen(false);
+      setSelectedPayrollIds([]);
+      setBatchRemarks('');
+      await Promise.all([fetchBatches(), fetchAvailablePayrolls()]);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to create payroll batch');
+    } finally {
+      setCreatingBatch(false);
+    }
+  };
+
+  const togglePayrollSelection = (id: string) => {
+    setSelectedPayrollIds(current =>
+      current.includes(id) ? current.filter(selectedId => selectedId !== id) : [...current, id]
+    );
   };
 
   const handleApprove = async (id: string) => {
@@ -135,10 +188,20 @@ export function PayrollBatchesPanel() {
           <h2 className="text-2xl font-bold">Payroll Batches</h2>
           <p className="text-muted-foreground">Review and process payroll batches from HR</p>
         </div>
-        <Button variant="outline" onClick={fetchBatches}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          {allowBatchCreation && (
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              Create Payroll Batch
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => {
+            fetchBatches();
+            if (isFinance) fetchAvailablePayrolls();
+          }}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -163,7 +226,11 @@ export function PayrollBatchesPanel() {
                 <div className="text-center py-12 text-muted-foreground">
                   <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>No payroll batches found</p>
-                  <p className="text-sm">HR will transfer payroll batches here for approval</p>
+                  <p className="text-sm">
+                    {isFinance
+                      ? 'Create a batch from confirmed payroll records, or wait for HR to submit one.'
+                      : 'HR will transfer payroll batches here for approval.'}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -259,6 +326,54 @@ export function PayrollBatchesPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Payroll Batch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Select confirmed payroll records to submit into Finance batches. Records from different months are placed in separate batches.
+            </p>
+            <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border p-3">
+              {availablePayrolls.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No confirmed payroll records are available.
+                </p>
+              ) : availablePayrolls.map(payroll => (
+                <label key={payroll.id} className="flex cursor-pointer items-center gap-3 rounded-md p-2 hover:bg-muted/50">
+                  <input
+                    type="checkbox"
+                    checked={selectedPayrollIds.includes(payroll.id)}
+                    onChange={() => togglePayrollSelection(payroll.id)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{payroll.user?.name || 'Employee'}</span>
+                    <span className="text-xs text-muted-foreground">{payroll.month}</span>
+                  </span>
+                  <span className="font-medium">₹{payroll.netSalary?.toLocaleString()}</span>
+                </label>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payroll-batch-remarks">Remarks (optional)</Label>
+              <Input
+                id="payroll-batch-remarks"
+                value={batchRemarks}
+                onChange={event => setBatchRemarks(event.target.value)}
+                placeholder="Add a note for the Finance batch"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreateBatch} disabled={creatingBatch || selectedPayrollIds.length === 0}>
+                {creatingBatch ? 'Creating...' : `Create Batch (${selectedPayrollIds.length})`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Reject Dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
