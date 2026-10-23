@@ -58,6 +58,32 @@ export const protect = async (
       organizationId,
       universityId,
     };
+
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && organizationId) {
+      res.once('finish', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return;
+        const route = `${req.baseUrl}${req.path}`;
+        if (route.includes('/attendance/activity-report')) return;
+
+        const action = req.method === 'POST'
+          ? 'create'
+          : req.method === 'DELETE'
+            ? 'delete'
+            : 'update';
+        prisma.auditLog.create({
+          data: {
+            organizationId,
+            userId: user.id,
+            action,
+            entityType: 'UserActivity',
+            entityId: req.params.id || `${req.method}:${route}`,
+            newValue: { method: req.method, route },
+            ipAddress: req.ip || '0.0.0.0',
+          },
+        }).catch(error => console.error('User activity log error:', error));
+      });
+    }
+
     next();
   } catch (error) {
     res.status(500).json({ success: false, message: 'Auth error' });

@@ -45,51 +45,97 @@ const startInviteExpiryCron = () => {
   });
 };
 
+const getMinutesOfDay = (value: unknown) => {
+  if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return null;
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
+};
+
+const getBreakMinutes = (checkIn: Date, checkOut: Date, settings: any) => {
+  const officeHours = settings?.officeHours && typeof settings.officeHours === 'object'
+    ? settings.officeHours
+    : {};
+  const dayName = checkIn.toLocaleDateString('en-US', { weekday: 'long' });
+  const override = Array.isArray(officeHours.dayOverrides)
+    ? officeHours.dayOverrides.find((item: any) => item?.day === dayName)
+    : null;
+  const breakStart = getMinutesOfDay(officeHours.breakStartTime || '13:00');
+  const breakEnd = getMinutesOfDay(officeHours.breakEndTime || '14:00');
+  if (breakStart === null || breakEnd === null || breakEnd <= breakStart) return 0;
+
+  const breakStartTime = new Date(checkIn);
+  breakStartTime.setHours(Math.floor(breakStart / 60), breakStart % 60, 0, 0);
+  const breakEndTime = new Date(checkIn);
+  breakEndTime.setHours(Math.floor(breakEnd / 60), breakEnd % 60, 0, 0);
+  const overlap = Math.max(
+    0,
+    Math.min(checkOut.getTime(), breakEndTime.getTime()) -
+      Math.max(checkIn.getTime(), breakStartTime.getTime())
+  ) / 60000;
+  const configuredDuration = Number(override?.breakDurationMinutes ?? officeHours.breakDurationMinutes);
+  return Number.isFinite(configuredDuration) && configuredDuration >= 0
+    ? Math.min(overlap, configuredDuration)
+    : overlap;
+};
+
+const autoPunchOutOpenAttendances = async () => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const activeAttendances = await prisma.attendance.findMany({
+    where: {
+      checkOut: null,
+      checkIn: { not: null },
+      date: { lt: todayStart },
+    },
+  });
+  if (!activeAttendances.length) return 0;
+
+  const settingsByOrganization = new Map<string, any>();
+  for (const record of activeAttendances) {
+    if (!record.checkIn) continue;
+    let settings = settingsByOrganization.get(record.organizationId);
+    if (settings === undefined) {
+      settings = await prisma.hRSettings.findUnique({
+        where: { organizationId: record.organizationId },
+      });
+      settingsByOrganization.set(record.organizationId, settings || null);
+    }
+
+    const checkOutTime = new Date(record.date);
+    checkOutTime.setHours(23, 59, 59, 999);
+    const breakMinutes = getBreakMinutes(record.checkIn, checkOutTime, settings);
+    const workingMinutes = Math.max(
+      0,
+      (checkOutTime.getTime() - record.checkIn.getTime()) / 60000 - breakMinutes
+    );
+    const result = await prisma.attendance.updateMany({
+      where: { id: record.id, checkOut: null },
+      data: {
+        checkOut: checkOutTime,
+        workingHours: Number((workingMinutes / 60).toFixed(2)),
+        checkOutLocation: { systemAutoPunchOut: true, time: new Date() },
+      },
+    });
+    if (result.count > 0) {
+      console.log(`✅ Auto punched out attendance ${record.id} at 11:59 PM`);
+    }
+  }
+  return activeAttendances.length;
+};
+
 const startAutoPunchOutCron = () => {
-  // Run at 00:01 AM every day (1 minute past midnight)
+  // Close missed open attendance records at 11:59 PM of their attendance day.
   cron.schedule('1 0 * * *', async () => {
     console.log('🔄 Running auto punch out check for previous day...');
     try {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      const activeAttendances = await prisma.attendance.findMany({
-        where: { 
-          checkOut: null, 
-          checkIn: { not: null },
-          // Only auto punch out if the checkIn was before today (avoiding midnight race conditions)
-          date: { lt: new Date(new Date().setHours(0, 0, 0, 0)) }
-        }
-      });
-      
-      console.log(`Found ${activeAttendances.length} users needing auto punch out.`);
-
-      for (const record of activeAttendances) {
-        if (!record.checkIn) continue;
-        
-        // Auto check out at 11:59:59 PM of the check-in day
-        const checkOutTime = new Date(record.date);
-        checkOutTime.setHours(23, 59, 59, 999);
-        
-        const start = record.checkIn.getTime();
-        const end = checkOutTime.getTime();
-        // Working hours mapped to typical structure: (ms -> hours)
-        const workingHours = (end - start) / (1000 * 60 * 60);
-
-        await prisma.attendance.update({
-          where: { id: record.id },
-          data: {
-            checkOut: checkOutTime,
-            workingHours: Number(workingHours.toFixed(2)),
-            checkOutLocation: { systemAutoPunchOut: true, time: new Date() }
-          }
-        });
-      }
-      if (activeAttendances.length > 0) {
-        console.log(`✅ Auto punched out ${activeAttendances.length} users`);
-      }
+      const count = await autoPunchOutOpenAttendances();
+      if (count > 0) console.log(`✅ Auto punch-out check completed for ${count} attendance records`);
     } catch (error) {
       console.error('❌ Auto punch out cron error:', error);
     }
+  });
+
+  void autoPunchOutOpenAttendances().catch(error => {
+    console.error('❌ Startup auto punch out check error:', error);
   });
 };

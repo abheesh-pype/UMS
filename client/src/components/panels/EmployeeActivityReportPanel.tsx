@@ -30,6 +30,13 @@ interface TaskInfo {
   list: any[];
 }
 
+interface ActivityEvent {
+  action: string;
+  entityType: string;
+  route?: string | null;
+  timestamp: string;
+}
+
 interface EmployeeReport {
   userId: string;
   name: string;
@@ -39,12 +46,9 @@ interface EmployeeReport {
   department: string;
   departmentId?: any;
   attendance: AttendanceInfo | null;
-  productiveHours: number;
-  scheduledHours: number;
-  timeWasted: number | null;
-  breakMinutes: number;
   erpActions: number;
   erpActivity: Record<string, number>;
+  recentActivity: ActivityEvent[];
   tasks: TaskInfo;
 }
 
@@ -55,7 +59,6 @@ interface DeptSummary {
   present: number;
   absent: number;
   late: number;
-  avgProductiveHours: number;
   totalErpActions: number;
   totalTasksCompleted: number;
 }
@@ -84,14 +87,6 @@ function statusColor(status?: string) {
   }
 }
 
-function productiveColor(hours: number, scheduled: number) {
-  if (scheduled === 0) return 'text-muted-foreground';
-  const pct = hours / scheduled;
-  if (pct >= 0.8) return 'text-success';
-  if (pct >= 0.5) return 'text-warning';
-  return 'text-destructive';
-}
-
 // ─── Department Summary Cards ─────────────────────────────────────────────────
 
 function DeptCards({ departments }: { departments: DeptSummary[] }) {
@@ -117,11 +112,7 @@ function DeptCards({ departments }: { departments: DeptSummary[] }) {
               </div>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
-              <span>Avg productive</span>
-              <span className="font-semibold text-foreground">{hoursLabel(d.avgProductiveHours)}</span>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>ERP actions</span>
+              <span>User actions</span>
               <span className="font-semibold text-foreground">{d.totalErpActions}</span>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
@@ -139,7 +130,7 @@ function DeptCards({ departments }: { departments: DeptSummary[] }) {
 
 function ErpBreakdown({ activity }: { activity: Record<string, number> }) {
   const entries = Object.entries(activity || {}).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) return <p className="text-xs text-muted-foreground">No ERP activity recorded</p>;
+  if (!entries.length) return <p className="text-xs text-muted-foreground">No UMS activity recorded</p>;
   return (
     <div className="flex flex-wrap gap-2">
       {entries.map(([key, count]) => (
@@ -153,7 +144,7 @@ function ErpBreakdown({ activity }: { activity: Record<string, number> }) {
 
 // ─── Employee Row ─────────────────────────────────────────────────────────────
 
-function EmployeeRow({ emp, scheduled }: { emp: EmployeeReport; scheduled: number }) {
+function EmployeeRow({ emp }: { emp: EmployeeReport }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -176,7 +167,7 @@ function EmployeeRow({ emp, scheduled }: { emp: EmployeeReport; scheduled: numbe
         <td className="px-4 py-3 text-xs text-muted-foreground">{emp.department}</td>
         <td className="px-4 py-3">
           <Badge className={cn('text-[10px] uppercase font-bold', statusColor(emp.attendance?.status))}>
-            {emp.attendance?.status || 'absent'}
+            {(emp.attendance?.status || 'absent').replace('_', ' ')}
           </Badge>
         </td>
         <td className="px-4 py-3 text-xs">
@@ -189,12 +180,6 @@ function EmployeeRow({ emp, scheduled }: { emp: EmployeeReport; scheduled: numbe
         <td className="px-4 py-3 text-xs font-semibold">
           {emp.attendance?.workingHours != null ? hoursLabel(emp.attendance.workingHours) : '—'}
         </td>
-        <td className={cn('px-4 py-3 text-xs font-bold', productiveColor(emp.productiveHours, scheduled))}>
-          {emp.attendance?.checkIn ? hoursLabel(emp.productiveHours) : '—'}
-        </td>
-        <td className="px-4 py-3 text-xs text-destructive font-medium">
-          {emp.timeWasted != null ? hoursLabel(emp.timeWasted) : '—'}
-        </td>
         <td className="px-4 py-3 text-xs text-center font-semibold">{emp.erpActions}</td>
         <td className="px-4 py-3 text-xs text-center">
           <span className="text-success font-bold">{emp.tasks?.completedToday || 0}</span>
@@ -206,11 +191,28 @@ function EmployeeRow({ emp, scheduled }: { emp: EmployeeReport; scheduled: numbe
       </tr>
       {expanded && (
         <tr className="bg-muted/20">
-          <td colSpan={11} className="px-6 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <td colSpan={9} className="px-6 py-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">ERP Activity Breakdown</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recorded Activity Breakdown</p>
                 <ErpBreakdown activity={emp.erpActivity} />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recorded User Activity</p>
+                {emp.recentActivity?.length ? (
+                  <div className="space-y-1.5">
+                    {emp.recentActivity.map((event, index) => (
+                      <div key={`${event.timestamp}-${event.action}-${index}`} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-muted-foreground">
+                          {event.action} {event.entityType === 'UserActivity' ? (event.route || 'activity') : event.entityType}
+                        </span>
+                        <span className="shrink-0 text-muted-foreground">{fmt(event.timestamp)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No user activity recorded for this date.</p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Tasks</p>
@@ -245,7 +247,10 @@ function EmployeeRow({ emp, scheduled }: { emp: EmployeeReport; scheduled: numbe
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export function EmployeeActivityReportPanel() {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  });
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [departments, setDepartments] = useState<DeptSummary[]>([]);
@@ -287,6 +292,7 @@ export function EmployeeActivityReportPanel() {
   const totalAbsent = departments.reduce((s, d) => s + d.absent, 0);
   const totalLate = departments.reduce((s, d) => s + d.late, 0);
   const totalErp = report.reduce((s, e) => s + e.erpActions, 0);
+  const totalWorkingHours = filtered.reduce((sum, employee) => sum + (employee.attendance?.workingHours || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -298,7 +304,7 @@ export function EmployeeActivityReportPanel() {
             Employee Activity Report
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Daily breakdown — productive hours, ERP activity, tasks. Break: {breakMinutes}m. Scheduled: {hoursLabel(scheduledHours)}.
+            Daily attendance, recorded user actions, and task updates. Break: {breakMinutes}m. Scheduled: {hoursLabel(scheduledHours)}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -345,12 +351,13 @@ export function EmployeeActivityReportPanel() {
       </div>
 
       {/* Org-level summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Present', value: totalPresent, color: 'text-success', bg: 'bg-success/10' },
           { label: 'Absent', value: totalAbsent, color: 'text-destructive', bg: 'bg-destructive/10' },
           { label: 'Late', value: totalLate, color: 'text-warning', bg: 'bg-warning/10' },
-          { label: 'ERP Actions', value: totalErp, color: 'text-primary', bg: 'bg-primary/10' },
+          { label: 'User Actions', value: totalErp, color: 'text-primary', bg: 'bg-primary/10' },
+          { label: 'Total Working Time', value: hoursLabel(totalWorkingHours), color: 'text-info', bg: 'bg-info/10' },
         ].map(s => (
           <Card key={s.label} className="border-none shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
@@ -398,7 +405,7 @@ export function EmployeeActivityReportPanel() {
 <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {['Employee', 'Dept', 'Status', 'Check-In', 'Check-Out', 'Working', 'Productive', 'Wasted', 'ERP', 'Tasks', ''].map(h => (
+                    {['Employee', 'Dept', 'Status', 'Check-In', 'Check-Out', 'Total Working', 'User Actions', 'Tasks', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                         {h}
                       </th>
@@ -407,7 +414,7 @@ export function EmployeeActivityReportPanel() {
                 </thead>
                 <tbody>
                   {filtered.map(emp => (
-                    <EmployeeRow key={emp.userId} emp={emp} scheduled={scheduledHours} />
+                    <EmployeeRow key={emp.userId} emp={emp} />
                   ))}
                 </tbody>
               </table>

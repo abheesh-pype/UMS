@@ -252,7 +252,7 @@ export function PunchWidget({ compact = false, variant = 'default' }: PunchWidge
                 <div className="flex gap-4 my-2">
                   <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                     <input type="checkbox" checked={isWFH} onChange={(e) => setIsWFH(e.target.checked)} className="rounded border-gray-300 text-primary focus:ring-primary" />
-                    Work From Home (WFH)
+                    Work From Home (location check waived)
                   </label>
                   <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                     <input type="checkbox" checked={isHalfDay} onChange={(e) => setIsHalfDay(e.target.checked)} className="rounded border-gray-300 text-primary focus:ring-primary" />
