@@ -10,7 +10,8 @@ const mapLeaveRequest = (leave: any) => ({
     id: leave.userId,
     name: leave.user.name,
     email: leave.user.email,
-    designation: leave.user.designation
+    designation: leave.user.designation,
+    role: leave.user.role,
   } : null,
   departmentId: leave.department ? {
     id: leave.departmentId,
@@ -44,7 +45,7 @@ export const getLeaveRequests = asyncHandler(async (req: AuthRequest, res: Respo
   const leaves = await prisma.leaveRequest.findMany({
     where: whereClause,
     include: { 
-      user: { select: { name: true, email: true, designation: true } },
+      user: { select: { name: true, email: true, designation: true, role: true } },
       department: { select: { name: true } },
       deptApprover: { select: { name: true } },
       hrApprover: { select: { name: true } }
@@ -208,6 +209,24 @@ export const deleteLeaveRequest = asyncHandler(async (req: AuthRequest, res: Res
 export const approveLeave = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { action, remarks } = req.body;
   const isHr = req.path.includes('hr-approve');
+  const existingLeave = await prisma.leaveRequest.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { userId: true, status: true, user: { select: { role: true } } },
+  });
+  if (!existingLeave) {
+    res.status(404).json({ success: false, message: 'Leave request not found' });
+    return;
+  }
+
+  const isHrAdminRequest = existingLeave.user?.role === 'hr_admin';
+  if (isHrAdminRequest && (req.user.role !== 'org_admin' || existingLeave.userId === req.user.id)) {
+    res.status(403).json({ success: false, message: 'Only a university admin can approve or reject an HR admin leave request' });
+    return;
+  }
+  if (isHrAdminRequest && existingLeave.status !== 'pending') {
+    res.status(400).json({ success: false, message: 'This HR admin leave request is no longer pending' });
+    return;
+  }
 
   if (!isHr && req.user.branchId && !['hr_admin', 'org_admin', 'superadmin', 'ceo'].includes(req.user.role)) {
     const branchLeave = await prisma.leaveRequest.findFirst({
@@ -225,7 +244,7 @@ export const approveLeave = asyncHandler(async (req: AuthRequest, res: Response)
   }
 
   const updateData: any = {};
-  if (isHr) {
+  if (isHr || isHrAdminRequest) {
     updateData.status = (action === 'approve' ? 'approved' : 'rejected') as any;
     updateData.hrRemarks = remarks;
     updateData.hrApprovedBy = req.user.id;
@@ -243,7 +262,9 @@ export const approveLeave = asyncHandler(async (req: AuthRequest, res: Response)
 
   // Notify the employee
   try {
-    const actionLabel = action === 'approve' ? (isHr ? 'fully approved' : 'approved by department') : 'rejected';
+    const actionLabel = action === 'approve'
+      ? (isHr || isHrAdminRequest ? 'fully approved' : 'approved by department')
+      : 'rejected';
     await prisma.notification.create({
       data: {
         organizationId: req.user.organizationId,
@@ -281,7 +302,7 @@ export const getMyLeaves = asyncHandler(async (req: AuthRequest, res: Response) 
   const leaves = await prisma.leaveRequest.findMany({ 
     where: { userId: req.user.id },
     include: { 
-      user: { select: { name: true, email: true, designation: true } },
+      user: { select: { name: true, email: true, designation: true, role: true } },
       department: { select: { name: true } },
       deptApprover: { select: { name: true } },
       hrApprover: { select: { name: true } }

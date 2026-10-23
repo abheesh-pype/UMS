@@ -28,7 +28,7 @@ import api from '@/lib/api';
 
 interface LeaveRequest {
   id: string;
-  employeeId: { id: string; name: string; email: string; designation?: string } | null;
+  employeeId: { id: string; name: string; email: string; designation?: string; role?: string } | null;
   departmentId?: { id: string; name: string } | null;
   type: string;
   startDate: string;
@@ -146,7 +146,9 @@ export function LeavesPanel({
     setSubmitting(true);
     try {
       await api.post('/hr/leaves', form);
-      toast.success('Leave request submitted. Your department manager will review it.');
+      toast.success(role === 'hr_admin'
+        ? 'Leave request submitted. Your university admin will review it.'
+        : 'Leave request submitted. Your department manager will review it.');
       setCreateOpen(false);
       setForm({ type: 'sick', startDate: '', endDate: '', reason: '', isHalfDay: false, attachmentUrl: '' });
       fetchLeaves();
@@ -348,8 +350,12 @@ export function LeavesPanel({
                 
                 const userDeptId = (user as any)?.departmentId || (user as any)?.department?.id;
                 const isSameDept = leave.departmentId?.id === userDeptId;
-                const canDeptAct = isDeptManager && leave.status === 'pending' && (isGodMode || isBranchManager || isSameDept);
-                const canHRAct = isHR && leave.status === 'dept_approved';
+                const isHrAdminRequest = leave.employeeId?.role === 'hr_admin';
+                const canDeptAct = !isHrAdminRequest && isDeptManager && leave.status === 'pending' && (isGodMode || isBranchManager || isSameDept);
+                const canHRAct = isHR && (
+                  (isHrAdminRequest && approvalsOnly && role === 'org_admin' && leave.status === 'pending') ||
+                  (!isHrAdminRequest && leave.status === 'dept_approved')
+                );
 
                 return (
                   <Card key={leave.id} className="hover:border-primary/30 transition-colors">
@@ -439,7 +445,7 @@ export function LeavesPanel({
                           {canHRAct && (
                             <>
                               <Button size="sm" className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={() => openAction(leave, 'hr', 'approve')}>
-                                <CheckCircle className="w-3 h-3 mr-1" /> Final Approve
+                                <CheckCircle className="w-3 h-3 mr-1" /> {isHrAdminRequest ? 'Approve' : 'Final Approve'}
                               </Button>
                               <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => openAction(leave, 'hr', 'reject')}>
                                 <XCircle className="w-3 h-3 mr-1" /> Reject
