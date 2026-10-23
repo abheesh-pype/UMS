@@ -122,7 +122,7 @@ export function getHRNavItems() {
     { id: 'leave-alloc', label: 'Leave Allocation' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'polls', label: 'Polls' },
-    { id: 'org-chart', label: 'Org Chart' },
+    { id: 'org-chart', label: 'Hierarchy' },
     { id: 'managers', label: 'Managers' },
     { id: 'att-settings', label: 'Att. Settings' },
     { id: 'shift-settings', label: 'Shift Settings' },
