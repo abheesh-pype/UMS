@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Key, Users, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Edit, Key, Users, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,10 +28,10 @@ interface User {
   email: string;
   role: string;
   designation?: string;
-  departmentId?: string;
+  departmentId?: string | { id: string };
   additionalDepartmentIds?: string[];
-  subDepartmentId?: string;
-  reportingTo?: string;
+  subDepartmentId?: string | { id: string };
+  reportingTo?: string | { id: string };
   department?: { name: string; id?: string };
   additionalDepartments?: { id: string; name: string }[];
   subDepartment?: { name: string };
@@ -96,6 +96,7 @@ export function HRUsersPanel() {
   const [promotionData, setPromotionData] = useState({
     newDesignation: '',
     newRole: 'employee',
+    departmentId: '',
     reportingTo: '',
     type: 'promotion' as 'promotion' | 'demotion',
   });
@@ -186,10 +187,10 @@ export function HRUsersPanel() {
           email: formData.email,
           role: formData.role,
           designation: formData.designation || undefined,
-          departmentId: (formData.departmentId && formData.departmentId !== 'none') ? formData.departmentId : undefined,
+          departmentId: formData.departmentId && formData.departmentId !== 'none' ? formData.departmentId : null,
           additionalDepartmentIds: additionalDepts,
-          subDepartmentId: (formData.subDepartmentId && formData.subDepartmentId !== 'none') ? formData.subDepartmentId : undefined,
-          reportingTo: (formData.reportingTo && formData.reportingTo !== 'none') ? formData.reportingTo : undefined,
+          subDepartmentId: formData.subDepartmentId && formData.subDepartmentId !== 'none' ? formData.subDepartmentId : null,
+          reportingTo: formData.reportingTo && formData.reportingTo !== 'none' ? formData.reportingTo : null,
         });
       } else {
         await api.post('/users', {
@@ -202,7 +203,7 @@ export function HRUsersPanel() {
       }
       setDialogOpen(false);
       resetForm();
-      fetchUsers();
+      await fetchUsers();
     } catch (_error) {
       alert('Failed to save user. Please try again.');
     }
@@ -223,7 +224,7 @@ export function HRUsersPanel() {
       setTransferDialogOpen(false);
       setTransferData({ departmentId: '', subDepartmentId: '', reason: '' });
       setSelectedUser(null);
-      fetchUsers();
+      await fetchUsers();
       alert('Employee transferred successfully!');
     } catch (_error) {
       alert('Failed to transfer employee. Please try again.');
@@ -237,19 +238,21 @@ export function HRUsersPanel() {
 
     try {
       const userId = selectedUser.id || selectedUser.id;
-      await api.put(`/users/${userId}`, {
+      await api.put(`/users/${userId}/role`, {
         designation: promotionData.newDesignation,
         role: promotionData.newRole,
-        reportingTo: (promotionData.reportingTo && promotionData.reportingTo !== 'none') ? promotionData.reportingTo : undefined,
+        departmentId: promotionData.departmentId && promotionData.departmentId !== 'none' ? promotionData.departmentId : null,
+        subDepartmentId: promotionData.departmentId === getUserDepartmentId(selectedUser) ? getUserSubDepartmentId(selectedUser) : null,
+        reportingTo: promotionData.reportingTo && promotionData.reportingTo !== 'none' ? promotionData.reportingTo : null,
       });
       
       setPromotionDialogOpen(false);
-      setPromotionData({ newDesignation: '', newRole: 'employee', reportingTo: '', type: 'promotion' });
+      setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', type: 'promotion' });
       setSelectedUser(null);
-      fetchUsers();
+      await fetchUsers();
       alert(`Employee ${promotionData.type === 'promotion' ? 'promoted' : 'demoted'} successfully!`);
-    } catch (_error) {
-      alert(`Failed to ${promotionData.type} employee. Please try again.`);
+    } catch (error: any) {
+      alert(error.response?.data?.message || `Failed to ${promotionData.type} employee. Please try again.`);
     }
   };
 
@@ -273,33 +276,24 @@ export function HRUsersPanel() {
       setPasswordDialogOpen(false);
       setPasswordData({ newPassword: '', confirmPassword: '' });
       setSelectedUserId(null);
+      setSelectedUser(null);
+      await fetchUsers();
       alert('Password updated successfully!');
     } catch (_error) {
       alert('Failed to update password. Please try again.');
     }
   };
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
-    
-    try {
-      await api.delete(`/users/${userId}`);
-      fetchUsers();
-    } catch (_error) {
-      alert('Failed to delete user. Please try again.');
-    }
-  };
-
   const openEditDialog = (user: User) => {
     setEditingUser(user);
     const deptId = typeof user.departmentId === 'object' && user.departmentId !== null
-      ? ((user.departmentId).id || (user.departmentId).id)
+      ? user.departmentId.id
       : user.departmentId;
     const subDeptId = typeof user.subDepartmentId === 'object' && user.subDepartmentId !== null
-      ? ((user.subDepartmentId).id || (user.subDepartmentId).id)
+      ? user.subDepartmentId.id
       : user.subDepartmentId;
     const reportingToId = typeof user.reportingTo === 'object' && user.reportingTo !== null
-      ? ((user.reportingTo).id || (user.reportingTo).id)
+      ? user.reportingTo.id
       : user.reportingTo;
     const additionalIds = (user.additionalDepartments || []).map((d: any) =>
       typeof d === 'object' ? (d.id || d.id) : d
@@ -333,17 +327,31 @@ export function HRUsersPanel() {
     setPromotionData({
       newDesignation: user.designation || '',
       newRole: user.role,
+      departmentId: typeof user.departmentId === 'object' && user.departmentId !== null
+        ? user.departmentId.id || ''
+        : user.departmentId || '',
       reportingTo: user.reportingTo || '',
       type,
     });
     setPromotionDialogOpen(true);
   };
 
-  const openPasswordDialog = (userId: string) => {
-    setSelectedUserId(userId);
+  const openPasswordDialog = (user: User) => {
+    setSelectedUserId(user.id || '');
+    setSelectedUser(user);
     setPasswordData({ newPassword: '', confirmPassword: '' });
     setPasswordDialogOpen(true);
   };
+
+  const getUserDepartmentId = (user: User) =>
+    typeof user.departmentId === 'object' && user.departmentId !== null
+      ? user.departmentId.id || ''
+      : user.departmentId || '';
+
+  const getUserSubDepartmentId = (user: User) =>
+    typeof user.subDepartmentId === 'object' && user.subDepartmentId !== null
+      ? user.subDepartmentId.id || ''
+      : user.subDepartmentId || '';
 
   const resetForm = () => {
     setFormData({
@@ -699,7 +707,7 @@ export function HRUsersPanel() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openPasswordDialog(userId)}
+                      onClick={() => openPasswordDialog(user)}
                       title="Change Password"
                     >
                       <Key className="w-4 h-4" />
@@ -711,13 +719,6 @@ export function HRUsersPanel() {
                     >
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(userId)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </div>
                 </div>
               );
@@ -727,10 +728,18 @@ export function HRUsersPanel() {
       </CardContent>
 
       {/* Password Change Dialog */}
-      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+      <Dialog open={passwordDialogOpen} onOpenChange={(open) => {
+        setPasswordDialogOpen(open);
+        if (!open) {
+          setPasswordData({ newPassword: '', confirmPassword: '' });
+          setSelectedUserId(null);
+          setSelectedUser(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Change User Password</DialogTitle>
+            {selectedUser && <p className="text-sm text-muted-foreground">{selectedUser.name} · {selectedUser.email}</p>}
           </DialogHeader>
           <form onSubmit={handlePasswordChange} className="space-y-4">
             <div>
@@ -762,6 +771,8 @@ export function HRUsersPanel() {
                 onClick={() => {
                   setPasswordDialogOpen(false);
                   setPasswordData({ newPassword: '', confirmPassword: '' });
+                  setSelectedUserId(null);
+                  setSelectedUser(null);
                 }}
               >
                 Cancel
@@ -877,7 +888,14 @@ export function HRUsersPanel() {
               {designations.length > 0 ? (
                 <Select
                   value={promotionData.newDesignation}
-                  onValueChange={(value) => setPromotionData({ ...promotionData, newDesignation: value })}
+                  onValueChange={(value) => {
+                    const designation = designations.find(item => item.title === value);
+                    setPromotionData({
+                      ...promotionData,
+                      newDesignation: value,
+                      departmentId: designation?.departmentId?.id || promotionData.departmentId,
+                    });
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select from org chart..." />
@@ -907,6 +925,25 @@ export function HRUsersPanel() {
               )}
             </div>
             <div>
+              <Label htmlFor="promotionDepartment">Department</Label>
+              <Select
+                value={promotionData.departmentId}
+                onValueChange={(value) => setPromotionData({ ...promotionData, departmentId: value })}
+              >
+                <SelectTrigger id="promotionDepartment">
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No Department</SelectItem>
+                  {departments.map(department => (
+                    <SelectItem key={department.id} value={department.id!}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="newRole">New Role</Label>
               <Select
                 value={promotionData.newRole}
@@ -918,6 +955,12 @@ export function HRUsersPanel() {
                 <SelectContent>
                   <SelectItem value="employee">Employee</SelectItem>
                   <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="hr_admin">HR Admin</SelectItem>
+                  <SelectItem value="finance_admin">Finance Admin</SelectItem>
+                  <SelectItem value="ops_admin">Operations Admin</SelectItem>
+                  <SelectItem value="ops_sub_admin">Ops Sub Admin</SelectItem>
+                  <SelectItem value="sales_admin">Sales Admin</SelectItem>
+                  <SelectItem value="bde">BDE</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -946,7 +989,7 @@ export function HRUsersPanel() {
                 variant="outline"
                 onClick={() => {
                   setPromotionDialogOpen(false);
-                  setPromotionData({ newDesignation: '', newRole: 'employee', reportingTo: '', type: 'promotion' });
+                  setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', type: 'promotion' });
                 }}
               >
                 Cancel

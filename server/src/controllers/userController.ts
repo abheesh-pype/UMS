@@ -153,6 +153,80 @@ export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) =
   res.status(200).json({ success: true, data: user });
 });
 
+export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { role, designation, departmentId, subDepartmentId, reportingTo } = req.body;
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { id: true },
+  });
+  if (!user) {
+    res.status(404).json({ success: false, message: 'User not found' });
+    return;
+  }
+  if (typeof role !== 'string' || !role.trim()) {
+    res.status(400).json({ success: false, message: 'A role must be selected' });
+    return;
+  }
+
+  const targetDepartmentId = departmentId || null;
+  const targetSubDepartmentId = subDepartmentId || null;
+
+  if (targetDepartmentId) {
+    const department = await prisma.department.findFirst({
+      where: { id: targetDepartmentId, organizationId: req.user.organizationId },
+      select: { id: true },
+    });
+    if (!department) {
+      res.status(400).json({ success: false, message: 'Selected department was not found in this organization' });
+      return;
+    }
+  }
+
+  if (targetSubDepartmentId) {
+    const subDepartment = await prisma.subDepartment.findFirst({
+      where: {
+        id: targetSubDepartmentId,
+        organizationId: req.user.organizationId,
+        parentDeptId: targetDepartmentId,
+      },
+      select: { id: true },
+    });
+    if (!subDepartment) {
+      res.status(400).json({ success: false, message: 'Selected sub-department does not belong to the selected department' });
+      return;
+    }
+  }
+
+  if (reportingTo) {
+    const manager = await prisma.user.findFirst({
+      where: { id: reportingTo, organizationId: req.user.organizationId },
+      select: { id: true },
+    });
+    if (!manager) {
+      res.status(400).json({ success: false, message: 'Selected reporting manager was not found in this organization' });
+      return;
+    }
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      role: role.trim(),
+      designation: typeof designation === 'string' ? designation.trim() : null,
+      departmentId: targetDepartmentId,
+      subDepartmentId: targetSubDepartmentId,
+      reportingTo: reportingTo || null,
+    },
+    include: {
+      department: { select: { id: true, name: true } },
+      subDepartment: { select: { id: true, name: true } },
+      manager: { select: { id: true, name: true } },
+    },
+  });
+
+  res.status(200).json({ success: true, data: updatedUser });
+});
+
 export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findFirst({
     where: { id: req.params.id, organizationId: req.user.organizationId },
