@@ -92,7 +92,7 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
       case 'my_leaves': return <LeavesPanel isPersonalView />;
       case 'leave_approvals': return <LeavesPanel />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
-      case 'my_payslips': return <PayrollPanel />;
+      case 'my_payslips': return <PayrollPanel personalView />;
       case 'my_documents': return <MyDocumentsPanel />;
       case 'manager_hiring': return <ManagerHiringPanel />;
       case 'holidays': return <HolidaysPanel />;

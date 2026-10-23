@@ -148,6 +148,48 @@ export const getLeaveAllocation = asyncHandler(async (req: AuthRequest, res: Res
   res.json({ success: true, data: allocation });
 });
 
+export const getMyLeaveAllocation = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const year = Number(req.query.year) || new Date().getFullYear();
+  const allocation = await prisma.leaveAllocation.findUnique({
+    where: { userId_year: { userId: req.user.id, year } }
+  });
+
+  if (!allocation) {
+    res.json({ success: true, data: null });
+    return;
+  }
+
+  const yearStart = new Date(year, 0, 1);
+  const nextYearStart = new Date(year + 1, 0, 1);
+  const approvedLeaves = await prisma.leaveRequest.findMany({
+    where: {
+      userId: req.user.id,
+      organizationId: req.user.organizationId,
+      status: 'approved',
+      startDate: { lt: nextYearStart },
+      endDate: { gte: yearStart }
+    },
+    select: { type: true, startDate: true, endDate: true, isHalfDay: true }
+  });
+
+  const used = { sickLeave: 0, casualLeave: 0, earnedLeave: 0, complementaryLeave: 0 };
+  for (const leave of approvedLeaves) {
+    const start = leave.startDate > yearStart ? leave.startDate : yearStart;
+    const lastDay = new Date(nextYearStart.getTime() - 1);
+    const end = leave.endDate < lastDay ? leave.endDate : lastDay;
+    const days = leave.isHalfDay
+      ? 0.5
+      : Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+
+    if (leave.type === 'sick') used.sickLeave += days;
+    else if (leave.type === 'casual') used.casualLeave += days;
+    else if (leave.type === 'earned') used.earnedLeave += days;
+    else if (leave.type === 'compensatory') used.complementaryLeave += days;
+  }
+
+  res.json({ success: true, data: { ...allocation, used } });
+});
+
 export const upsertLeaveAllocation = asyncHandler(async (req: AuthRequest, res: Response) => {
   const year = Number(req.body.year) || new Date().getFullYear();
   const allocation = await prisma.leaveAllocation.upsert({

@@ -79,6 +79,7 @@ import {
   deleteSalaryConfig,
   getLeaveAllocations,
   getLeaveAllocation,
+  getMyLeaveAllocation,
   upsertLeaveAllocation,
   bulkInitLeaveAllocations,
   generateSmartPayroll,
@@ -148,6 +149,7 @@ router.route('/salary-configs/:userId')
 // Leave Allocations
 router.get('/leave-allocations', authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), getLeaveAllocations);
 router.post('/leave-allocations/bulk-init', authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), bulkInitLeaveAllocations);
+router.get('/leave-allocations/my', getMyLeaveAllocation);
 router.route('/leave-allocations/:userId')
   .get(authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), getLeaveAllocation)
   .put(authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), upsertLeaveAllocation);

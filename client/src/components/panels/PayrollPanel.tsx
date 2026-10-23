@@ -16,6 +16,7 @@ import { PayslipDocument } from './hr/PayslipDocument';
 interface Payroll {
   id: string;
   employeeId: any;
+  user?: { name: string; email: string };
   month: string;
   basicSalary: number;
   grossSalary: number;
@@ -26,6 +27,7 @@ interface Payroll {
   bonus: number;
   overtime: number;
   remarks?: string;
+  createdAt?: string;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -36,7 +38,7 @@ const STATUS_COLOR: Record<string, string> = {
   paid: 'bg-emerald-100 text-emerald-700',
 };
 
-export function PayrollPanel() {
+export function PayrollPanel({ personalView = false }: { personalView?: boolean }) {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -66,12 +68,12 @@ export function PayrollPanel() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [transferRemarks, setTransferRemarks] = useState('');
 
-  useEffect(() => { fetchPayrolls(); }, []);
+  useEffect(() => { fetchPayrolls(); }, [personalView]);
 
   const fetchPayrolls = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/payroll');
+      const res = await api.get(personalView ? '/payroll?mine=true' : '/payroll');
       setPayrolls(res.data.data || []);
     } catch { toast.error('Failed to fetch payrolls'); }
     finally { setLoading(false); }
@@ -141,7 +143,7 @@ export function PayrollPanel() {
         html2pdf()
           .set({
             margin: 10,
-            filename: `Payslip_${p.month}_${p.employeeId?.name || 'Employee'}.pdf`,
+            filename: `Payslip_${p.month}_${p.user?.name || 'Employee'}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -187,6 +189,73 @@ export function PayrollPanel() {
 
   const filtered = activeTab === 'all' ? payrolls : payrolls.filter(p => p.status === activeTab);
   const confirmedPayrolls = payrolls.filter(p => p.status === 'confirmed');
+
+  if (personalView) {
+    const availablePayslips = payrolls.filter(p =>
+      ['confirmed', 'transferred_to_finance', 'paid'].includes(p.status)
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold">My Payslips</h2>
+            <p className="text-sm text-muted-foreground">Payslips generated and confirmed by HR</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchPayrolls}>
+            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader><CardTitle>Available Payslips</CardTitle></CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-8">Loading payslips...</div>
+            ) : availablePayslips.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">
+                <DollarSign className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">No payslips have been generated for your account yet.</p>
+                <p className="mt-1 text-sm">Please contact your HR department to generate your payslip.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {availablePayslips.map(payroll => (
+                  <div key={payroll.id} className="flex items-center gap-3 rounded-lg border p-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{payroll.month}</span>
+                        <Badge className={`text-xs ${STATUS_COLOR[payroll.status] || 'bg-gray-100'}`}>
+                          {payroll.status.replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-muted-foreground">
+                        <span>Gross: ₹{payroll.grossSalary?.toLocaleString()}</span>
+                        <span className="font-semibold text-foreground">Net: ₹{payroll.netSalary?.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadPayslip(payroll)}
+                      disabled={downloadingPdf}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="hidden">
+          {pdfPayroll && <PayslipDocument payroll={{ ...pdfPayroll, user: pdfPayroll.user }} />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -285,7 +354,7 @@ export function PayrollPanel() {
 
       {/* Hidden PDF Container */}
       <div className="hidden">
-        {pdfPayroll && <PayslipDocument payroll={{...pdfPayroll, user: pdfPayroll.employeeId?.userId || pdfPayroll.employeeId}} />}
+        {pdfPayroll && <PayslipDocument payroll={{ ...pdfPayroll, user: pdfPayroll.user }} />}
       </div>
 
       {/* Generate Dialog */}

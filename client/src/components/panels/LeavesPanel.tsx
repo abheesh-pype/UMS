@@ -43,6 +43,20 @@ interface LeaveRequest {
   createdAt: string;
 }
 
+interface MyLeaveAllocation {
+  year: number;
+  sickLeave: number;
+  casualLeave: number;
+  earnedLeave: number;
+  complementaryLeave: number;
+  used: {
+    sickLeave: number;
+    casualLeave: number;
+    earnedLeave: number;
+    complementaryLeave: number;
+  };
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   pending:      { label: 'Pending',          color: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' },
   dept_approved:{ label: 'Dept Approved',    color: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
@@ -56,6 +70,8 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
   const { user } = useAuth();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [leaveAllocation, setLeaveAllocation] = useState<MyLeaveAllocation | null>(null);
+  const [allocationLoading, setAllocationLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
 
   // Create dialog
@@ -100,8 +116,24 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
     }
   };
 
+  const fetchMyAllocation = async () => {
+    setAllocationLoading(true);
+    try {
+      const year = new Date().getFullYear();
+      const response = await api.get(`/hr/leave-allocations/my?year=${year}`);
+      setLeaveAllocation(response.data.data || null);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load your leave allocation');
+    } finally {
+      setAllocationLoading(false);
+    }
+  };
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchLeaves(); }, []);
+  useEffect(() => {
+    fetchLeaves();
+    if (isEmployee) fetchMyAllocation();
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +223,10 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchLeaves} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => {
+            fetchLeaves();
+            if (isEmployee) fetchMyAllocation();
+          }} disabled={loading || allocationLoading}>
             <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
             Refresh
           </Button>
@@ -204,6 +239,43 @@ export function LeavesPanel({ isPersonalView = false }: { isPersonalView?: boole
           )}
         </div>
       </div>
+
+      {isEmployee && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="mb-4">
+              <h3 className="font-semibold">My Leave Balance — {new Date().getFullYear()}</h3>
+              <p className="text-xs text-muted-foreground">Approved leave used is subtracted from your HR allocation.</p>
+            </div>
+            {allocationLoading ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">Loading leave allocation...</p>
+            ) : leaveAllocation ? (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {([
+                  { key: 'sickLeave', label: 'Sick Leave' },
+                  { key: 'casualLeave', label: 'Casual Leave' },
+                  { key: 'earnedLeave', label: 'Earned Leave' },
+                  { key: 'complementaryLeave', label: 'Complementary Leave' },
+                ] as const).map(({ key, label }) => {
+                  const allocated = leaveAllocation[key] || 0;
+                  const used = leaveAllocation.used[key] || 0;
+                  return (
+                    <div key={key} className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="mt-1 text-lg font-semibold">{Math.max(0, allocated - used)} <span className="text-xs font-normal text-muted-foreground">remaining</span></p>
+                      <p className="text-xs text-muted-foreground">{used} used of {allocated} days</p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No leave allocation found for this year. Please contact HR to set up your leave allocation.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

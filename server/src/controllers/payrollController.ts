@@ -6,8 +6,14 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { sendEmail } from '../utils/mailer.js';
 
 export const getPayrolls = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payrollManagementRoles = ['hr_admin', 'finance_admin', 'org_admin', 'ceo', 'superadmin'];
   const payrolls = await prisma.payroll.findMany({
-    where: { organizationId: req.user.organizationId },
+    where: {
+      organizationId: req.user.organizationId,
+      ...((req.query.mine === 'true' || !payrollManagementRoles.includes(req.user.role))
+        ? { employeeId: req.user.id }
+        : {})
+    },
     include: { user: { select: { name: true, email: true } } },
     orderBy: { createdAt: 'desc' }
   });
@@ -15,7 +21,15 @@ export const getPayrolls = asyncHandler(async (req: AuthRequest, res: Response) 
 });
 
 export const getPayroll = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const payroll = await prisma.payroll.findUnique({ where: { id: req.params.id }, include: { user: true } });
+  const payrollManagementRoles = ['hr_admin', 'finance_admin', 'org_admin', 'ceo', 'superadmin'];
+  const payroll = await prisma.payroll.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      ...(!payrollManagementRoles.includes(req.user.role) ? { employeeId: req.user.id } : {})
+    },
+    include: { user: true }
+  });
   if (!payroll) {
     res.status(404).json({ success: false, message: 'Payroll record not found' });
     return;

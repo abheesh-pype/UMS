@@ -31,6 +31,7 @@ import { SubOpsPortalPanel } from '@/components/panels/SubOpsPortalPanel';
 import { SubSalesPortalPanel } from '@/components/panels/SubSalesPortalPanel';
 import { EmployeeEscalationsPanel } from '@/components/panels/EmployeeEscalationsPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { PayrollPanel } from '@/components/panels/PayrollPanel';
 
 
 export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab?: string; onNavigate?: (tab: string) => void }) {
@@ -339,19 +340,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
         )}
 
         <TabsContent value="payslips">
-          <Card className="border-none shadow-xl bg-card/60 backdrop-blur-xl">
-            <CardHeader>
-              <CardTitle>Pay Slips</CardTitle>
-              <CardDescription>Your monthly salary statements</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="py-12 text-center text-muted-foreground">
-                <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">Pay slips will appear here once payroll is processed.</p>
-                <p className="text-sm mt-1">Contact HR or Finance for your salary details.</p>
-              </div>
-            </CardContent>
-          </Card>
+          <PayrollPanel personalView />
         </TabsContent>
 
         <TabsContent value="ld-portal">

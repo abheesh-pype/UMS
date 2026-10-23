@@ -121,8 +121,10 @@ export function LeaveAllocationPanel() {
   const unallocatedUsers = users.filter(u => !allocatedUserIds.has(u.id));
 
   const filtered = allocations.filter(a => {
-    const name = (typeof a.userId === 'object' ? a.userId.name : '') || '';
-    return name.toLowerCase().includes(search.toLowerCase());
+    const employee = (a as any).user || (typeof a.userId === 'object' ? a.userId : null);
+    const query = search.trim().toLowerCase();
+    return [employee?.name, employee?.email, employee?.designation]
+      .some(value => typeof value === 'string' && value.toLowerCase().includes(query));
   });
 
   const remaining = (total: number, used: number) => Math.max(0, total - used);
@@ -162,8 +164,8 @@ export function LeaveAllocationPanel() {
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
             <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p>No leave allocations for {year}</p>
-            <p className="text-xs mt-1">Use "Bulk Init" to set up all employees at once</p>
+            <p>{search.trim() ? 'No employees match your search' : `No leave allocations for ${year}`}</p>
+            {!search.trim() && <p className="text-xs mt-1">Use "Bulk Init" to set up all employees at once</p>}
           </CardContent>
         </Card>
       ) : (
