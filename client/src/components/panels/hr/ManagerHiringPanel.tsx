@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -13,7 +14,7 @@ import { toast } from 'sonner';
 export function ManagerHiringPanel() {
   const [requests, setRequests] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [formData, setFormData] = useState({ title: '', departmentId: '', count: 1, description: '' });
+  const [formData, setFormData] = useState({ title: '', departmentId: '', count: '1', description: '' });
   const [departments, setDepartments] = useState<any[]>([]);
 
   const fetchData = async () => {
@@ -35,11 +36,12 @@ export function ManagerHiringPanel() {
     e.preventDefault();
     try {
       await api.post('/hiring/request', formData);
-      toast.success('Hiring request created');
+      toast.success('Hiring request submitted for HR approval');
       setIsOpen(false);
+      setFormData({ title: '', departmentId: '', count: '1', description: '' });
       fetchData();
     } catch (e: any) {
-      toast.error('Failed to create request');
+      toast.error(e.response?.data?.message || 'Failed to create request');
     }
   };
 
@@ -47,7 +49,9 @@ export function ManagerHiringPanel() {
     { key: 'title', header: 'Title' },
     { key: 'department', header: 'Department', render: (r: any) => r.department?.name || 'N/A' },
     { key: 'count', header: 'Count' },
+    { key: 'description', header: 'Requirements', render: (r: any) => r.description || 'Not specified' },
     { key: 'status', header: 'Status', render: (r: any) => <Badge>{r.status.replace(/_/g, ' ')}</Badge> },
+    { key: 'vacancy', header: 'Opening', render: (r: any) => r.vacancy ? `${r.vacancy.filled}/${r.vacancy.count} filled` : r.status === 'approved' ? 'Opening pending' : '—' },
   ];
 
   return (
@@ -80,12 +84,12 @@ export function ManagerHiringPanel() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Count</Label>
-                  <Input type="number" required min="1" value={formData.count} onChange={e => setFormData({ ...formData, count: parseInt(e.target.value) })} />
+                  <Label>Number of positions</Label>
+                  <Input type="number" required min="1" step="1" value={formData.count} onChange={e => setFormData({ ...formData, count: e.target.value })} />
                 </div>
                 <div>
-                  <Label>Description</Label>
-                  <Input value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+                  <Label>Requirements / description</Label>
+                  <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                 </div>
                 <Button type="submit">Submit Request</Button>
               </form>

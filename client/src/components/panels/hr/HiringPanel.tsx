@@ -3,27 +3,35 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/dashboard/DataTable';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import html2pdf from 'html2pdf.js';
 import { OfferLetterDocument } from './OfferLetterDocument';
+import { Plus, UserPlus } from 'lucide-react';
 
 export function HiringPanel() {
   const [requests, setRequests] = useState<any[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [candidateForm, setCandidateForm] = useState({ name: '', email: '', phone: '', offerLetterUrl: '' });
+  const [submittingCandidate, setSubmittingCandidate] = useState(false);
   
   const fetchRequests = async () => {
     try {
       const res = await api.get('/hiring/requests');
       setRequests(res.data.data || []);
-      // extract candidates from requests
-      const allCandidates = res.data.data.flatMap((req: any) => req.candidates || []);
+      const allCandidates = (res.data.data || []).flatMap((req: any) =>
+        (req.candidates || []).map((candidate: any) => ({
+          ...candidate,
+          hiringRequest: { title: req.title, department: req.department },
+        }))
+      );
       setCandidates(allCandidates);
     } catch (e: any) {
       toast.error('Failed to fetch hiring data');
@@ -36,11 +44,42 @@ export function HiringPanel() {
 
   const handleUpdateReqStatus = async (id: string, status: string) => {
     try {
-      await api.put(`/hiring/requests/${id}/status`, { status });
-      toast.success(`Hiring request updated to ${status}`);
+      await api.put(`/hiring/requests/${id}/status`, {
+        status,
+        hrRemarks: status === 'rejected' ? 'Rejected by HR' : '',
+      });
+      toast.success(status === 'approved'
+        ? 'Request approved and vacancy opened'
+        : 'Hiring request rejected');
       fetchRequests();
     } catch (e: any) {
-      toast.error('Failed to update request');
+      toast.error(e.response?.data?.message || 'Failed to update request');
+    }
+  };
+
+  const openCandidateDialog = (request: any) => {
+    setSelectedRequest(request);
+    setCandidateForm({ name: '', email: '', phone: '', offerLetterUrl: '' });
+    setCandidateDialogOpen(true);
+  };
+
+  const handleAddCandidate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedRequest) return;
+    setSubmittingCandidate(true);
+    try {
+      await api.post('/hiring/candidates', {
+        ...candidateForm,
+        hiringRequestId: selectedRequest.id,
+      });
+      toast.success('Candidate added to the approved hiring request');
+      setCandidateDialogOpen(false);
+      setSelectedRequest(null);
+      await fetchRequests();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to add candidate');
+    } finally {
+      setSubmittingCandidate(false);
     }
   };
 
@@ -50,26 +89,35 @@ export function HiringPanel() {
       toast.success(`Candidate status updated to ${status}`);
       fetchRequests();
     } catch (e: any) {
-      toast.error('Failed to update candidate');
+      toast.error(e.response?.data?.message || 'Failed to update candidate');
     }
   };
 
   const requestColumns = [
     { key: 'title', header: 'Title' },
     { key: 'department', header: 'Department', render: (r: any) => r.department?.name || 'N/A' },
-    { key: 'count', header: 'Count' },
+    { key: 'description', header: 'Requirements', render: (r: any) => r.description || 'Not specified' },
+    { key: 'count', header: 'Positions' },
+    { key: 'candidates', header: 'Candidates', render: (r: any) => `${(r.candidates || []).filter((c: any) => c.status !== 'rejected').length} / ${r.count}` },
+    { key: 'createdAt', header: 'Requested', render: (r: any) => format(new Date(r.createdAt), 'MMM dd, yyyy') },
     { key: 'status', header: 'Status', render: (r: any) => <Badge>{r.status.replace(/_/g, ' ')}</Badge> },
     { key: 'requester', header: 'Requested By', render: (r: any) => r.requester?.name || 'Unknown' },
+    { key: 'vacancy', header: 'Opening', render: (r: any) => r.vacancy ? `${r.vacancy.filled}/${r.vacancy.count} filled` : r.status === 'approved' ? 'Opening pending' : '—' },
     { 
       key: 'actions', 
       header: 'Actions', 
       render: (r: any) => (
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {r.status === 'pending_hr_approval' && (
             <>
               <Button size="sm" onClick={() => handleUpdateReqStatus(r.id, 'approved')}>Approve</Button>
               <Button size="sm" variant="destructive" onClick={() => handleUpdateReqStatus(r.id, 'rejected')}>Reject</Button>
             </>
+          )}
+          {r.status === 'approved' && (r.candidates || []).filter((c: any) => c.status !== 'rejected').length < r.count && (
+            <Button size="sm" variant="outline" onClick={() => openCandidateDialog(r)}>
+              <UserPlus className="w-4 h-4 mr-1" /> Add Candidate
+            </Button>
           )}
         </div>
       ) 
@@ -119,7 +167,10 @@ export function HiringPanel() {
   const candidateColumns = [
     { key: 'name', header: 'Candidate Name' },
     { key: 'email', header: 'Email' },
+    { key: 'phone', header: 'Phone' },
+    { key: 'hiringRequest', header: 'Position', render: (r: any) => `${r.hiringRequest?.title || 'N/A'} · ${r.hiringRequest?.department?.name || 'N/A'}` },
     { key: 'status', header: 'Status', render: (r: any) => <Badge variant="outline">{r.status.replace(/_/g, ' ')}</Badge> },
+    { key: 'joinDate', header: 'Joining Date', render: (r: any) => r.joinDate ? format(new Date(r.joinDate), 'MMM dd, yyyy') : '—' },
     { 
       key: 'documents', 
       header: 'Documents', 
@@ -138,7 +189,10 @@ export function HiringPanel() {
       render: (r: any) => (
         <div className="flex gap-2 flex-wrap">
           {r.status === 'offer_sent' && (
-             <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'joined')}>Mark Joined</Button>
+            <>
+              <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'joined', { joinDate: new Date().toISOString() })}>Mark Joined</Button>
+              <Button size="sm" variant="destructive" onClick={() => handleUpdateCandidate(r.id, 'rejected')}>Reject</Button>
+            </>
           )}
           {r.status === 'joined' && (
              <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'appointment_sent')}>Send Appointment</Button>
@@ -158,8 +212,8 @@ export function HiringPanel() {
     <div className="space-y-6">
       <Tabs defaultValue="requests">
         <TabsList>
-          <TabsTrigger value="requests">Hiring Requests</TabsTrigger>
-          <TabsTrigger value="candidates">Candidates</TabsTrigger>
+          <TabsTrigger value="requests">Requests ({requests.length})</TabsTrigger>
+          <TabsTrigger value="candidates">Candidate Pipeline ({candidates.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="requests">
           <Card>
@@ -182,6 +236,41 @@ export function HiringPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={candidateDialogOpen} onOpenChange={setCandidateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Candidate</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {selectedRequest?.title} · {selectedRequest?.department?.name}
+            </p>
+          </DialogHeader>
+          <form onSubmit={handleAddCandidate} className="space-y-4">
+            <div>
+              <Label htmlFor="candidate-name">Full name</Label>
+              <Input id="candidate-name" value={candidateForm.name} onChange={event => setCandidateForm({ ...candidateForm, name: event.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="candidate-email">Email</Label>
+              <Input id="candidate-email" type="email" value={candidateForm.email} onChange={event => setCandidateForm({ ...candidateForm, email: event.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="candidate-phone">Phone</Label>
+              <Input id="candidate-phone" type="tel" value={candidateForm.phone} onChange={event => setCandidateForm({ ...candidateForm, phone: event.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="offer-letter-url">Offer letter URL (optional)</Label>
+              <Input id="offer-letter-url" type="url" value={candidateForm.offerLetterUrl} onChange={event => setCandidateForm({ ...candidateForm, offerLetterUrl: event.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCandidateDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={submittingCandidate}>
+                <Plus className="w-4 h-4 mr-1" />{submittingCandidate ? 'Adding...' : 'Add Candidate'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Hidden PDF Container */}
       <div className="hidden">

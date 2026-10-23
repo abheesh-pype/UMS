@@ -71,10 +71,17 @@ export const getUser = asyncHandler(async (req: AuthRequest, res: Response) => {
 });
 
 export const createUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (req.body.vacancyId) {
+    res.status(400).json({
+      success: false,
+      message: 'Hire candidates through the approved Hiring & Recruitment workflow.',
+    });
+    return;
+  }
   req.body.organizationId = req.user.organizationId;
   req.body.universityId = req.user.universityId;
 
-  const { vacancyId, ...userData } = req.body;
+  const userData = req.body;
 
   const existingUser = await prisma.user.findUnique({
     where: { email: userData.email },
@@ -83,18 +90,6 @@ export const createUser = asyncHandler(async (req: AuthRequest, res: Response) =
   if (existingUser) {
     res.status(409).json({ success: false, message: 'A user with this email already exists' });
     return;
-  }
-
-  if (vacancyId) {
-    const vacancy = await prisma.vacancy.findUnique({ where: { id: vacancyId } });
-    if (!vacancy) {
-      res.status(404).json({ success: false, message: 'Vacancy not found' });
-      return;
-    }
-    if (vacancy.filled >= vacancy.count) {
-      res.status(400).json({ success: false, message: 'Vacancy limit reached. Cannot hire more candidates.' });
-      return;
-    }
   }
 
   // Generate userId and hash password if not provided
@@ -121,13 +116,6 @@ export const createUser = asyncHandler(async (req: AuthRequest, res: Response) =
     throw error;
   }
 
-  if (vacancyId) {
-    await prisma.vacancy.update({
-      where: { id: vacancyId },
-      data: { filled: { increment: 1 } }
-    });
-  }
-  
   res.status(201).json({ success: true, data: user });
 });
 

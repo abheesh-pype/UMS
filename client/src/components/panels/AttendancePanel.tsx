@@ -29,7 +29,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
   const [loading, setLoading] = useState(false);
   
   // Date Filtering & View Mode States
-  const [dateFilter, setDateFilter] = useState<Date | undefined>(isHR ? undefined : new Date());
+  const [dateFilter, setDateFilter] = useState<Date | undefined>(new Date());
   const today = format(new Date(), 'yyyy-MM-dd');
   const [startDate, setStartDate] = useState(isHR ? today : '');
   const [endDate, setEndDate] = useState(isHR ? today : '');
@@ -168,6 +168,15 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
            recDate.getFullYear() === dateFilter.getFullYear();
   });
 
+  const handleDateSelect = (date: Date | undefined) => {
+    setDateFilter(date);
+    if (isHR && date) {
+      const selectedDate = format(date, 'yyyy-MM-dd');
+      setStartDate(selectedDate);
+      setEndDate(selectedDate);
+    }
+  };
+
   const recordsTitle = isHR
     ? startDate && endDate
       ? `${format(new Date(`${startDate}T00:00:00`), 'PPP')} - ${format(new Date(`${endDate}T00:00:00`), 'PPP')}`
@@ -184,7 +193,11 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
     if (loading) return <div className="text-center py-8">Loading...</div>;
     const recordsToDisplay = isHR && startDate && startDate === endDate
       ? [
-          ...filteredAttendance,
+          ...filteredAttendance.sort((first, second) => {
+            const firstName = first.employeeId?.name || first.user?.name || '';
+            const secondName = second.employeeId?.name || second.user?.name || '';
+            return firstName.localeCompare(secondName);
+          }),
           ...employees
             .filter(employee => !filteredAttendance.some(record => {
               const recordUserId = record.userId || record.employeeId?.id || record.employeeId;
@@ -274,11 +287,6 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
                 onChange={(event) => setEndDate(event.target.value)}
                 className="w-auto"
               />
-              {(startDate || endDate) && (
-                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                  Clear
-                </Button>
-              )}
             </div>
           ) : (
             <Popover>
@@ -292,7 +300,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
                 <Calendar
                   mode="single"
                   selected={dateFilter}
-                  onSelect={setDateFilter}
+                  onSelect={handleDateSelect}
                   initialFocus
                 />
                 <div className="p-2 border-t flex justify-center">
@@ -383,7 +391,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
               <Calendar
                 mode="single"
                 selected={dateFilter}
-                onSelect={setDateFilter}
+                onSelect={handleDateSelect}
                 className="rounded-md border shadow-sm"
                 modifiers={{
                   present: attendance.filter(a => a.status === 'present').map(a => new Date(a.date)),

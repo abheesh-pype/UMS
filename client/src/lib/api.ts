@@ -227,8 +227,8 @@ class ApiService {
     return response.data;
   }
 
-  async createVacancy(data: any) {
-    const response = await this.api.post('/hr/vacancies', data);
+  async createHiringRequest(data: any) {
+    const response = await this.api.post('/hiring/request', data);
     return response.data;
   }
 

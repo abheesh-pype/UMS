@@ -278,61 +278,109 @@ export const getMyLeaves = asyncHandler(async (req: AuthRequest, res: Response) 
 
 // --- Vacancies ---
 export const getVacancies = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const vacancies = await prisma.vacancy.findMany({ where: { organizationId: req.user.organizationId } });
+  const vacancies = await prisma.vacancy.findMany({
+    where: { organizationId: req.user.organizationId },
+    include: {
+      department: { select: { id: true, name: true } },
+      hiringRequest: { select: { id: true, title: true, status: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
   res.json({ success: true, data: vacancies });
 });
 export const getVacancy = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const vacancy = await prisma.vacancy.findUnique({ where: { id: req.params.id } });
+  const vacancy = await prisma.vacancy.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    include: {
+      department: { select: { id: true, name: true } },
+      hiringRequest: { select: { id: true, title: true, status: true } },
+    },
+  });
   res.json({ success: true, data: vacancy });
 });
 export const createVacancy = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { title, designation, departmentId, count, positions, ...rest } = req.body;
-  const finalDesignation = designation || title || 'Vacancy';
-
-  let finalDeptId = departmentId;
-  if (!finalDeptId || finalDeptId === 'null') {
-    const dept = await prisma.department.findFirst({ where: { organizationId: req.user.organizationId } });
-    if (dept) {
-      finalDeptId = dept.id;
-    } else {
-      const defaultDept = await prisma.department.create({
-        data: {
-          name: 'General Operations',
-          organizationId: req.user.organizationId,
-          status: 'active'
-        }
-      });
-      finalDeptId = defaultDept.id;
-    }
-  }
-
-  const allowedFields = ['status', 'filled'];
-  const dbData: any = {
-    designation: finalDesignation,
-    departmentId: finalDeptId,
-    count: count !== undefined ? parseInt(count) : (positions !== undefined ? parseInt(positions) : 1),
-    organizationId: req.user.organizationId
-  };
-
-  for (const field of allowedFields) {
-    if (req.body[field] !== undefined) dbData[field] = req.body[field];
-  }
-
-  const vacancy = await prisma.vacancy.create({
-    data: dbData
+  res.status(400).json({
+    success: false,
+    message: 'Create a hiring request first. HR approval will open the vacancy.',
   });
-  res.status(201).json({ success: true, data: vacancy });
 });
 export const updateVacancy = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const vacancy = await prisma.vacancy.update({ where: { id: req.params.id }, data: req.body });
+  const existing = await prisma.vacancy.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { id: true, hiringRequestId: true, filled: true },
+  });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Vacancy not found' });
+    return;
+  }
+  if (existing.hiringRequestId) {
+    res.status(400).json({ success: false, message: 'Update hiring-request vacancies through the hiring workflow' });
+    return;
+  }
+  const { designation, departmentId, count, status } = req.body;
+  if (designation !== undefined && (typeof designation !== 'string' || !designation.trim())) {
+    res.status(400).json({ success: false, message: 'Vacancy designation cannot be empty' });
+    return;
+  }
+  if (departmentId !== undefined) {
+    const department = await prisma.department.findFirst({
+      where: { id: departmentId, organizationId: req.user.organizationId },
+      select: { id: true },
+    });
+    if (!department) {
+      res.status(400).json({ success: false, message: 'Select a department in your organization' });
+      return;
+    }
+  }
+  if (count !== undefined && (!Number.isInteger(Number(count)) || Number(count) < existing.filled || Number(count) < 1)) {
+    res.status(400).json({ success: false, message: `Position count must be at least ${Math.max(existing.filled, 1)}` });
+    return;
+  }
+  if (status !== undefined && !['open', 'closed'].includes(status)) {
+    res.status(400).json({ success: false, message: 'Vacancy status must be open or closed' });
+    return;
+  }
+  const vacancy = await prisma.vacancy.update({
+    where: { id: existing.id },
+    data: {
+      ...(typeof designation === 'string' ? { designation: designation.trim() } : {}),
+      ...(typeof departmentId === 'string' ? { departmentId } : {}),
+      ...(Number.isInteger(Number(count)) && Number(count) > 0 ? { count: Number(count) } : {}),
+      ...(typeof status === 'string' ? { status } : {}),
+    },
+  });
   res.json({ success: true, data: vacancy });
 });
 export const deleteVacancy = asyncHandler(async (req: AuthRequest, res: Response) => {
-  await prisma.vacancy.delete({ where: { id: req.params.id } });
+  const existing = await prisma.vacancy.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { id: true, hiringRequestId: true },
+  });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Vacancy not found' });
+    return;
+  }
+  if (existing.hiringRequestId) {
+    res.status(400).json({ success: false, message: 'Hiring-request vacancies cannot be deleted from vacancy management' });
+    return;
+  }
+  await prisma.vacancy.delete({ where: { id: existing.id } });
   res.json({ success: true, data: {} });
 });
 export const closeVacancy = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const vacancy = await prisma.vacancy.update({ where: { id: req.params.id }, data: { status: 'closed' as any } });
+  const existing = await prisma.vacancy.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    select: { id: true, hiringRequestId: true },
+  });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Vacancy not found' });
+    return;
+  }
+  if (existing.hiringRequestId) {
+    res.status(400).json({ success: false, message: 'Hiring-request vacancies cannot be closed from vacancy management' });
+    return;
+  }
+  const vacancy = await prisma.vacancy.update({ where: { id: existing.id }, data: { status: 'closed' as any } });
   res.json({ success: true, data: vacancy });
 });
 export const validateVacancyForHiring = asyncHandler(async (req: AuthRequest, res: Response) => {

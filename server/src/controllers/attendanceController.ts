@@ -82,19 +82,40 @@ export const getAttendances = asyncHandler(async (req: AuthRequest, res: Respons
     where.userId = req.query.employeeId;
   }
 
+  const parseLocalDate = (value: unknown, endOfDay = false) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return null;
+    }
+    const [year, month, day] = value.split('-').map(Number);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
+    if (endOfDay) {
+      parsed.setHours(23, 59, 59, 999);
+    } else {
+      parsed.setHours(0, 0, 0, 0);
+    }
+    return parsed;
+  };
+
   if (req.query.startDate || req.query.endDate) {
     where.date = {};
     if (req.query.startDate) {
-      const startDate = new Date(`${req.query.startDate}T00:00:00.000Z`);
-      if (Number.isNaN(startDate.getTime())) {
+      const startDate = parseLocalDate(req.query.startDate);
+      if (!startDate) {
         res.status(400).json({ success: false, message: 'Invalid start date' });
         return;
       }
       where.date.gte = startDate;
     }
     if (req.query.endDate) {
-      const endDate = new Date(`${req.query.endDate}T23:59:59.999Z`);
-      if (Number.isNaN(endDate.getTime())) {
+      const endDate = parseLocalDate(req.query.endDate, true);
+      if (!endDate) {
         res.status(400).json({ success: false, message: 'Invalid end date' });
         return;
       }
