@@ -16,8 +16,8 @@ const router = Router();
 router.get('/my-documents', protect, getMyDocuments);
 
 // Manager API
-router.post('/request', protect, authorize('ops_admin', 'ops_sub_admin', 'org_admin', 'hr_admin', 'sales_admin', 'finance_admin', 'center_admin', 'university_admin', 'superadmin'), createHiringRequest);
-router.get('/manager-requests', protect, authorize('ops_admin', 'ops_sub_admin', 'org_admin', 'hr_admin', 'sales_admin', 'finance_admin', 'center_admin', 'university_admin', 'superadmin'), getManagerHiringRequests);
+router.post('/request', protect, authorize('ops_admin', 'ops_sub_admin', 'org_admin', 'hr_admin', 'sales_admin', 'finance_admin', 'center_admin', 'university_admin', 'ceo', 'superadmin'), createHiringRequest);
+router.get('/manager-requests', protect, authorize('ops_admin', 'ops_sub_admin', 'org_admin', 'hr_admin', 'sales_admin', 'finance_admin', 'center_admin', 'university_admin', 'ceo', 'superadmin'), getManagerHiringRequests);
 
 // HR API
 router.get('/requests', protect, authorize('hr_admin', 'org_admin', 'superadmin'), getHiringRequests);

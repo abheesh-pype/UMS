@@ -18,13 +18,21 @@ export function ManagerHiringPanel() {
   const [departments, setDepartments] = useState<any[]>([]);
 
   const fetchData = async () => {
-    try {
-      const res = await api.get('/hiring/manager-requests');
-      setRequests(res.data.data || []);
-      const deptRes = await api.get('/org/departments');
-      setDepartments(deptRes.data.data || []);
-    } catch (e: any) {
-      toast.error('Failed to fetch hiring requests');
+    const [requestsResult, departmentsResult] = await Promise.allSettled([
+      api.get('/hiring/manager-requests'),
+      api.get('/departments'),
+    ]);
+
+    if (requestsResult.status === 'fulfilled') {
+      setRequests(requestsResult.value.data.data || []);
+    } else {
+      toast.error(requestsResult.reason.response?.data?.message || 'Failed to load your hiring requests');
+    }
+
+    if (departmentsResult.status === 'fulfilled') {
+      setDepartments(departmentsResult.value.data.data || []);
+    } else {
+      toast.error(departmentsResult.reason.response?.data?.message || 'Failed to load departments for hiring requests');
     }
   };
 
@@ -39,7 +47,7 @@ export function ManagerHiringPanel() {
       toast.success('Hiring request submitted for HR approval');
       setIsOpen(false);
       setFormData({ title: '', departmentId: '', count: '1', description: '' });
-      fetchData();
+      await fetchData();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to create request');
     }

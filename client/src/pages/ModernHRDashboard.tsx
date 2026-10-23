@@ -37,6 +37,7 @@ import { NoticeBoardPanel } from '@/components/panels/NoticeBoardPanel';
 import { EmployeeActivityReportPanel } from '@/components/panels/EmployeeActivityReportPanel';
 import { SubDepartmentsPanel } from '@/components/panels/SubDepartmentsPanel';
 import { HiringPanel } from '@/components/panels/hr/HiringPanel';
+import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 import { ShiftPanel } from '@/components/panels/hr/ShiftPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { LeaveApprovalsPanel } from '@/components/panels/hr/LeaveApprovalsPanel';
@@ -68,6 +69,7 @@ export function ModernHRDashboard({ initialTab, onNavigate: _onNavigate }: { ini
       case 'attendance': return <AttendancePanel />;
       case 'attendance-calendar': return <AttendanceCalendarPanel />;
       case 'hiring': return <HiringPanel />;
+      case 'hiring_request': return <ManagerHiringPanel />;
       case 'vacancies': return <VacanciesPanel />;
       case 'holidays': return <HolidaysPanel />;
       case 'complaints': return <ComplaintsPanel />;
@@ -109,6 +111,7 @@ export function getHRNavItems() {
     { id: 'leaves', label: 'Leave Requests' },
     { id: 'attendance', label: 'Attendance' },
     { id: 'hiring', label: 'Hiring & Recruitment' },
+    { id: 'hiring_request', label: 'Hiring Request' },
     { id: 'vacancies', label: 'Vacancies' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'complaints', label: 'Complaints' },

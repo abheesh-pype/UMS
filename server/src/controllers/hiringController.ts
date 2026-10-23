@@ -333,7 +333,10 @@ export const getManagerHiringRequests = async (req: AuthRequest, res: Response) 
   try {
     const requestedBy = req.user.id;
     const requests = await prisma.hiringRequest.findMany({
-      where: { requestedBy },
+      where: {
+        requestedBy,
+        organizationId: req.user.organizationId,
+      },
       include: {
         department: true,
         vacancy: true,

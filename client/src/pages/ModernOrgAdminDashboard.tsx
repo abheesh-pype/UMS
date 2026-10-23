@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 import { UniversityExamIntegrationPanel } from '@/pages/ModernUniversityDashboard';
+import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 
 function StudyCentreCustomisationPage() {
   const { user } = useAuth();
@@ -339,6 +340,7 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
         <TabsContent value="leaves"><LeavesPanel /></TabsContent>
         <TabsContent value="leads"><LeadsPanel /></TabsContent>
         <TabsContent value="center_admissions"><CentersAdmissionsPanel /></TabsContent>
+        <TabsContent value="manager_hiring"><ManagerHiringPanel /></TabsContent>
       </Tabs>
     </div>
   );

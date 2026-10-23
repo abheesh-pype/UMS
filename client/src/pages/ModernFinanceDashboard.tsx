@@ -65,6 +65,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
+import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 
 
 export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
@@ -140,6 +141,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'my_attendance': return <AttendancePanel isPersonalView />;
       case 'my_payslips': return <PayrollPanel />;
       case 'my_documents': return <MyDocumentsPanel />;
+      case 'manager_hiring': return <ManagerHiringPanel />;
       case 'holidays': return <HolidaysPanel />;
       case 'notice-board': return <NoticeBoardPanel />;
       case 'subdepartments': return <SubDepartmentsPanel />;
@@ -165,6 +167,7 @@ export function getFinanceNavItems() {
     { id: 'overview', label: 'Overview' },
     { id: 'my_team', label: 'My Team' },
     { id: 'tasks', label: 'Task' },
+    { id: 'manager_hiring', label: 'Hiring Requests' },
     { id: 'escalations', label: 'Escalation' },
 
     { id: '__fee_payment_section', label: 'Fee & Payment Management', isSection: true },

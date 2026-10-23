@@ -26,7 +26,8 @@ import {
   GitBranch,
   Bell,
   Video,
-  Award
+  Award,
+  UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -139,6 +140,7 @@ export function PrismaLayout({
       case 'leads':
       case 'targets':
       case 'performance': return <TrendingUp className={iconClass} />;
+      case 'manager_hiring': return <UserPlus className={iconClass} />;
       case 'employees': return <UserCircle className={iconClass} />;
       case 'departments':
       case 'universities':

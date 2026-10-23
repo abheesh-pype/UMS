@@ -167,7 +167,7 @@ export function getSalesNavItems(includeStudentEnrollment = true) {
     { id: 'my_attendance', label: 'Attendance' },
     { id: 'my_payslips', label: 'Pay Slips' },
     { id: 'my_documents', label: 'My Documents' },
-    { id: 'manager_hiring', label: 'My Hiring Requests' },
+    { id: 'manager_hiring', label: 'Hiring Requests' },
     { id: 'holidays', label: 'Holidays' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'notice-board', label: 'Notice Board' },

@@ -39,6 +39,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   // Org Admin
   hierarchy: 'hierarchy',
   branches: 'branches',
+  manager_hiring: 'manager_hiring',
   // Shared
   users: 'users',
   departments: 'departments',
@@ -264,6 +265,7 @@ function App() {
         { id: 'leads', label: 'Leads' },
         { id: 'center_onboarding', label: 'Centers & Enrollment' },
         { id: 'activity_report', label: 'Activity Report' },
+        { id: 'manager_hiring', label: 'Hiring Requests' },
       ];
     }
 
@@ -290,6 +292,7 @@ function App() {
         { id: 'team', label: 'Team' },
         { id: 'leave_requests', label: 'Leave Requests' },
         { id: 'leads', label: 'Leads' },
+        { id: 'manager_hiring', label: 'Hiring Requests' },
       ];
     }
 
@@ -376,15 +379,15 @@ function App() {
       if (deptType) {
         if (isSubDeptManager) {
           switch (deptType) {
-            case 'operations': return getOpsNavItems(true).filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+            case 'operations': return getOpsNavItems(true).filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
             case 'hr': return getHRNavItems();
-            case 'finance': return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
-            case 'sales': return getSalesNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+            case 'finance': return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
+            case 'sales': return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
         } else if (deptType === 'operations') {
-          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
         } else if (deptType === 'hr') {
           return getHRNavItems();
         } else if (deptType === 'finance') {
