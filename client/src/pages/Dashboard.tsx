@@ -16,6 +16,7 @@ import { CenterOnboardingGate } from '@/components/CenterOnboardingGate';
 import { ModernStudentDashboard } from './ModernStudentDashboard';
 import { AcademicAdminPanel } from './AcademicAdminPanel';
 import { ModernUniversityDashboard } from './ModernUniversityDashboard';
+import { ComplaintsPanel } from '@/components/panels/ComplaintsPanel';
 
 interface DashboardProps {
   onNavigateToTable?: (table: string) => void;
@@ -107,6 +108,10 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useDepartmentDashboard, user?.departmentId, hasSubDept]);
+
+  if (initialTab === 'complaints') {
+    return <ComplaintsPanel />;
+  }
 
   // Branch managers always get the branch dashboard — skip all other routing
   if (isBranchManager) {

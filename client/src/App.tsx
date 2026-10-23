@@ -402,7 +402,10 @@ function App() {
 
   const tables = useMemo(() => {
     if (isRegisterPage) return [];
-    const rawTables = getAvailableTables();
+    const availableTables = getAvailableTables();
+    const rawTables = availableTables.some(item => typeof item !== 'string' && item.id === 'complaints')
+      ? availableTables
+      : [...availableTables, { id: 'complaints', label: 'Complaints' }];
     const seen = new Set<string>();
     return rawTables.filter(item => {
       const id = typeof item === 'string' ? item : item.id;

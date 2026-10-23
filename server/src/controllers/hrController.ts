@@ -395,31 +395,121 @@ export const getVacancyStats = asyncHandler(async (req: AuthRequest, res: Respon
 
 // --- Complaints ---
 export const getComplaints = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const complaints = await prisma.complaint.findMany({ where: { organizationId: req.user.organizationId } });
-  res.json({ success: true, data: complaints });
+  const complaints = await prisma.complaint.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      ...(req.user.role === 'hr_admin' ? {} : { employeeId: req.user.id })
+    },
+    include: { user: { select: { name: true, email: true } } },
+    orderBy: { submittedAt: 'desc' }
+  });
+  res.json({ success: true, data: complaints.map(complaint => ({ ...complaint, response: complaint.resolution })) });
 });
 export const getComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const complaint = await prisma.complaint.findUnique({ where: { id: req.params.id } });
-  res.json({ success: true, data: complaint });
+  const complaint = await prisma.complaint.findFirst({
+    where: {
+      id: req.params.id,
+      organizationId: req.user.organizationId,
+      ...(req.user.role === 'hr_admin' ? {} : { employeeId: req.user.id })
+    },
+    include: { user: { select: { name: true, email: true } } }
+  });
+  if (!complaint) {
+    res.status(404).json({ success: false, message: 'Complaint not found' });
+    return;
+  }
+  res.json({ success: true, data: { ...complaint, response: complaint.resolution } });
 });
 export const createComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { assignedToId, userId, ...complaintData } = req.body;
+  const { subject, description, category, priority = 'medium' } = req.body;
+  if (typeof subject !== 'string' || !subject.trim() ||
+      typeof description !== 'string' || !description.trim() ||
+      typeof category !== 'string' || !category.trim() ||
+      !['low', 'medium', 'high'].includes(priority)) {
+    res.status(400).json({ success: false, message: 'Subject, description, category, and a valid priority are required' });
+    return;
+  }
   const complaint = await prisma.complaint.create({
-    data: { ...complaintData, organizationId: req.user.organizationId, employeeId: req.user.id }
+    data: {
+      subject: subject.trim(),
+      description: description.trim(),
+      category: category.trim(),
+      priority,
+      organizationId: req.user.organizationId,
+      employeeId: req.user.id
+    }
   });
   res.status(201).json({ success: true, data: complaint });
 });
 export const updateComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const complaint = await prisma.complaint.update({ where: { id: req.params.id }, data: req.body });
+  const currentComplaint = await prisma.complaint.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
+  if (!currentComplaint) {
+    res.status(404).json({ success: false, message: 'Complaint not found' });
+    return;
+  }
+  const { subject, description, category, priority, status, resolution } = req.body;
+  const updateData = {
+    ...(typeof subject === 'string' ? { subject: subject.trim() } : {}),
+    ...(typeof description === 'string' ? { description: description.trim() } : {}),
+    ...(typeof category === 'string' ? { category: category.trim() } : {}),
+    ...(['low', 'medium', 'high'].includes(priority) ? { priority } : {}),
+    ...(['open', 'in_progress', 'resolved', 'closed'].includes(status) ? { status } : {}),
+    ...(typeof resolution === 'string' || resolution === null ? { resolution } : {}),
+    ...(typeof status === 'string' ? { resolvedAt: status === 'resolved' ? new Date() : null } : {})
+  };
+  const complaint = await prisma.complaint.update({
+    where: { id: req.params.id },
+    data: updateData
+  });
   res.json({ success: true, data: complaint });
 });
 export const deleteComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
-  await prisma.complaint.delete({ where: { id: req.params.id } });
+  const complaint = await prisma.complaint.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
+  if (!complaint) {
+    res.status(404).json({ success: false, message: 'Complaint not found' });
+    return;
+  }
+  await prisma.complaint.delete({ where: { id: complaint.id } });
   res.json({ success: true, data: {} });
 });
 export const resolveComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const complaint = await prisma.complaint.update({ where: { id: req.params.id }, data: { status: 'resolved' as any } });
+  const currentComplaint = await prisma.complaint.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
+  if (!currentComplaint) {
+    res.status(404).json({ success: false, message: 'Complaint not found' });
+    return;
+  }
+  const complaint = await prisma.complaint.update({
+    where: { id: currentComplaint.id },
+    data: { status: 'resolved', resolvedAt: new Date() }
+  });
   res.json({ success: true, data: complaint });
+});
+export const replyToComplaint = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { response } = req.body;
+  if (typeof response !== 'string' || !response.trim()) {
+    res.status(400).json({ success: false, message: 'A reply is required' });
+    return;
+  }
+
+  const currentComplaint = await prisma.complaint.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId }
+  });
+  if (!currentComplaint) {
+    res.status(404).json({ success: false, message: 'Complaint not found' });
+    return;
+  }
+
+  const complaint = await prisma.complaint.update({
+    where: { id: currentComplaint.id },
+    data: { resolution: response.trim() }
+  });
+  res.json({ success: true, data: { ...complaint, response: complaint.resolution } });
 });
 
 // --- Holidays ---

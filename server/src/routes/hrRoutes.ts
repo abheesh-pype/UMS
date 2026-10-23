@@ -26,6 +26,7 @@ import {
   updateComplaint,
   deleteComplaint,
   resolveComplaint,
+  replyToComplaint,
   getHolidays,
   getHoliday,
   createHoliday,
@@ -128,6 +129,7 @@ router.route('/complaints/:id')
   .put(authorize('hr_admin'), updateComplaint)
   .delete(authorize('hr_admin'), deleteComplaint);
 router.put('/complaints/:id/resolve', authorize('hr_admin'), resolveComplaint);
+router.put('/complaints/:id/reply', authorize('hr_admin'), replyToComplaint);
 
 // Holidays
 router.route('/holidays').get(getHolidays).post(authorize('hr_admin'), createHoliday);
