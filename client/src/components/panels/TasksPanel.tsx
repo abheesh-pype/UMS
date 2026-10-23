@@ -38,6 +38,7 @@ interface SubUser {
   designation?: string;
   role?: string;
   departmentId?: string;
+  department?: { id: string; name: string; type: string };
 }
 
 export function TasksPanel() {
@@ -60,6 +61,24 @@ export function TasksPanel() {
   });
 
   const [completeData, setCompleteData] = useState({ remarks: '', files: null as FileList | null });
+
+  const isHR = user?.role === 'hr_admin';
+  const assignableStaff = isHR
+    ? subordinates.filter(s => {
+        const deptType = s.department?.type?.toLowerCase();
+        const deptName = s.department?.name?.toLowerCase();
+        const userDeptId = (user as any)?.departmentId;
+        const userDeptIdStr = typeof userDeptId === 'object' && userDeptId !== null ? userDeptId.id : userDeptId;
+        return (
+          deptType === 'hr' ||
+          deptType === 'human_resources' ||
+          deptName?.includes('hr') ||
+          deptName?.includes('human resources') ||
+          (userDeptIdStr && s.departmentId === userDeptIdStr) ||
+          s.role === 'hr_admin'
+        );
+      })
+    : subordinates;
 
   useEffect(() => {
     fetchTasks();
@@ -90,7 +109,7 @@ export function TasksPanel() {
     if (!formData.assignedTo) return;
 
     // Auto-derive departmentId from the selected subordinate
-    const selectedUser = subordinates.find(s => s.id === formData.assignedTo);
+    const selectedUser = (assignableStaff || subordinates).find(s => s.id === formData.assignedTo);
     const payload: any = { ...formData };
     if (selectedUser?.departmentId) {
       payload.departmentId = selectedUser.departmentId;
@@ -241,13 +260,15 @@ export function TasksPanel() {
                   onValueChange={v => setFormData({ ...formData, assignedTo: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select team member" />
+                    <SelectValue placeholder={isHR ? 'Select HR staff member' : 'Select team member'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {subordinates.length === 0 ? (
-                      <SelectItem value="__none__" disabled>No direct reports found</SelectItem>
+                    {assignableStaff.length === 0 ? (
+                      <SelectItem value="__none__" disabled>
+                        {isHR ? 'No HR department staff found' : 'No direct reports found'}
+                      </SelectItem>
                     ) : (
-                      subordinates.map(s => (
+                      assignableStaff.map(s => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}{s.designation ? ` — ${s.designation}` : ''}
                         </SelectItem>

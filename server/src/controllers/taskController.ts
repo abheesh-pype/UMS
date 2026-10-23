@@ -8,6 +8,7 @@ const departmentTypeByAdminRole: Record<string, string> = {
   sales_admin: 'sales',
   ops_admin: 'operations',
   finance_admin: 'finance',
+  hr_admin: 'hr',
 };
 
 const taskManagementRoles = [
@@ -20,20 +21,44 @@ const taskManagementRoles = [
   'sales_admin',
 ];
 
-const getAssignableUser = async (userId: string, organizationId: string, departmentType?: string) => {
+const buildDepartmentConditions = (role: string, departmentId?: string) => {
+  const departmentType = departmentTypeByAdminRole[role];
+  if (!departmentType && !departmentId) return undefined;
+
+  const conditions: any[] = [];
+  if (departmentType) {
+    conditions.push(
+      { department: { type: { equals: departmentType, mode: 'insensitive' } } },
+      { department: { name: { contains: departmentType, mode: 'insensitive' } } },
+      { subDepartment: { parentDept: { type: { equals: departmentType, mode: 'insensitive' } } } },
+      { subDepartment: { parentDept: { name: { contains: departmentType, mode: 'insensitive' } } } },
+    );
+    if (departmentType === 'hr') {
+      conditions.push(
+        { department: { type: { equals: 'human_resources', mode: 'insensitive' } } },
+        { department: { name: { contains: 'human resources', mode: 'insensitive' } } },
+      );
+    }
+  }
+
+  if (departmentId && role === 'hr_admin') {
+    conditions.push(
+      { departmentId },
+      { subDepartment: { parentDeptId: departmentId } },
+    );
+  }
+
+  return conditions.length > 0 ? conditions : undefined;
+};
+
+const getAssignableUser = async (userId: string, organizationId: string, role: string, departmentId?: string) => {
+  const deptConditions = buildDepartmentConditions(role, departmentId);
   return prisma.user.findFirst({
     where: {
       id: userId,
       organizationId,
       status: 'active' as any,
-      ...(departmentType ? {
-        OR: [
-          { department: { type: { equals: departmentType, mode: 'insensitive' } } },
-          { department: { name: { contains: departmentType, mode: 'insensitive' } } },
-          { subDepartment: { parentDept: { type: { equals: departmentType, mode: 'insensitive' } } } },
-          { subDepartment: { parentDept: { name: { contains: departmentType, mode: 'insensitive' } } } },
-        ],
-      } : {}),
+      ...(deptConditions ? { OR: deptConditions } : {}),
     },
     select: {
       id: true,
@@ -101,12 +126,13 @@ export const getTask = asyncHandler(async (req: AuthRequest, res: Response) => {
 export const createTask = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { title, description, assignedTo, deadline, priority, departmentId } = req.body;
   const cleanAssignedTo = assignedTo === 'null' || !assignedTo ? req.user.id : assignedTo;
-  const departmentType = departmentTypeByAdminRole[req.user.role];
-  const assignee = await getAssignableUser(cleanAssignedTo, req.user.organizationId, departmentType);
+  const userDeptId = req.user.departmentId || req.user.subDepartment?.parentDeptId;
+  const assignee = await getAssignableUser(cleanAssignedTo, req.user.organizationId, req.user.role, userDeptId);
   if (!assignee) {
+    const isDeptRestricted = Boolean(departmentTypeByAdminRole[req.user.role]);
     res.status(400).json({
       success: false,
-      message: departmentType
+      message: isDeptRestricted
         ? 'Select an active employee from your department'
         : 'Selected assignee was not found in your organization',
     });
@@ -137,15 +163,18 @@ export const updateTask = asyncHandler(async (req: AuthRequest, res: Response) =
   
   const updateData: any = {};
   if (assignedTo !== undefined && assignedTo !== 'null') {
+    const userDeptId = req.user.departmentId || req.user.subDepartment?.parentDeptId;
     const assignee = await getAssignableUser(
       assignedTo,
       req.user.organizationId,
-      departmentTypeByAdminRole[req.user.role],
+      req.user.role,
+      userDeptId,
     );
     if (!assignee) {
+      const isDeptRestricted = Boolean(departmentTypeByAdminRole[req.user.role]);
       res.status(400).json({
         success: false,
-        message: departmentTypeByAdminRole[req.user.role]
+        message: isDeptRestricted
           ? 'Select an active employee from your department'
           : 'Selected assignee was not found in your organization',
       });
@@ -200,29 +229,25 @@ export const deleteTask = asyncHandler(async (req: AuthRequest, res: Response) =
 });
 
 export const getAssignableUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const departmentType = departmentTypeByAdminRole[req.user.role];
+  const userDeptId = req.user.departmentId || req.user.subDepartment?.parentDeptId;
+  const deptConditions = buildDepartmentConditions(req.user.role, userDeptId);
   const users = await prisma.user.findMany({
     where: {
       organizationId: req.user.organizationId,
       status: 'active' as any,
-      ...(departmentType ? {
-        OR: [
-          { department: { type: { equals: departmentType, mode: 'insensitive' } } },
-          { department: { name: { contains: departmentType, mode: 'insensitive' } } },
-          { subDepartment: { parentDept: { type: { equals: departmentType, mode: 'insensitive' } } } },
-          { subDepartment: { parentDept: { name: { contains: departmentType, mode: 'insensitive' } } } },
-        ],
-      } : {}),
+      ...(deptConditions ? { OR: deptConditions } : {}),
     },
     select: {
       id: true,
       name: true,
       email: true,
       designation: true,
+      role: true,
       departmentId: true,
       department: { select: { id: true, name: true, type: true } },
       subDepartment: { select: { parentDeptId: true, parentDept: { select: { id: true, name: true, type: true } } } },
     },
+    orderBy: { name: 'asc' },
   });
   const data = users.map(user => ({
     ...user,
