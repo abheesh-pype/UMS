@@ -4,6 +4,94 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+const localDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const startOfLocalDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const calculateUsedLeaveByType = (leaveRequests: any[], attendances: any[], year: number) => {
+  const yearStart = new Date(year, 0, 1);
+  const nextYearStart = new Date(year + 1, 0, 1);
+  const todayStart = startOfLocalDay(new Date());
+  const attendanceByUserAndDate = new Map<string, any>();
+  for (const attendance of attendances) {
+    attendanceByUserAndDate.set(
+      `${attendance.userId}:${localDateKey(new Date(attendance.date))}`,
+      attendance
+    );
+  }
+
+  const usedByUserAndType = new Map<string, {
+    sickLeave: number;
+    casualLeave: number;
+    earnedLeave: number;
+    complementaryLeave: number;
+  }>();
+  const deductedByUserAndDate = new Map<string, number>();
+  const typeByLeave: Record<string, keyof ReturnType<typeof emptyUsedLeave>> = {
+    sick: 'sickLeave',
+    casual: 'casualLeave',
+    earned: 'earnedLeave',
+    compensatory: 'complementaryLeave',
+  };
+
+  const sortedLeaves = [...leaveRequests].sort((a, b) =>
+    a.startDate.getTime() - b.startDate.getTime() || a.createdAt.getTime() - b.createdAt.getTime()
+  );
+  for (const leave of sortedLeaves) {
+    const leaveType = typeByLeave[leave.type];
+    if (!leaveType) continue;
+
+    const firstDate = startOfLocalDay(leave.startDate > yearStart ? leave.startDate : yearStart);
+    const lastLeaveDate = leave.endDate < nextYearStart ? leave.endDate : new Date(nextYearStart.getTime() - 1);
+    const lastDate = startOfLocalDay(lastLeaveDate);
+    const completedThrough = new Date(todayStart);
+    completedThrough.setDate(completedThrough.getDate() - 1);
+    if (lastDate > completedThrough) lastDate.setTime(completedThrough.getTime());
+    if (firstDate > lastDate) continue;
+
+    let halfDayUnitsRemaining = leave.isHalfDay ? 0.5 : Number.POSITIVE_INFINITY;
+    for (const date = new Date(firstDate); date <= lastDate; date.setDate(date.getDate() + 1)) {
+      if (halfDayUnitsRemaining <= 0) break;
+
+      const dateKey = localDateKey(date);
+      const userDateKey = `${leave.userId}:${dateKey}`;
+      const attendance = attendanceByUserAndDate.get(userDateKey);
+      let absenceUnits = 1;
+      if (attendance) {
+        if (attendance.status === 'half_day') {
+          absenceUnits = 0.5;
+        } else if (
+          attendance.checkIn &&
+          ['present', 'late'].includes(attendance.status)
+        ) {
+          absenceUnits = 0;
+        }
+      }
+
+      const alreadyDeducted = deductedByUserAndDate.get(userDateKey) || 0;
+      const requestUnits = leave.isHalfDay ? halfDayUnitsRemaining : 1;
+      const unitsToDeduct = Math.min(requestUnits, Math.max(0, absenceUnits - alreadyDeducted));
+      if (unitsToDeduct <= 0) continue;
+
+      let used = usedByUserAndType.get(leave.userId);
+      if (!used) {
+        used = emptyUsedLeave();
+        usedByUserAndType.set(leave.userId, used);
+      }
+      used[leaveType] += unitsToDeduct;
+      deductedByUserAndDate.set(userDateKey, alreadyDeducted + unitsToDeduct);
+      halfDayUnitsRemaining -= unitsToDeduct;
+    }
+  }
+
+  return usedByUserAndType;
+};
+
+function emptyUsedLeave() {
+  return { sickLeave: 0, casualLeave: 0, earnedLeave: 0, complementaryLeave: 0 };
+}
+
 export const getSalaryConfigs = asyncHandler(async (req: AuthRequest, res: Response) => {
   const configs = await prisma.salaryConfig.findMany({
     where: { organizationId: req.user.organizationId },
@@ -104,36 +192,39 @@ export const getLeaveAllocations = asyncHandler(async (req: AuthRequest, res: Re
     include: { user: { select: { name: true, email: true, role: true, designation: true } } }
   });
 
-  const startDate = new Date(year, 0, 1);
-  const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
-
-  const leaveRequests = await prisma.leaveRequest.findMany({
+  const yearStart = new Date(year, 0, 1);
+  const nextYearStart = new Date(year + 1, 0, 1);
+  const [leaveRequests, attendances] = await Promise.all([
+    prisma.leaveRequest.findMany({
     where: {
       organizationId: req.user.organizationId,
       status: 'approved',
-      startDate: { gte: startDate },
-      endDate: { lte: endDate }
-    }
-  });
+      startDate: { lt: nextYearStart },
+      endDate: { gte: yearStart },
+    },
+    select: { userId: true, type: true, startDate: true, endDate: true, isHalfDay: true, createdAt: true },
+    }),
+    allocations.length
+      ? prisma.attendance.findMany({
+        where: {
+          organizationId: req.user.organizationId,
+          userId: { in: allocations.map((allocation: any) => allocation.userId) },
+          date: { gte: yearStart, lt: nextYearStart },
+        },
+        select: { userId: true, date: true, status: true, checkIn: true },
+      })
+      : Promise.resolve([]),
+  ]);
+  const usedByUser = calculateUsedLeaveByType(leaveRequests, attendances, year);
 
   const data = allocations.map(alloc => {
-    const userLeaves = leaveRequests.filter(lr => lr.userId === alloc.userId);
-    let usedSick = 0, usedCasual = 0, usedEarned = 0, usedComplementary = 0;
-    
-    for (const lr of userLeaves) {
-      const days = Math.ceil((new Date(lr.endDate).getTime() - new Date(lr.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      if (lr.type === 'sick') usedSick += days;
-      else if (lr.type === 'casual') usedCasual += days;
-      else if (lr.type === 'earned') usedEarned += days;
-      else if (lr.type === 'compensatory') usedComplementary += days;
-    }
-
+    const used = usedByUser.get(alloc.userId) || emptyUsedLeave();
     return {
       ...alloc,
-      usedSick,
-      usedCasual,
-      usedEarned,
-      usedComplementary
+      usedSick: used.sickLeave,
+      usedCasual: used.casualLeave,
+      usedEarned: used.earnedLeave,
+      usedComplementary: used.complementaryLeave,
     };
   });
 
@@ -159,33 +250,27 @@ export const getMyLeaveAllocation = asyncHandler(async (req: AuthRequest, res: R
     return;
   }
 
-  const yearStart = new Date(year, 0, 1);
-  const nextYearStart = new Date(year + 1, 0, 1);
-  const approvedLeaves = await prisma.leaveRequest.findMany({
-    where: {
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      status: 'approved',
-      startDate: { lt: nextYearStart },
-      endDate: { gte: yearStart }
-    },
-    select: { type: true, startDate: true, endDate: true, isHalfDay: true }
-  });
-
-  const used = { sickLeave: 0, casualLeave: 0, earnedLeave: 0, complementaryLeave: 0 };
-  for (const leave of approvedLeaves) {
-    const start = leave.startDate > yearStart ? leave.startDate : yearStart;
-    const lastDay = new Date(nextYearStart.getTime() - 1);
-    const end = leave.endDate < lastDay ? leave.endDate : lastDay;
-    const days = leave.isHalfDay
-      ? 0.5
-      : Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-
-    if (leave.type === 'sick') used.sickLeave += days;
-    else if (leave.type === 'casual') used.casualLeave += days;
-    else if (leave.type === 'earned') used.earnedLeave += days;
-    else if (leave.type === 'compensatory') used.complementaryLeave += days;
-  }
+  const [approvedLeaves, attendances] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: {
+        userId: req.user.id,
+        organizationId: req.user.organizationId,
+        status: 'approved',
+        startDate: { lt: new Date(year + 1, 0, 1) },
+        endDate: { gte: new Date(year, 0, 1) },
+      },
+      select: { userId: true, type: true, startDate: true, endDate: true, isHalfDay: true, createdAt: true },
+    }),
+    prisma.attendance.findMany({
+      where: {
+        userId: req.user.id,
+        organizationId: req.user.organizationId,
+        date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+      },
+      select: { userId: true, date: true, status: true, checkIn: true },
+    }),
+  ]);
+  const used = calculateUsedLeaveByType(approvedLeaves, attendances, year).get(req.user.id) || emptyUsedLeave();
 
   res.json({ success: true, data: { ...allocation, used } });
 });

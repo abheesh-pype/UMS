@@ -134,7 +134,7 @@ export function LeaveAllocationPanel() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold">Leave Allocations</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage sick, casual, earned & complementary leave per employee</p>
+          <p className="text-muted-foreground text-sm mt-1">Approved leave is deducted after each completed date when attendance confirms absence.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <select

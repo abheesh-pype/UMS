@@ -43,7 +43,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState<any>({});
   const [tasks, setTasks] = useState<any[]>([]);
-  const [leaves, setLeaves] = useState<any[]>([]);
+  const [leaveAllocation, setLeaveAllocation] = useState<any>(null);
   const [attendance, setAttendance] = useState<any>({});
   const mappedInitialTab = initialTab === 'my-tasks' ? 'tasks' : 
     initialTab === 'my-leaves' ? 'leaves' : 
@@ -74,35 +74,29 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [metricsRes, tasksRes, leavesRes, attendanceRes] = await Promise.all([
+      const [metricsRes, tasksRes, attendanceRes, leaveAllocationRes] = await Promise.all([
         api.get('/dashboard/metrics'),
         api.get('/tasks').catch(() => ({ data: { data: [] } })),
-        api.get('/hr/leaves/my').catch(() => ({ data: { data: [] } })),
         api.get('/hr/attendance/my-summary').catch(() => ({ data: { data: {} } })),
+        api.get(`/hr/leave-allocations/my?year=${new Date().getFullYear()}`).catch(() => ({ data: { data: null } })),
       ]);
       setMetrics(metricsRes.data.data || {});
       setTasks((tasksRes.data.data || []).filter((t: any) => t.status !== 'completed').slice(0, 5));
-      setLeaves(leavesRes.data.data || []);
       setAttendance(attendanceRes.data.data || {});
+      setLeaveAllocation(leaveAllocationRes.data.data || null);
     } catch (e) {
     } finally {
       setLoading(false);
     }
   };
 
-  // Compute leave balance from real allocation data
-  const approvedLeaves = leaves.filter((l: any) => l.status === 'approved');
-  const usedDays = approvedLeaves.reduce((s: number, l: any) => {
-    if (!l.startDate || !l.endDate) return s;
-    if (l.isHalfDay) return s + 0.5;
-    const diff = Math.ceil((new Date(l.endDate).getTime() - new Date(l.startDate).getTime()) / 86400000) + 1;
-    return s + diff;
-  }, 0);
-  // Use allocation from metrics if available, otherwise fallback to sum of standard types
-  const totalLeaveAllowance = metrics.leaveAllocation
-    ? (metrics.leaveAllocation.sickLeave || 0) + (metrics.leaveAllocation.casualLeave || 0) + (metrics.leaveAllocation.earnedLeave || 0)
-    : 39; // 12 sick + 12 casual + 15 earned
-  const remainingLeaves = Math.max(0, totalLeaveAllowance - usedDays);
+  const usedDays = leaveAllocation
+    ? Object.values(leaveAllocation.used || {}).reduce((total: number, days: any) => total + Number(days || 0), 0)
+    : 0;
+  const totalLeaveAllowance = leaveAllocation
+    ? (leaveAllocation.sickLeave || 0) + (leaveAllocation.casualLeave || 0) + (leaveAllocation.earnedLeave || 0) + (leaveAllocation.complementaryLeave || 0)
+    : 0;
+  const remainingLeaves = leaveAllocation ? Math.max(0, totalLeaveAllowance - usedDays) : null;
 
   // Work hours this week from attendance
   const weekHours = attendance.weekHours ?? null;
@@ -178,9 +172,9 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
             />
             <EmployeeMetric
               title="Leaves Remaining"
-              value={loading ? '...' : `${remainingLeaves} Days`}
+              value={loading ? '...' : remainingLeaves === null ? 'N/A' : `${remainingLeaves} Days`}
               icon={<Calendar className="w-5 h-5" />}
-              subtext={`${usedDays} used of ${totalLeaveAllowance}`}
+              subtext={leaveAllocation ? `${usedDays} used of ${totalLeaveAllowance}` : 'Leave allocation not available'}
               color="info"
               onClick={() => handleTabChange('leaves')}
             />

@@ -263,7 +263,7 @@ export function LeavesPanel({
           <CardContent className="p-5">
             <div className="mb-4">
               <h3 className="font-semibold">My Leave Balance — {new Date().getFullYear()}</h3>
-              <p className="text-xs text-muted-foreground">Approved leave used is subtracted from your HR allocation.</p>
+              <p className="text-xs text-muted-foreground">Approved leave is deducted after the leave date when attendance confirms you were absent.</p>
             </div>
             {allocationLoading ? (
               <p className="py-4 text-center text-sm text-muted-foreground">Loading leave allocation...</p>
