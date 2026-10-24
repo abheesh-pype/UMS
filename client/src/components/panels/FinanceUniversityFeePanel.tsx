@@ -164,7 +164,7 @@ export function FinanceUniversityFeePanel() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold">University Fee Payments</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage and track university-side fee disbursements for students.</p>
+          <p className="text-muted-foreground text-sm mt-1">View the university fee configured for each student, what is still due, and what Finance has paid to the university.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => fetchPayments()} disabled={loading}>
           <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
