@@ -1121,8 +1121,9 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
         select: {
           id: true,
           programId: true,
+          isActive: true,
           admissionSessionId: true,
-          admissionSession: { select: { id: true, name: true } },
+          admissionSession: { select: { id: true, name: true, status: true } },
         },
       },
       referrer: {

@@ -1706,6 +1706,7 @@ model ProgramFeeStructure {
   fullProgramFee     Float?            @default(0)
   yearlyFee          Float?
   semesterFee        Float?
+  semesterFees       Json              @default("[]")
   universityFee      Float             @default(0)
   additionalFees     Json              @default("[]")
   feeBreakdown       Json              @default("[]")

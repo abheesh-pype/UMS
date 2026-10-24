@@ -88,6 +88,9 @@ const parseJsonArray = (value: unknown) => {
 
 const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
   if (!feeStructure) return null;
+  const semesterFee = Array.isArray(feeStructure.semesterFees)
+    ? Number(feeStructure.semesterFees[0] ?? feeStructure.semesterFee) || 0
+    : Number(feeStructure.semesterFee) || 0;
   const additionalFees = Array.isArray(feeStructure.additionalFees) ? feeStructure.additionalFees : [];
   const recurringFees = additionalFees.filter((fee: any) => fee.label !== 'GST');
   const additionalTotal = recurringFees.reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
@@ -97,7 +100,7 @@ const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
     const configuredCycleAmount = paymentMethod === 'yearly'
       ? Number(feeStructure.yearlyFee) || 0
       : paymentMethod === 'semester'
-        ? Number(feeStructure.semesterFee) || 0
+        ? semesterFee
         : 0;
     if (configuredCycleAmount > 0) return configuredCycleAmount;
     if (breakdown.length > 0) {
@@ -121,7 +124,7 @@ const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
   const configuredCycleAmount = paymentMethod === 'yearly'
     ? Number(feeStructure.yearlyFee) || 0
     : paymentMethod === 'semester'
-      ? Number(feeStructure.semesterFee) || 0
+      ? semesterFee
       : 0;
   if (configuredCycleAmount > 0) {
     subtotal = configuredCycleAmount + additionalTotal;

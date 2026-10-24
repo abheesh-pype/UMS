@@ -23,6 +23,7 @@ interface ProgramFee {
   fullProgramFee?: number;
   yearlyFee?: number | null;
   semesterFee?: number | null;
+  semesterFees?: number[] | null;
   additionalFees: { label: string; amount: number }[];
   feeBreakdown?: any[];
   currency: string;
@@ -44,6 +45,7 @@ interface Program {
   id: string;
   name: string;
   code: string;
+  status?: string;
   universityId: any;
   duration?: number;
   hasSemesters?: boolean;
@@ -68,8 +70,9 @@ interface StudyCenter {
   programAllocations?: {
     id: string;
     programId: string;
+    isActive: boolean;
     admissionSessionId?: string | null;
-    admissionSession?: { id: string; name: string } | null;
+    admissionSession?: { id: string; name: string; status: string } | null;
   }[];
 }
 
@@ -123,6 +126,7 @@ export function ProgramFeeStructurePanel() {
     fullProgramFee: '0',
     yearlyFee: '0',
     semesterFee: '0',
+    semesterFees: [] as string[],
   });
 
   
@@ -246,6 +250,10 @@ export function ProgramFeeStructurePanel() {
       fullProgramFee: 0,
       yearlyFee: 0,
       semesterFee: 0,
+      semesterFees: Array.from(
+        { length: Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6)) },
+        () => '0'
+      ),
     });
     setOpen(true);
   };
@@ -270,6 +278,10 @@ export function ProgramFeeStructurePanel() {
     const semesterFee = fee.semesterFee ?? (fullProgramFee
       ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6))
       : fee.baseFee || 0);
+    const semesterCount = Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6));
+    const semesterFees = Array.isArray(fee.semesterFees) && fee.semesterFees.length === semesterCount
+      ? fee.semesterFees.map(amount => String(amount))
+      : Array.from({ length: semesterCount }, () => String(semesterFee || 0));
 
     let parsedBreakdown = fee.feeBreakdown || [];
     if (typeof parsedBreakdown === 'string') {
@@ -301,6 +313,7 @@ export function ProgramFeeStructurePanel() {
       fullProgramFee,
       yearlyFee,
       semesterFee,
+      semesterFees,
       commissionRate: fee.commissionRate !== undefined ? String(fee.commissionRate) : '0',
       additionalFees: otherFees.map(f => `${f.label}:${f.amount}`).join(', '),
       feeBreakdown: parsedBreakdown
@@ -329,6 +342,10 @@ export function ProgramFeeStructurePanel() {
       }
       if (form.level === 'program' && (Number(form.yearlyFee) <= 0 || Number(form.semesterFee) <= 0)) {
         toast.error('Yearly and semester payments must both be greater than zero');
+        return;
+      }
+      if (form.level === 'program' && form.semesterFees.some(amount => !Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
+        toast.error('Every semester fee must be greater than zero');
         return;
       }
 
@@ -375,6 +392,7 @@ export function ProgramFeeStructurePanel() {
         fullProgramFee: Number(form.fullProgramFee || 0),
         yearlyFee: form.level === 'program' ? Number(form.yearlyFee) : undefined,
         semesterFee: form.level === 'program' ? Number(form.semesterFee) : undefined,
+        semesterFees: form.level === 'program' ? form.semesterFees.map(Number) : undefined,
         universityFee: totalUniversityFee,
         billingCycle: form.billingCycle,
         currency: form.currency,
@@ -465,7 +483,11 @@ export function ProgramFeeStructurePanel() {
     if (!selectedCenter) return [];
     const allocations = selectedCenter.programAllocations || [];
     if (allocations.length > 0) {
-      return allocations.map(allocation => {
+      return allocations.filter(allocation =>
+        allocation.isActive
+        && allocation.admissionSession?.status === 'active'
+        && programs.some(program => program.id === allocation.programId && program.status === 'active')
+      ).map(allocation => {
         const program = programs.find(item => item.id === allocation.programId);
         if (!program) return null;
         const session = allocation.admissionSession
@@ -479,18 +501,27 @@ export function ProgramFeeStructurePanel() {
         };
       }).filter(Boolean) as { program: Program; sessionId: string; sessionName: string; key: string }[];
     }
-    const allocatedProgramIds = allocations.map(allocation => allocation.programId);
-    const centerProgramIds = allocatedProgramIds.length > 0
-      ? allocatedProgramIds
-      : selectedCenter.programIds || [];
-    return programs
-      .filter(program => centerProgramIds.includes(program.id))
-      .map(program => ({
-        program,
-        sessionId: '',
-        sessionName: 'All Sessions',
-        key: `${program.id}:all`,
-      }));
+    const centerProgramIds = selectedCenter.programIds || [];
+    return sessions
+      .filter(session => session.status === 'active')
+      .flatMap(session => programs
+        .filter(program =>
+          program.status === 'active'
+          && centerProgramIds.includes(program.id)
+          && (
+            session.programId
+              ? session.programId === program.id
+              : !session.universityId
+                || !program.universityId
+                || session.universityId === program.universityId
+          )
+        )
+        .map(program => ({
+          program,
+          sessionId: session.id,
+          sessionName: session.name,
+          key: `${program.id}:${session.id}`,
+        })));
   }, [programs, selectedCenter, sessions]);
 
   const filteredPrograms = feeView === 'university'
@@ -1115,38 +1146,61 @@ export function ProgramFeeStructurePanel() {
                         fullProgramFee: e.target.value,
                         yearlyFee: fullFee > 0 ? (fullFee / yearCount).toFixed(2) : '',
                         semesterFee: fullFee > 0 ? (fullFee / semesterCount).toFixed(2) : '',
+                        semesterFees: Array.from(
+                          { length: semesterCount },
+                          () => fullFee > 0 ? (fullFee / semesterCount).toFixed(2) : ''
+                        ),
                       }));
                     }}
                     placeholder="Enter full program fee"
                     required
                   />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <Label>Yearly Payment <span className="text-destructive">*</span></Label>
-                    <Input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={form.yearlyFee}
-                      onChange={e => setForm(f => ({ ...f, yearlyFee: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Semester Payment <span className="text-destructive">*</span></Label>
-                    <Input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={form.semesterFee}
-                      onChange={e => setForm(f => ({ ...f, semesterFee: e.target.value }))}
-                      required
-                    />
+                <div className="space-y-1">
+                  <Label>Yearly Payment <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.yearlyFee}
+                    onChange={e => setForm(f => ({ ...f, yearlyFee: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Semester Payments <span className="text-destructive">*</span></Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {form.semesterFees.map((amount, index) => (
+                      <div key={index} className="space-y-1">
+                        <Label htmlFor={`semester-fee-${index + 1}`} className="text-xs text-muted-foreground">
+                          Semester {index + 1}
+                        </Label>
+                        <Input
+                          id={`semester-fee-${index + 1}`}
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={amount}
+                          onChange={e => setForm(f => {
+                            const semesterFees = [...f.semesterFees];
+                            semesterFees[index] = e.target.value;
+                            const numericFees = semesterFees.map(Number).filter(Number.isFinite);
+                            return {
+                              ...f,
+                              semesterFees,
+                              semesterFee: numericFees.length
+                                ? (numericFees.reduce((total, fee) => total + fee, 0) / semesterFees.length).toFixed(2)
+                                : '',
+                            };
+                          })}
+                          required
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The yearly and semester amounts are pre-calculated from the full program fee and can be adjusted.
+                  Semester amounts are pre-calculated evenly from the full program fee and can be adjusted individually.
                 </p>
               </div>
             ) : (

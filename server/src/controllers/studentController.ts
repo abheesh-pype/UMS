@@ -674,7 +674,9 @@ export const getStudentInstallments = asyncHandler(async (req: AuthRequest, res:
         : Number(feeStructure.yearlyFee);
     breakdownArray = Array.from({ length: periodCount }, (_, index) => ({
       year: index + 1,
-      baseFee: periodAmount,
+        baseFee: cycleLabel === 'Semester'
+          ? Number(feeStructure.semesterFees?.[index] ?? periodAmount)
+          : periodAmount,
       examFee: 0,
       dueDate: '',
       additionalFees: '',

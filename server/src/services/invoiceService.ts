@@ -266,7 +266,7 @@ export const generateInvoiceForEnrollment = async (
         : enrollmentPaymentMethod === 'yearly'
           ? Number(feeStructure.yearlyFee) || 0
           : enrollmentPaymentMethod === 'semester'
-            ? Number(feeStructure.semesterFee) || 0
+            ? Number((Array.isArray(feeStructure.semesterFees) ? feeStructure.semesterFees[options?.cycleIndex ?? 0] : undefined) ?? feeStructure.semesterFee) || 0
             : 0
       : 0;
 

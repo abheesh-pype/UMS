@@ -27,6 +27,7 @@ interface Program {
     fullProgramFee?: number;
     yearlyFee?: number | null;
     semesterFee?: number | null;
+    semesterFees?: number[] | null;
     currency: string;
     billingCycle?: string;
     gstPercentage?: number;
@@ -293,7 +294,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         ? Number(fs.fullProgramFee || 0)
         : method === 'yearly'
           ? Number(fs.yearlyFee || 0)
-          : Number(fs.semesterFee || 0);
+          : Number(fs.semesterFees?.[0] ?? fs.semesterFee ?? 0);
       if (configuredAmount > 0) subtotal = configuredAmount + additionalFeesTotal;
     }
 
