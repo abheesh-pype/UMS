@@ -234,6 +234,18 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     }
   });
 
+  // Prefer the standard structure when there is no exact session match.
+  if (!feeStructure) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        programId: dbEnrollment.programId,
+        admissionSessionId: null,
+        level: 'program'
+      }
+    });
+  }
+
   // Fallback 1: Any program level structure
   if (!feeStructure) {
     feeStructure = await prisma.programFeeStructure.findFirst({
@@ -262,6 +274,17 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
         organizationId: req.user.organizationId,
         universityId: dbEnrollment.program.universityId,
         admissionSessionId: dbEnrollment.sessionId,
+        level: 'university'
+      }
+    });
+  }
+
+  if (!feeStructure && dbEnrollment.program?.universityId) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: req.user.organizationId,
+        universityId: dbEnrollment.program.universityId,
+        admissionSessionId: null,
         level: 'university'
       }
     });

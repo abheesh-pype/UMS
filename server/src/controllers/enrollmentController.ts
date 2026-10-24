@@ -863,6 +863,17 @@ export const processPaymentStage = asyncHandler(async (req: AuthRequest, res: Re
 
     if (!feeStructure) {
       feeStructure = await prisma.programFeeStructure.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          programId: dbEnrollment.programId,
+          admissionSessionId: null,
+          level: 'program'
+        }
+      });
+    }
+
+    if (!feeStructure) {
+      feeStructure = await prisma.programFeeStructure.findFirst({
         where: { organizationId: req.user.organizationId, programId: dbEnrollment.programId }
       });
     }

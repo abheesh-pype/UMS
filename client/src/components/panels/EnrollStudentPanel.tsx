@@ -222,23 +222,18 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     setCheckingEmail(false);
   };
 
-  const getTotalFee = (p: Program, pm?: string) => {
-    if (!p.programFeeStructure || p.programFeeStructure.length === 0) return 0;
-    
-    // Find fee structure for the selected session
-    let fs = p.programFeeStructure.find(
+  const getSelectedProgramFeeStructure = (p: Program) => {
+    if (!p.programFeeStructure || p.programFeeStructure.length === 0) return undefined;
+    return p.programFeeStructure.find(
       f => f.level === 'program' && f.admissionSessionId === selectedSessionId
-    );
-    
-    // Fallback 1: Any program level fee structure
-    if (!fs) {
-      fs = p.programFeeStructure.find(f => f.level === 'program');
-    }
-    
-    // Fallback 2: Any fee structure
-    if (!fs) {
-      fs = p.programFeeStructure[0];
-    }
+    ) || p.programFeeStructure.find(
+      f => f.level === 'program' && !f.admissionSessionId
+    ) || p.programFeeStructure.find(f => f.level === 'program') || p.programFeeStructure[0];
+  };
+
+  const getTotalFee = (p: Program, pm?: string) => {
+    const fs = getSelectedProgramFeeStructure(p);
+    if (!fs) return 0;
     
     let subtotal = 0;
     
@@ -284,6 +279,28 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     const gstAmount = gstEntry ? Math.round((subtotal * gstEntry.amount) / 100) : 0;
     
     return subtotal + gstAmount;
+  };
+
+  const getConfiguredUniversityFee = (p: Program, pm?: string) => {
+    const feeStructure = getSelectedProgramFeeStructure(p);
+    if (!feeStructure) return 0;
+
+    let breakdowns = (feeStructure as any).feeBreakdown;
+    if (typeof breakdowns === 'string') {
+      try {
+        breakdowns = JSON.parse(breakdowns);
+      } catch {
+        breakdowns = [];
+      }
+    }
+
+    if (!Array.isArray(breakdowns) || breakdowns.length === 0) {
+      return Number((feeStructure as any).universityFee || 0);
+    }
+    if ((pm || paymentMethod) === 'full_payment') {
+      return breakdowns.reduce((total: number, breakdown: any) => total + Number(breakdown.universityFee || 0), 0);
+    }
+    return Number(breakdowns[0].universityFee || 0);
   };
 
 
@@ -925,6 +942,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                       <div className="text-2xl font-black text-indigo-700">
                         ₹{getTotalFee(selectedProgram).toLocaleString()}
                       </div>
+                      {mode === 'sales' && getConfiguredUniversityFee(selectedProgram) > 0 && (
+                        <p className="mt-1 text-xs font-medium text-indigo-700/80">
+                          Configured university fee: ₹{getConfiguredUniversityFee(selectedProgram).toLocaleString()}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

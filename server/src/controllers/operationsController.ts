@@ -1107,6 +1107,13 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
     where,
     include: {
       onboardingStatus: true,
+      programAllocations: {
+        where: {
+          organizationId: req.user.organizationId,
+          isActive: true,
+        },
+        select: { programId: true },
+      },
       referrer: {
         select: {
           id: true,
