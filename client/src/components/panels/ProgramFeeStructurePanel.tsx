@@ -49,9 +49,15 @@ interface Program {
   universityId: any;
   academicSessionId?: string | null;
   admissionSessions?: { id: string }[];
+  semesterRecords?: {
+    id: string;
+    semesterName: string;
+    semesterNumber: number;
+    academicSessionId: string;
+  }[];
   duration?: number;
   hasSemesters?: boolean;
-  semesters?: { number: number; name: string }[];
+  semesters?: ({ number: number; name: string } | string)[];
   specialisations?: string[];
 }
 
@@ -231,6 +237,7 @@ export function ProgramFeeStructurePanel() {
   const openCreate = () => {
     setEditing(null);
     const selectedProgram = programs.find(program => program.id === selectedProgramId);
+    const semesterCount = getSemesterCount(selectedProgram, selectedAdmissionSessionId);
     const programUniversityId = typeof selectedProgram?.universityId === 'object'
       ? selectedProgram.universityId?.id
       : selectedProgram?.universityId;
@@ -253,10 +260,7 @@ export function ProgramFeeStructurePanel() {
       fullProgramFee: 0,
       yearlyFee: 0,
       semesterFee: 0,
-      semesterFees: Array.from(
-        { length: Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6)) },
-        () => '0'
-      ),
+      semesterFees: Array.from({ length: semesterCount }, () => '0'),
     });
     setOpen(true);
   };
@@ -278,10 +282,10 @@ export function ProgramFeeStructurePanel() {
     const yearlyFee = fee.yearlyFee ?? (fullProgramFee
       ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 12))
       : fee.baseFee || 0);
-    const semesterFee = fee.semesterFee ?? (fullProgramFee
-      ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6))
+    const semesterCount = getSemesterCount(selectedProgram, sessId || '');
+    const semesterFee = fee.semesterFee ?? (fullProgramFee && semesterCount > 0
+      ? fullProgramFee / semesterCount
       : fee.baseFee || 0);
-    const semesterCount = Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6));
     const semesterFees = Array.isArray(fee.semesterFees) && fee.semesterFees.length === semesterCount
       ? fee.semesterFees.map(amount => String(amount))
       : Array.from({ length: semesterCount }, () => String(semesterFee || 0));
@@ -343,11 +347,14 @@ export function ProgramFeeStructurePanel() {
         toast.error('Full program fee must be greater than zero');
         return;
       }
-      if (form.level === 'program' && (Number(form.yearlyFee) <= 0 || Number(form.semesterFee) <= 0)) {
-        toast.error('Yearly and semester payments must both be greater than zero');
+      if (form.level === 'program' && Number(form.yearlyFee) <= 0) {
+        toast.error('Yearly payment must be greater than zero');
         return;
       }
-      if (form.level === 'program' && form.semesterFees.some(amount => !Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
+      if (form.level === 'program' && form.semesterFees.length > 0 && (
+        Number(form.semesterFee) <= 0
+        || form.semesterFees.some(amount => !Number.isFinite(Number(amount)) || Number(amount) <= 0)
+      )) {
         toast.error('Every semester fee must be greater than zero');
         return;
       }
@@ -481,6 +488,10 @@ export function ProgramFeeStructurePanel() {
   };
 
   const selectedCenter = centers.find(center => center.id === selectedCenterId);
+  const getProgramSemesters = (program?: Program, sessionId = selectedAdmissionSessionId) =>
+    program?.semesterRecords?.filter(semester => semester.academicSessionId === sessionId) || [];
+  const getSemesterCount = (program?: Program, sessionId = selectedAdmissionSessionId) =>
+    getProgramSemesters(program, sessionId).length;
 
   const centerProgramEntries = useMemo(() => {
     if (!selectedCenter) return [];
@@ -1124,12 +1135,13 @@ export function ProgramFeeStructurePanel() {
                       const program = programs.find(item => item.id === form.programId);
                       const durationMonths = Math.max(1, Number(program?.duration) || 12);
                       const yearCount = Math.max(1, Math.ceil(durationMonths / 12));
-                      const semesterCount = Math.max(1, Math.ceil(durationMonths / 6));
+                      const programSemesters = getProgramSemesters(program, selectedAdmissionSessionId);
+                      const semesterCount = programSemesters.length;
                       setForm(f => ({
                         ...f,
                         fullProgramFee: e.target.value,
                         yearlyFee: fullFee > 0 ? (fullFee / yearCount).toFixed(2) : '',
-                        semesterFee: fullFee > 0 ? (fullFee / semesterCount).toFixed(2) : '',
+                        semesterFee: fullFee > 0 && semesterCount > 0 ? (fullFee / semesterCount).toFixed(2) : '',
                         semesterFees: Array.from(
                           { length: semesterCount },
                           () => fullFee > 0 ? (fullFee / semesterCount).toFixed(2) : ''
@@ -1151,41 +1163,51 @@ export function ProgramFeeStructurePanel() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Semester Payments <span className="text-destructive">*</span></Label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {form.semesterFees.map((amount, index) => (
-                      <div key={index} className="space-y-1">
-                        <Label htmlFor={`semester-fee-${index + 1}`} className="text-xs text-muted-foreground">
-                          Semester {index + 1}
-                        </Label>
-                        <Input
-                          id={`semester-fee-${index + 1}`}
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={amount}
-                          onChange={e => setForm(f => {
-                            const semesterFees = [...f.semesterFees];
-                            semesterFees[index] = e.target.value;
-                            const numericFees = semesterFees.map(Number).filter(Number.isFinite);
-                            return {
-                              ...f,
-                              semesterFees,
-                              semesterFee: numericFees.length
-                                ? (numericFees.reduce((total, fee) => total + fee, 0) / semesterFees.length).toFixed(2)
-                                : '',
-                            };
-                          })}
-                          required
-                        />
+                {form.semesterFees.length > 0 && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Semester Payments <span className="text-destructive">*</span></Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {form.semesterFees.map((amount, index) => {
+                          const semester = getProgramSemesters(
+                            programs.find(item => item.id === form.programId),
+                            selectedAdmissionSessionId
+                          )[index];
+                          return (
+                            <div key={semester.id} className="space-y-1">
+                              <Label htmlFor={`semester-fee-${semester.id}`} className="text-xs text-muted-foreground">
+                                {semester.semesterName}
+                              </Label>
+                              <Input
+                                id={`semester-fee-${semester.id}`}
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={amount}
+                                onChange={e => setForm(f => {
+                                  const semesterFees = [...f.semesterFees];
+                                  semesterFees[index] = e.target.value;
+                                  const numericFees = semesterFees.map(Number).filter(Number.isFinite);
+                                  return {
+                                    ...f,
+                                    semesterFees,
+                                    semesterFee: numericFees.length
+                                      ? (numericFees.reduce((total, fee) => total + fee, 0) / semesterFees.length).toFixed(2)
+                                      : '',
+                                  };
+                                })}
+                                required
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Semester amounts are pre-calculated evenly from the full program fee and can be adjusted individually.
-                </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Semester amounts are pre-calculated evenly from the full program fee and can be adjusted individually.
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-1">

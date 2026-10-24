@@ -171,6 +171,15 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
       university: true,
       academicSession: { select: { id: true, name: true } },
       admissionSessions: { select: { id: true, name: true, status: true } },
+      semesterRecords: {
+        select: {
+          id: true,
+          semesterName: true,
+          semesterNumber: true,
+          academicSessionId: true,
+        },
+        orderBy: { semesterNumber: 'asc' },
+      },
       _count: {
         select: {
           semesterRecords: true,

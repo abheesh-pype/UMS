@@ -83,15 +83,15 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'University fee configurations cannot be assigned to a study centre' });
     return;
   }
-  if (level === 'program' && ![fullProgramFee, yearlyFee, semesterFee]
+  if (level === 'program' && ![fullProgramFee, yearlyFee]
     .every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
-    res.status(400).json({ success: false, message: 'Full program, yearly, and semester fees must all be greater than zero' });
+    res.status(400).json({ success: false, message: 'Full program and yearly fees must both be greater than zero' });
     return;
   }
 
   const program = await prisma.program.findFirst({
     where: { id: programId, organizationId: req.user.organizationId, isDeleted: false },
-    select: { id: true, universityId: true, duration: true },
+    select: { id: true, universityId: true },
   });
   if (!program) {
     res.status(404).json({ success: false, message: 'Program not found in this organization' });
@@ -102,7 +102,15 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'The selected program does not belong to this university' });
     return;
   }
-  const semesterCount = Math.max(1, Math.ceil((Number(program.duration) || 12) / 6));
+  const semesterCount = level === 'program' && admissionSessionId
+    ? await prisma.semester.count({
+        where: {
+          organizationId: req.user.organizationId,
+          programId,
+          academicSessionId: admissionSessionId,
+        },
+      })
+    : 0;
   const configuredSemesterFees = semesterFees === undefined
     ? Array.from({ length: semesterCount }, () => Number(semesterFee))
     : semesterFees;
@@ -191,7 +199,7 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
       baseFee: level === 'program' ? parseFloat(yearlyFee) : (baseFee !== undefined ? parseFloat(baseFee) : 0),
       fullProgramFee: fullProgramFee !== undefined ? parseFloat(fullProgramFee) : 0,
       yearlyFee: level === 'program' ? parseFloat(yearlyFee) : null,
-      semesterFee: level === 'program'
+      semesterFee: level === 'program' && configuredSemesterFees.length > 0
         ? configuredSemesterFees.reduce((total, fee) => total + Number(fee), 0) / configuredSemesterFees.length
         : null,
       semesterFees: level === 'program' ? configuredSemesterFees.map(Number) : [],
@@ -263,15 +271,14 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
   if (nextLevel === 'program' && ![
     fullProgramFee ?? existingFee.fullProgramFee,
     yearlyFee ?? existingFee.yearlyFee ?? existingFee.baseFee,
-    semesterFee ?? existingFee.semesterFee ?? existingFee.baseFee,
   ].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
-    res.status(400).json({ success: false, message: 'Full program, yearly, and semester fees must all be greater than zero' });
+    res.status(400).json({ success: false, message: 'Full program and yearly fees must both be greater than zero' });
     return;
   }
 
   const program = await prisma.program.findFirst({
     where: { id: nextProgramId, organizationId: req.user.organizationId, isDeleted: false },
-    select: { id: true, universityId: true, duration: true },
+    select: { id: true, universityId: true },
   });
   if (!program) {
     res.status(404).json({ success: false, message: 'Program not found in this organization' });
@@ -281,14 +288,24 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'The selected program does not belong to this university' });
     return;
   }
-  const semesterCount = Math.max(1, Math.ceil((Number(program.duration) || 12) / 6));
+  const semesterCount = nextLevel === 'program' && nextSessionId
+    ? await prisma.semester.count({
+        where: {
+          organizationId: req.user.organizationId,
+          programId: nextProgramId,
+          academicSessionId: nextSessionId,
+        },
+      })
+    : 0;
   const existingSemesterFees = Array.isArray(existingFee.semesterFees)
     ? existingFee.semesterFees.map(Number)
     : [];
   const configuredSemesterFees = semesterFees === undefined
     ? existingSemesterFees.length === semesterCount
       ? existingSemesterFees
-      : Array.from({ length: semesterCount }, () => Number(semesterFee ?? existingFee.semesterFee ?? existingFee.baseFee))
+      : semesterCount > 0
+        ? Array.from({ length: semesterCount }, () => Number(semesterFee ?? existingFee.semesterFee ?? existingFee.baseFee))
+        : []
     : semesterFees;
   if (nextLevel === 'program' && (
     !Array.isArray(configuredSemesterFees)
@@ -370,7 +387,9 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     if (yearlyFee !== undefined) data.yearlyFee = parseFloat(yearlyFee);
     if (semesterFees !== undefined || semesterFee !== undefined) {
       data.semesterFees = configuredSemesterFees.map(Number);
-      data.semesterFee = configuredSemesterFees.reduce((total, fee) => total + Number(fee), 0) / configuredSemesterFees.length;
+      data.semesterFee = configuredSemesterFees.length > 0
+        ? configuredSemesterFees.reduce((total, fee) => total + Number(fee), 0) / configuredSemesterFees.length
+        : null;
     }
     if (fullProgramFee !== undefined) data.fullProgramFee = parseFloat(fullProgramFee);
     if (yearlyFee !== undefined) data.baseFee = parseFloat(yearlyFee);
