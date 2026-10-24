@@ -9,7 +9,15 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface Center { id: string; name: string; code: string; }
-interface Program { id: string; name: string; code: string; courseType?: string; universityId?: string; }
+interface Program {
+  id: string;
+  name: string;
+  code: string;
+  courseType?: string;
+  universityId?: string;
+  academicSessionId?: string | null;
+  admissionSessions?: { id: string }[];
+}
 interface University { id: string; name: string; code: string; }
 interface AdmissionSession { id: string; name: string; programId?: string | null; universityId?: string | null; status: string; }
 interface Allocation { id: string; programId: string; program: Program; admissionSessionId?: string | null; admissionSession?: AdmissionSession | null; allocatedAt: string; isActive: boolean; }
@@ -97,13 +105,12 @@ export function OpsProgramAllocationPanel() {
 
   const sessionGroups = sessions.map(session => ({
     session,
-    programs: programs.filter(program => {
-      if (session.programId) return program.id === session.programId;
-      return !session.universityId || !program.universityId || program.universityId === session.universityId;
-    }),
+    programs: programs.filter(program =>
+      program.id === session.programId
+      || program.academicSessionId === session.id
+      || program.admissionSessions?.some(admissionSession => admissionSession.id === session.id)
+    ),
   }));
-  const programsWithSessions = new Set(sessionGroups.flatMap(group => group.programs.map(program => program.id)));
-  const unassignedPrograms = programs.filter(program => !programsWithSessions.has(program.id));
   const universityAllocationGroups = universities
     .map(university => ({
       university,
@@ -167,7 +174,7 @@ export function OpsProgramAllocationPanel() {
           ) : activeSubTab === 'programs' ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Programs by Admission Session ({programs.length})</CardTitle>
+                <CardTitle className="text-base">Programs by Admission Session ({sessionGroups.reduce((total, group) => total + group.programs.length, 0)})</CardTitle>
                 <p className="text-sm text-muted-foreground">
                   Allocate each program for the admission session in which it is offered.
                 </p>
@@ -226,19 +233,6 @@ export function OpsProgramAllocationPanel() {
                         })}
                       </section>
                     ))}
-                    {unassignedPrograms.length > 0 && (
-                      <section className="space-y-2">
-                        <div className="flex items-center gap-2 border-b pb-2">
-                          <h3 className="font-semibold text-sm">Programs Without Admission Session</h3>
-                        </div>
-                        {unassignedPrograms.map(program => (
-                          <div key={program.id} className="p-3 rounded-lg bg-muted/40">
-                            <span className="font-medium text-sm">{program.name}</span>
-                            <span className="text-muted-foreground text-xs ml-2">({program.code})</span>
-                          </div>
-                        ))}
-                      </section>
-                    )}
                   </>
                 )}
               </CardContent>
