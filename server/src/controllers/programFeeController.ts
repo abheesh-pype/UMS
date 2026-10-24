@@ -51,6 +51,9 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     admissionSessionId,
     billingCycle,
     baseFee,
+    fullProgramFee,
+    yearlyFee,
+    semesterFee,
     universityFee,
     additionalFees,
     commissionRate,
@@ -79,6 +82,11 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'University fee configurations cannot be assigned to a study centre' });
     return;
   }
+  if (level === 'program' && ![fullProgramFee, yearlyFee, semesterFee]
+    .every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
+    res.status(400).json({ success: false, message: 'Full program, yearly, and semester fees must all be greater than zero' });
+    return;
+  }
 
   const program = await prisma.program.findFirst({
     where: { id: programId, organizationId: req.user.organizationId, isDeleted: false },
@@ -94,6 +102,21 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     return;
   }
 
+  if (admissionSessionId) {
+    const session = await prisma.admissionSession.findFirst({
+      where: {
+        id: admissionSessionId,
+        organizationId: req.user.organizationId,
+        OR: [{ programId }, { programId: null }],
+      },
+      select: { id: true, universityId: true },
+    });
+    if (!session || (session.universityId && session.universityId !== program.universityId)) {
+      res.status(400).json({ success: false, message: 'The admission session is not available for this program' });
+      return;
+    }
+  }
+
   if (studyCenterId) {
     const center = await prisma.studyCenter.findFirst({
       where: {
@@ -102,7 +125,15 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
         OR: [
           {
             programAllocations: {
-              some: { organizationId: req.user.organizationId, programId, isActive: true },
+              some: {
+                organizationId: req.user.organizationId,
+                programId,
+                isActive: true,
+                OR: [
+                  { admissionSessionId: admissionSessionId || null },
+                  { admissionSessionId: null },
+                ],
+              },
             },
           },
           { programIds: { has: programId } },
@@ -144,7 +175,10 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
       universityId: level === 'university' ? universityId : program.universityId,
       admissionSessionId: admissionSessionId || null,
       billingCycle,
-      baseFee: baseFee !== undefined ? parseFloat(baseFee) : 0,
+      baseFee: level === 'program' ? parseFloat(yearlyFee) : (baseFee !== undefined ? parseFloat(baseFee) : 0),
+      fullProgramFee: fullProgramFee !== undefined ? parseFloat(fullProgramFee) : 0,
+      yearlyFee: level === 'program' ? parseFloat(yearlyFee) : null,
+      semesterFee: level === 'program' ? parseFloat(semesterFee) : null,
       universityFee: universityFee !== undefined ? parseFloat(universityFee) : 0,
       additionalFees: additionalFees || [],
       feeBreakdown: feeBreakdown || [],
@@ -166,6 +200,9 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     admissionSessionId,
     billingCycle,
     baseFee,
+    fullProgramFee,
+    yearlyFee,
+    semesterFee,
     universityFee,
     additionalFees,
     commissionRate,
@@ -202,6 +239,18 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'University fee configurations require a university and cannot be assigned to a study centre' });
     return;
   }
+  if (existingFee.level === 'program' && nextCenterId !== existingFee.studyCenterId) {
+    res.status(400).json({ success: false, message: 'A study-centre fee structure cannot be moved to another study centre' });
+    return;
+  }
+  if (nextLevel === 'program' && ![
+    fullProgramFee ?? existingFee.fullProgramFee,
+    yearlyFee ?? existingFee.yearlyFee ?? existingFee.baseFee,
+    semesterFee ?? existingFee.semesterFee ?? existingFee.baseFee,
+  ].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
+    res.status(400).json({ success: false, message: 'Full program, yearly, and semester fees must all be greater than zero' });
+    return;
+  }
 
   const program = await prisma.program.findFirst({
     where: { id: nextProgramId, organizationId: req.user.organizationId, isDeleted: false },
@@ -215,6 +264,20 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     res.status(400).json({ success: false, message: 'The selected program does not belong to this university' });
     return;
   }
+  if (nextSessionId) {
+    const session = await prisma.admissionSession.findFirst({
+      where: {
+        id: nextSessionId,
+        organizationId: req.user.organizationId,
+        OR: [{ programId: nextProgramId }, { programId: null }],
+      },
+      select: { id: true, universityId: true },
+    });
+    if (!session || (session.universityId && session.universityId !== program.universityId)) {
+      res.status(400).json({ success: false, message: 'The admission session is not available for this program' });
+      return;
+    }
+  }
   if (nextCenterId) {
     const center = await prisma.studyCenter.findFirst({
       where: {
@@ -223,7 +286,15 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
         OR: [
           {
             programAllocations: {
-              some: { organizationId: req.user.organizationId, programId: nextProgramId, isActive: true },
+              some: {
+                organizationId: req.user.organizationId,
+                programId: nextProgramId,
+                isActive: true,
+                OR: [
+                  { admissionSessionId: nextSessionId },
+                  { admissionSessionId: null },
+                ],
+              },
             },
           },
           { programIds: { has: nextProgramId } },
@@ -261,7 +332,15 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     admissionSession: nextSessionId ? { connect: { id: nextSessionId } } : { disconnect: true },
   };
   if (billingCycle !== undefined) data.billingCycle = billingCycle;
-  if (baseFee !== undefined) data.baseFee = parseFloat(baseFee);
+  if (nextLevel === 'program') {
+    if (yearlyFee !== undefined) data.yearlyFee = parseFloat(yearlyFee);
+    if (semesterFee !== undefined) data.semesterFee = parseFloat(semesterFee);
+    if (fullProgramFee !== undefined) data.fullProgramFee = parseFloat(fullProgramFee);
+    if (yearlyFee !== undefined) data.baseFee = parseFloat(yearlyFee);
+  } else {
+    if (baseFee !== undefined) data.baseFee = parseFloat(baseFee);
+    if (fullProgramFee !== undefined) data.fullProgramFee = parseFloat(fullProgramFee);
+  }
   if (universityFee !== undefined) data.universityFee = parseFloat(universityFee);
   if (additionalFees !== undefined) data.additionalFees = additionalFees;
   if (feeBreakdown !== undefined) data.feeBreakdown = feeBreakdown;

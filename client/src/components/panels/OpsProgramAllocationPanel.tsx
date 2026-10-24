@@ -1,49 +1,52 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface Center { id: string; name: string; code: string; }
-interface Program { id: string; name: string; code: string; courseType?: string; }
+interface Program { id: string; name: string; code: string; courseType?: string; universityId?: string; }
 interface University { id: string; name: string; code: string; }
-interface Allocation { id: string; programId: string; program: Program; allocatedAt: string; isActive: boolean; }
-interface UniAllocation { id: string; universityId: string; university: University; allocatedAt: string; }
+interface AdmissionSession { id: string; name: string; programId?: string | null; universityId?: string | null; status: string; }
+interface Allocation { id: string; programId: string; program: Program; admissionSessionId?: string | null; admissionSession?: AdmissionSession | null; allocatedAt: string; isActive: boolean; }
 
 export function OpsProgramAllocationPanel() {
   const [centers, setCenters] = useState<Center[]>([]);
   const [selectedCenter, setSelectedCenter] = useState('');
   const [allocations, setAllocations] = useState<Allocation[]>([]);
-  const [uniAllocations, setUniAllocations] = useState<UniAllocation[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [sessions, setSessions] = useState<AdmissionSession[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uniOpen, setUniOpen] = useState(false);
-  const [selectedUniversity, setSelectedUniversity] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'programs' | 'universities'>('programs');
 
   useEffect(() => {
-    api.get('/operations/centers').then(r => setCenters(r.data.data || [])).catch(() => {});
-    api.get('/operations/programs').then(r => setPrograms(r.data.data || [])).catch(() => {});
-    api.get('/operations/universities?status=active').then(r => setUniversities(r.data.data || [])).catch(() => {});
+    Promise.all([
+      api.get('/operations/centers'),
+      api.get('/operations/programs'),
+      api.get('/operations/universities?status=all'),
+      api.get('/operations/sessions'),
+    ]).then(([centerRes, programRes, universityRes, sessionRes]) => {
+      setCenters(centerRes.data.data || []);
+      setPrograms(programRes.data.data || []);
+      setUniversities(universityRes.data.data || []);
+      setSessions(sessionRes.data.data || []);
+    }).catch((error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to load allocation data');
+    });
   }, []);
 
   const fetchAllocations = async (centerId: string) => {
     if (!centerId) return;
     setLoading(true);
     try {
-      const [progRes, uniRes] = await Promise.all([
-        api.get(`/operations/centers/${centerId}/allocations`),
-        api.get(`/operations/centers/${centerId}/uni-allocations`),
-      ]);
+      const progRes = await api.get(`/operations/centers/${centerId}/allocations`);
       setAllocations(progRes.data.data || []);
-      setUniAllocations(uniRes.data.data || []);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to load allocations');
     } finally {
@@ -56,16 +59,19 @@ export function OpsProgramAllocationPanel() {
     fetchAllocations(id);
   };
 
-  const handleProgramAllocation = async (program: Program, allocation?: Allocation) => {
+  const handleProgramAllocation = async (program: Program, session: AdmissionSession, allocation?: Allocation) => {
     if (!selectedCenter) return;
     setSubmitting(true);
     try {
       if (!allocation) {
-        await api.post(`/operations/centers/${selectedCenter}/allocations`, { programId: program.id });
-        toast.success('Program allocated');
+        await api.post(`/operations/centers/${selectedCenter}/allocations`, {
+          programId: program.id,
+          admissionSessionId: session.id,
+        });
+        toast.success('Program session allocated');
       } else {
         await api.delete(`/operations/centers/${selectedCenter}/allocations/${allocation.id}`);
-        toast.success('Program allocation removed');
+        toast.success('Program session allocation removed');
       }
       await fetchAllocations(selectedCenter);
     } catch (e: any) {
@@ -89,44 +95,21 @@ export function OpsProgramAllocationPanel() {
     }
   };
 
-  const handleAllocateUniversity = async () => {
-    if (!selectedUniversity) { toast.error('Select a university'); return; }
-    setSubmitting(true);
-    try {
-      await api.post(`/operations/centers/${selectedCenter}/uni-allocations`, { universityId: selectedUniversity });
-      toast.success('University allocated');
-      setUniOpen(false);
-      setSelectedUniversity('');
-      fetchAllocations(selectedCenter);
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to allocate university');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRemove = async (allocId: string) => {
-    try {
-      await api.delete(`/operations/centers/${selectedCenter}/allocations/${allocId}`);
-      toast.success('Allocation removed');
-      fetchAllocations(selectedCenter);
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to remove');
-    }
-  };
-
-  const handleRemoveUniversity = async (allocId: string) => {
-    try {
-      await api.delete(`/operations/centers/${selectedCenter}/uni-allocations/${allocId}`);
-      toast.success('University allocation removed');
-      fetchAllocations(selectedCenter);
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to remove university');
-    }
-  };
-
-  const allocatedUniIds = uniAllocations.map(a => a.universityId);
-  const availableUniversities = universities.filter(u => !allocatedUniIds.includes(u.id));
+  const sessionGroups = sessions.map(session => ({
+    session,
+    programs: programs.filter(program => {
+      if (session.programId) return program.id === session.programId;
+      return !session.universityId || !program.universityId || program.universityId === session.universityId;
+    }),
+  }));
+  const programsWithSessions = new Set(sessionGroups.flatMap(group => group.programs.map(program => program.id)));
+  const unassignedPrograms = programs.filter(program => !programsWithSessions.has(program.id));
+  const universityAllocationGroups = universities
+    .map(university => ({
+      university,
+      allocations: allocations.filter(allocation => allocation.program?.universityId === university.id),
+    }))
+    .filter(group => group.allocations.length > 0);
 
   return (
     <div className="space-y-6">
@@ -151,11 +134,6 @@ export function OpsProgramAllocationPanel() {
             <Button variant="outline" size="sm" onClick={() => fetchAllocations(selectedCenter)} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
             </Button>
-            {activeSubTab === 'universities' && (
-              <Button size="sm" onClick={() => setUniOpen(true)} disabled={availableUniversities.length === 0}>
-                <Plus className="w-4 h-4 mr-2" />Add University
-              </Button>
-            )}
           </>
         )}
       </div>
@@ -189,106 +167,119 @@ export function OpsProgramAllocationPanel() {
           ) : activeSubTab === 'programs' ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Programs ({programs.length})</CardTitle>
+                <CardTitle className="text-base">Programs by Admission Session ({programs.length})</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Allocate programs to this study center, then activate them to make them available for enrollment.
+                  Allocate each program for the admission session in which it is offered.
                 </p>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-5">
                 {programs.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">No programs are available to allocate.</p>
-                ) : programs.map(program => {
-                  const allocation = allocations.find(item => item.programId === program.id);
-                  return (
-                    <div key={program.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/40">
-                      <div>
-                        <span className="font-medium text-sm">{program.name}</span>
-                        <span className="text-muted-foreground text-xs ml-2">({program.code})</span>
-                        {program.courseType && (
-                          <Badge variant="outline" className="ml-2 text-[10px]">{program.courseType}</Badge>
-                        )}
-                        <div className="mt-1">
-                          <Badge variant={allocation?.isActive ? 'default' : 'secondary'}>
-                            {allocation?.isActive ? 'Active' : allocation ? 'Inactive' : 'Not allocated'}
-                          </Badge>
+                ) : (
+                  <>
+                    {sessionGroups.map(({ session, programs: sessionPrograms }) => (
+                      <section key={session.id} className="space-y-2">
+                        <div className="flex items-center gap-2 border-b pb-2">
+                          <h3 className="font-semibold text-sm">{session.name}</h3>
+                          <Badge variant="outline" className="text-[10px]">{session.status}</Badge>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant={allocation ? 'outline' : 'default'}
-                          disabled={submitting}
-                          onClick={() => handleProgramAllocation(program, allocation)}
-                        >
-                          {allocation ? 'Not Allocate' : 'Allocate'}
-                        </Button>
-                        {allocation && (
-                          <Button
-                            size="sm"
-                            variant={allocation.isActive ? 'default' : 'outline'}
-                            disabled={submitting}
-                            onClick={() => handleProgramActiveStatus(allocation)}
-                          >
-                            {allocation.isActive ? 'Active' : 'Inactive'}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                        {sessionPrograms.length === 0 ? (
+                          <p className="py-2 text-sm text-muted-foreground">No programs are assigned to this session.</p>
+                        ) : sessionPrograms.map(program => {
+                          const allocation = allocations.find(item =>
+                            item.programId === program.id && item.admissionSessionId === session.id
+                          );
+                          return (
+                            <div key={`${session.id}:${program.id}`} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/40">
+                              <div>
+                                <span className="font-medium text-sm">{program.name}</span>
+                                <span className="text-muted-foreground text-xs ml-2">({program.code})</span>
+                                {program.courseType && <Badge variant="outline" className="ml-2 text-[10px]">{program.courseType}</Badge>}
+                                <div className="mt-1">
+                                  <Badge variant={allocation?.isActive ? 'default' : 'secondary'}>
+                                    {allocation?.isActive ? 'Active' : allocation ? 'Inactive' : 'Not allocated'}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant={allocation ? 'outline' : 'default'}
+                                  disabled={submitting}
+                                  onClick={() => handleProgramAllocation(program, session, allocation)}
+                                >
+                                  {allocation ? 'Not Allocate' : 'Allocate'}
+                                </Button>
+                                {allocation && (
+                                  <Button
+                                    size="sm"
+                                    variant={allocation.isActive ? 'default' : 'outline'}
+                                    disabled={submitting}
+                                    onClick={() => handleProgramActiveStatus(allocation)}
+                                  >
+                                    {allocation.isActive ? 'Active' : 'Inactive'}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </section>
+                    ))}
+                    {unassignedPrograms.length > 0 && (
+                      <section className="space-y-2">
+                        <div className="flex items-center gap-2 border-b pb-2">
+                          <h3 className="font-semibold text-sm">Programs Without Admission Session</h3>
+                        </div>
+                        {unassignedPrograms.map(program => (
+                          <div key={program.id} className="p-3 rounded-lg bg-muted/40">
+                            <span className="font-medium text-sm">{program.name}</span>
+                            <span className="text-muted-foreground text-xs ml-2">({program.code})</span>
+                          </div>
+                        ))}
+                      </section>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : (
-            uniAllocations.length === 0 ? (
+            universityAllocationGroups.length === 0 ? (
               <Card><CardContent className="py-10 text-center text-muted-foreground text-sm">
-                No universities allocated yet.
+                No programs are allocated to this study centre yet.
               </CardContent></Card>
             ) : (
-              <Card>
-                <CardHeader><CardTitle className="text-base">Allocated Universities ({uniAllocations.length})</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {uniAllocations.map(a => (
-                    <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                      <div>
-                        <span className="font-medium text-sm">{a.university?.name}</span>
-                        <span className="text-muted-foreground text-xs ml-2">({a.university?.code})</span>
-                      </div>
-                      <Button variant="ghost" size="sm" className="text-error hover:text-error" onClick={() => handleRemoveUniversity(a.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+              <div className="space-y-4">
+                {universityAllocationGroups.map(({ university, allocations: universityAllocations }) => (
+                  <Card key={university.id}>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        {university.name}{university.code ? ` (${university.code})` : ''}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {universityAllocations.map(allocation => (
+                        <div key={allocation.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/40">
+                          <div>
+                            <span className="font-medium text-sm">{allocation.program.name}</span>
+                            <span className="text-muted-foreground text-xs ml-2">({allocation.program.code})</span>
+                            {allocation.admissionSession?.name && (
+                              <span className="text-muted-foreground text-xs ml-2">{allocation.admissionSession.name}</span>
+                            )}
+                          </div>
+                          <Badge variant={allocation.isActive ? 'default' : 'secondary'}>
+                            {allocation.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )
           )}
         </>
       )}
-
-      {/* University Allocation Dialog */}
-      <Dialog open={uniOpen} onOpenChange={setUniOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Allocate University</DialogTitle></DialogHeader>
-          <div className="py-2">
-            <Select value={selectedUniversity} onValueChange={setSelectedUniversity}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a university" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableUniversities.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.name} ({u.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setUniOpen(false); setSelectedUniversity(''); }}>Cancel</Button>
-            <Button onClick={handleAllocateUniversity} disabled={submitting || !selectedUniversity}>
-              {submitting ? 'Allocating...' : 'Allocate'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

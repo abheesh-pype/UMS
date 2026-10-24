@@ -259,7 +259,42 @@ export const generateInvoiceForEnrollment = async (
       try { breakdowns = JSON.parse(breakdowns); } catch (e) { breakdowns = []; }
     }
 
-    if (Array.isArray(breakdowns) && breakdowns.length > 0) {
+    const enrollmentPaymentMethod = enrollment.paymentMethod || 'installment';
+    const configuredProgramAmount = feeStructure.level === 'program'
+      ? enrollmentPaymentMethod === 'full_payment'
+        ? Number(feeStructure.fullProgramFee) || 0
+        : enrollmentPaymentMethod === 'yearly'
+          ? Number(feeStructure.yearlyFee) || 0
+          : enrollmentPaymentMethod === 'semester'
+            ? Number(feeStructure.semesterFee) || 0
+            : 0
+      : 0;
+
+    if (configuredProgramAmount > 0) {
+      const cycleName = enrollmentPaymentMethod === 'full_payment'
+        ? 'Full Program'
+        : enrollmentPaymentMethod === 'semester'
+          ? 'Semester 1'
+          : 'Year 1';
+      items.push({
+        description: `${cycleName} Tuition Fee`,
+        category: 'tuition',
+        quantity: 1,
+        rate: configuredProgramAmount,
+        taxRate: taxRatePercent,
+        amount: configuredProgramAmount,
+      });
+      additionalFees
+        .filter(f => f.label && f.label.toLowerCase() !== 'gst' && Number(f.amount) > 0)
+        .forEach(f => items.push({
+          description: f.label,
+          category: 'admission',
+          quantity: 1,
+          rate: Number(f.amount),
+          taxRate: taxRatePercent,
+          amount: Number(f.amount),
+        }));
+    } else if (Array.isArray(breakdowns) && breakdowns.length > 0) {
       const cycleIdx = options?.cycleIndex !== undefined ? options.cycleIndex : 0;
       const b = breakdowns[cycleIdx] || breakdowns[0];
 
@@ -515,7 +550,7 @@ export const generateInvoiceForEnrollment = async (
   const invoiceNo = await generateNextInvoiceNumber(enrollment.organizationId);
   const financialYear = calculateFinancialYear(issuedAt);
   const academicYear = calculateAcademicYear(session?.name, issuedAt);
-  const invoiceType = options?.invoiceType || (enrollment.paymentMethod === 'installment' ? 'installment' : 'tuition');
+  const invoiceType = options?.invoiceType || (enrollment.paymentMethod !== 'full_payment' ? 'installment' : 'tuition');
 
   // 9. Create Invoice in database
   const invoice = await prisma.invoice.create({

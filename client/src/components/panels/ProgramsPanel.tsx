@@ -42,6 +42,8 @@ interface Program {
   id: string; name: string; code: string; courseType: CourseType;
   duration: number; hasSemesters: boolean; semesters: Semester[];
   status: string; universityId: any; subDepartmentId?: any;
+  academicSession?: { id: string; name: string } | null;
+  admissionSessions?: { id: string; name: string; status: string }[];
   specialisations?: string[];
   certificateRequirements?: CertificateRequirement[];
 }
@@ -316,6 +318,7 @@ export function ProgramsPanel({ readOnly = false }: { readOnly?: boolean }) {
                               </span>
                             )}
                             {uniName && <span>{uniName}</span>}
+                            {p.academicSession?.name && <span>Academic session: {p.academicSession.name}</span>}
                             {p.subDepartmentId && (
                               <span className="flex items-center gap-1 text-violet-600">
                                 <Tag className="h-3 w-3" />
@@ -323,6 +326,15 @@ export function ProgramsPanel({ readOnly = false }: { readOnly?: boolean }) {
                               </span>
                             )}
                           </div>
+                          {p.admissionSessions && p.admissionSessions.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {p.admissionSessions.map(session => (
+                                <Badge key={session.id} variant="outline" className="text-[9px] px-1 py-0">
+                                  Admission: {session.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                           
                           {/* Specialisation tags in listing */}
                           {p.specialisations && p.specialisations.length > 0 && (

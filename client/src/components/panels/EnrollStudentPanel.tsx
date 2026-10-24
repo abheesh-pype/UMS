@@ -25,6 +25,8 @@ interface Program {
     baseFee: number;
     universityFee?: number;
     fullProgramFee?: number;
+    yearlyFee?: number | null;
+    semesterFee?: number | null;
     currency: string;
     billingCycle?: string;
     gstPercentage?: number;
@@ -103,7 +105,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
   // Dynamic lists for documents and education details
   const [educationList, setEducationList] = useState<EducationDetail[]>([]);
   const [documentList, setDocumentList] = useState<DocumentFile[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'installment' | 'full_payment'>('installment');
+  const [paymentMethod, setPaymentMethod] = useState<'full_payment' | 'yearly' | 'semester'>('yearly');
   
   // Single entry helper state for educational details form
   const [tempEdu, setTempEdu] = useState<EducationDetail>({
@@ -187,7 +189,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     setSelectedSessionId(initialData.sessionId || '');
     setDocumentList(Array.isArray(initialData.documents) ? initialData.documents : []);
     setEducationList(Array.isArray(initialData.educationalDetails) ? initialData.educationalDetails : []);
-    setPaymentMethod(initialData.paymentMethod === 'full_payment' ? 'full_payment' : 'installment');
+    setPaymentMethod(
+      initialData.paymentMethod === 'full_payment' || initialData.paymentMethod === 'semester'
+        ? initialData.paymentMethod
+        : 'yearly'
+    );
   }, [initialData, programs]);
 
   useEffect(() => {
@@ -235,13 +241,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
 
     if (mode === 'center' && centerConfig?.centerId) {
       const centerFees = feeStructures.filter(fee => fee.level === 'program' && fee.studyCenterId === centerConfig.centerId);
-      const legacyFees = feeStructures.filter(fee => fee.level === 'program' && !fee.studyCenterId);
       return centerFees.find(forSession)
-        || centerFees.find(allSessions)
-        || centerFees[0]
-        || legacyFees.find(forSession)
-        || legacyFees.find(allSessions)
-        || legacyFees[0];
+        || centerFees.find(allSessions);
     }
 
     const universityFees = feeStructures.filter(fee => fee.level === 'university');
@@ -287,7 +288,16 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
 
     const method = pm || paymentMethod;
 
-    if (breakdowns && Array.isArray(breakdowns) && breakdowns.length > 0) {
+    if (method === 'full_payment' || method === 'yearly' || method === 'semester') {
+      const configuredAmount = method === 'full_payment'
+        ? Number(fs.fullProgramFee || 0)
+        : method === 'yearly'
+          ? Number(fs.yearlyFee || 0)
+          : Number(fs.semesterFee || 0);
+      if (configuredAmount > 0) subtotal = configuredAmount + additionalFeesTotal;
+    }
+
+    if (subtotal === 0 && breakdowns && Array.isArray(breakdowns) && breakdowns.length > 0) {
       const getBreakdownAddFees = (b: any) => {
         if (typeof b.additionalFees !== 'string' || b.additionalFees.trim() === '') return 0;
         return b.additionalFees.split(',').reduce((sum: number, s: string) => {
@@ -310,7 +320,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         const b = breakdowns[0]; // first payment config
         subtotal = Number(b.baseFee || 0) + Number(b.examFee || 0) + additionalFeesTotal + getBreakdownAddFees(b);
       }
-    } else {
+    } else if (subtotal === 0) {
       subtotal = fs.baseFee + additionalFeesTotal;
     }
 
@@ -352,14 +362,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
   };
 
 
-  const getBillingCycleText = (p: Program) => {
-    if (!p.programFeeStructure || p.programFeeStructure.length === 0) return '';
-    const cycle = p.programFeeStructure[0].billingCycle;
-    if (cycle === 'per_year') return ' / year';
-    if (cycle === 'per_semester') return ' / sem';
-    if (cycle === 'full_program') return ' / program';
-    return ` / ${cycle}`;
-  };
+  const getBillingCycleText = () => paymentMethod === 'yearly' ? 'Yearly' : paymentMethod === 'semester' ? 'Semester' : 'One-Time';
 
   const handleAddEducation = () => {
     if (!tempEdu.qualification.trim() || !tempEdu.institution.trim() || !tempEdu.passingYear.trim()) {
@@ -952,7 +955,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                 <div className="mt-6 flex flex-col gap-4">
                   <div className="p-4 border rounded-xl shadow-sm bg-slate-50 dark:bg-slate-900/50">
                     <h4 className="text-sm font-semibold mb-3">Select Payment Method</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div 
                         className={`p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'full_payment' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
                         onClick={() => setPaymentMethod('full_payment')}
@@ -961,17 +964,27 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                           <input type="radio" checked={paymentMethod === 'full_payment'} onChange={() => setPaymentMethod('full_payment')} className="accent-primary" />
                           <span className="font-semibold text-sm">One-Time Payment</span>
                         </div>
-                        <p className="text-xs text-muted-foreground ml-5">Pay full program fee upfront including all tuition.</p>
+                        <p className="text-xs text-muted-foreground ml-5">₹{getTotalFee(selectedProgram, 'full_payment').toLocaleString()}</p>
                       </div>
                       <div 
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'installment' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
-                        onClick={() => setPaymentMethod('installment')}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'yearly' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
+                        onClick={() => setPaymentMethod('yearly')}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <input type="radio" checked={paymentMethod === 'installment'} onChange={() => setPaymentMethod('installment')} className="accent-primary" />
-                          <span className="font-semibold text-sm">Installment ({getBillingCycleText(selectedProgram).replace('/', '').trim()})</span>
+                          <input type="radio" checked={paymentMethod === 'yearly'} onChange={() => setPaymentMethod('yearly')} className="accent-primary" />
+                          <span className="font-semibold text-sm">Yearly Payment</span>
                         </div>
-                        <p className="text-xs text-muted-foreground ml-5">Pay the first installment plus registration fee.</p>
+                        <p className="text-xs text-muted-foreground ml-5">₹{getTotalFee(selectedProgram, 'yearly').toLocaleString()} per year</p>
+                      </div>
+                      <div
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'semester' ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
+                        onClick={() => setPaymentMethod('semester')}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <input type="radio" checked={paymentMethod === 'semester'} onChange={() => setPaymentMethod('semester')} className="accent-primary" />
+                          <span className="font-semibold text-sm">Semester Payment</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground ml-5">₹{getTotalFee(selectedProgram, 'semester').toLocaleString()} per semester</p>
                       </div>
                     </div>
                   </div>
@@ -1337,7 +1350,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                     </div>
                     <div className="text-right">
                       <p className="font-extrabold text-base text-primary">₹{getTotalFee(selectedProgram).toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">{getBillingCycleText(selectedProgram).replace('/', '')}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">{getBillingCycleText()}</p>
                     </div>
                   </div>
                 </div>

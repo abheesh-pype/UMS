@@ -94,6 +94,12 @@ const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
   let breakdown = Array.isArray(feeStructure.feeBreakdown) ? feeStructure.feeBreakdown : [];
   if (typeof feeStructure.feeBreakdown === 'string') breakdown = parseJsonArray(feeStructure.feeBreakdown);
   if (feeStructure.level === 'university') {
+    const configuredCycleAmount = paymentMethod === 'yearly'
+      ? Number(feeStructure.yearlyFee) || 0
+      : paymentMethod === 'semester'
+        ? Number(feeStructure.semesterFee) || 0
+        : 0;
+    if (configuredCycleAmount > 0) return configuredCycleAmount;
     if (breakdown.length > 0) {
       if (paymentMethod === 'full_payment') {
         const fullFee = Number(feeStructure.fullProgramFee) || 0;
@@ -112,7 +118,14 @@ const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
   };
 
   let subtotal = 0;
-  if (breakdown.length > 0 && paymentMethod === 'full_payment') {
+  const configuredCycleAmount = paymentMethod === 'yearly'
+    ? Number(feeStructure.yearlyFee) || 0
+    : paymentMethod === 'semester'
+      ? Number(feeStructure.semesterFee) || 0
+      : 0;
+  if (configuredCycleAmount > 0) {
+    subtotal = configuredCycleAmount + additionalTotal;
+  } else if (breakdown.length > 0 && paymentMethod === 'full_payment') {
     const fullProgramFee = Number(feeStructure.fullProgramFee) || 0;
     subtotal = fullProgramFee > 0
       ? fullProgramFee + additionalTotal

@@ -169,6 +169,8 @@ export const getPrograms = asyncHandler(async (req: AuthRequest, res: Response) 
     where,
     include: {
       university: true,
+      academicSession: { select: { id: true, name: true } },
+      admissionSessions: { select: { id: true, name: true, status: true } },
       _count: {
         select: {
           semesterRecords: true,
@@ -195,7 +197,11 @@ export const getProgram = asyncHandler(async (req: AuthRequest, res: Response) =
       organizationId: req.user.organizationId,
       university: { singletonKey: 'primary' },
     },
-    include: { university: true },
+    include: {
+      university: true,
+      academicSession: { select: { id: true, name: true } },
+      admissionSessions: { select: { id: true, name: true, status: true } },
+    },
   });
   if (!program) {
     res.status(404).json({ success: false, message: 'Program not found' });
@@ -1112,7 +1118,12 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
           organizationId: req.user.organizationId,
           isActive: true,
         },
-        select: { programId: true },
+        select: {
+          id: true,
+          programId: true,
+          admissionSessionId: true,
+          admissionSession: { select: { id: true, name: true } },
+        },
       },
       referrer: {
         select: {
@@ -1757,14 +1768,21 @@ export const getProgramAllocations = asyncHandler(async (req: AuthRequest, res: 
   }
   const allocations = await prisma.programAllocation.findMany({
     where: { centerId: center.id, organizationId: req.user.organizationId },
-    include: { program: true },
+    include: {
+      program: { include: { academicSession: { select: { id: true, name: true } } } },
+      admissionSession: { select: { id: true, name: true, programId: true } },
+    },
     orderBy: { program: { name: 'asc' } },
   });
   res.json({ success: true, data: allocations });
 });
 export const allocateProgram = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!requireOperationsAllocationAccess(req, res)) return;
-  const [center, program] = await Promise.all([
+  if (!req.body.admissionSessionId) {
+    res.status(400).json({ success: false, message: 'An admission session is required for program allocation' });
+    return;
+  }
+  const [center, program, admissionSession] = await Promise.all([
     prisma.studyCenter.findFirst({
       where: { id: req.params.id, organizationId: req.user.organizationId },
       select: { id: true },
@@ -1775,30 +1793,48 @@ export const allocateProgram = asyncHandler(async (req: AuthRequest, res: Respon
         organizationId: req.user.organizationId,
         isDeleted: false,
       },
-      select: { id: true },
+      select: { id: true, universityId: true },
+    }),
+    prisma.admissionSession.findFirst({
+      where: {
+        id: req.body.admissionSessionId,
+        organizationId: req.user.organizationId,
+        OR: [{ programId: req.body.programId }, { programId: null }],
+      },
+      select: { id: true, universityId: true },
     }),
   ]);
   if (!center || !program) {
     res.status(404).json({ success: false, message: 'Study center or program not found' });
     return;
   }
-  const allocation = await prisma.programAllocation.upsert({
+  if (!admissionSession || (admissionSession.universityId && admissionSession.universityId !== program.universityId)) {
+    res.status(400).json({ success: false, message: 'The selected admission session is not available for this program' });
+    return;
+  }
+  const existingAllocation = await prisma.programAllocation.findFirst({
     where: {
-      organizationId_centerId_programId: {
-        organizationId: req.user.organizationId,
-        centerId: center.id,
-        programId: program.id,
-      },
-    },
-    update: { isActive: true, allocatedBy: req.user.id },
-    create: {
-      programId: program.id,
-      centerId: center.id,
       organizationId: req.user.organizationId,
-      allocatedBy: req.user.id,
-      isActive: true,
+      centerId: center.id,
+      programId: program.id,
+      admissionSessionId: admissionSession.id,
     },
   });
+  const allocation = existingAllocation
+    ? await prisma.programAllocation.update({
+        where: { id: existingAllocation.id },
+        data: { isActive: true, allocatedBy: req.user.id },
+      })
+    : await prisma.programAllocation.create({
+        data: {
+          programId: program.id,
+          centerId: center.id,
+          admissionSessionId: admissionSession.id,
+          organizationId: req.user.organizationId,
+          allocatedBy: req.user.id,
+          isActive: true,
+        },
+      });
   res.status(201).json({ success: true, data: allocation });
 });
 export const updateProgramAllocationStatus = asyncHandler(async (req: AuthRequest, res: Response) => {

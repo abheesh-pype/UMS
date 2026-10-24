@@ -620,11 +620,27 @@ export const getStudentInstallments = asyncHandler(async (req: AuthRequest, res:
 
   const billingCycle = feeStructure.billingCycle;
   const durationInMonths = student.program.duration || 12;
+  const studentEnrollment = student.enrollments?.find((enrollment: any) =>
+    enrollment.sessionId === sessionId
+      && (!student.centerId || enrollment.studyCenterId === student.centerId)
+  ) || student.enrollments?.[0];
+  const paymentMethod = studentEnrollment?.paymentMethod;
+  const hasConfiguredPaymentRates = Number(feeStructure.fullProgramFee) > 0
+    && Number(feeStructure.yearlyFee) > 0
+    && Number(feeStructure.semesterFee) > 0;
 
   let totalCycles = 1;
   let cycleLabel = 'Installment';
 
-  if (billingCycle === 'per_semester') {
+  if (hasConfiguredPaymentRates && paymentMethod === 'full_payment') {
+    cycleLabel = 'Full Program';
+  } else if (hasConfiguredPaymentRates && paymentMethod === 'semester') {
+    totalCycles = Math.ceil(durationInMonths / 6);
+    cycleLabel = 'Semester';
+  } else if (hasConfiguredPaymentRates && paymentMethod === 'yearly') {
+    totalCycles = Math.ceil(durationInMonths / 12);
+    cycleLabel = 'Year';
+  } else if (billingCycle === 'per_semester') {
     totalCycles = Math.ceil(durationInMonths / 6);
     cycleLabel = 'Semester';
   } else if (billingCycle === 'per_year' || billingCycle === 'yearly') {
@@ -649,12 +665,28 @@ export const getStudentInstallments = asyncHandler(async (req: AuthRequest, res:
     }
   }
 
+  if (hasConfiguredPaymentRates && paymentMethod) {
+    const periodCount = cycleLabel === 'Full Program' ? 1 : totalCycles;
+    const periodAmount = cycleLabel === 'Full Program'
+      ? Number(feeStructure.fullProgramFee)
+      : cycleLabel === 'Semester'
+        ? Number(feeStructure.semesterFee)
+        : Number(feeStructure.yearlyFee);
+    breakdownArray = Array.from({ length: periodCount }, (_, index) => ({
+      year: index + 1,
+      baseFee: periodAmount,
+      examFee: 0,
+      dueDate: '',
+      additionalFees: '',
+    }));
+  }
+
   // If breakdown is properly configured, use it
   if (breakdownArray.length > 0) {
     totalCycles = breakdownArray.length;
     for (let i = 0; i < totalCycles; i++) {
       const b = breakdownArray[i];
-      const name = `${cycleLabel} ${b.year || i + 1}`;
+      const name = cycleLabel === 'Full Program' ? cycleLabel : `${cycleLabel} ${b.year || i + 1}`;
       
       const matchingInvoice = invoices.find((inv: any) => {
         const items = Array.isArray(inv.items) ? inv.items : JSON.parse(typeof inv.items === 'string' ? inv.items : '[]');

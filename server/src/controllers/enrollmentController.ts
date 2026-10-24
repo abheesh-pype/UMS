@@ -153,6 +153,7 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
     where,
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
+      admissionSessions: { select: { id: true, name: true, status: true } },
       programFeeStructure: {
         where: {
           organizationId: req.user.organizationId,
@@ -231,6 +232,10 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
             organizationId,
             centerId: studyCenterId,
             isActive: true,
+            OR: [
+              { admissionSessionId: sessionId },
+              { admissionSessionId: null },
+            ],
           },
         },
       },
@@ -664,7 +669,26 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
     where,
     orderBy: { name: 'asc' }
   });
-  res.json({ success: true, count: sessions.length, data: sessions });
+  if (!req.user.studyCenterId) {
+    res.json({ success: true, count: sessions.length, data: sessions });
+    return;
+  }
+
+  const allocations = await prisma.programAllocation.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      centerId: req.user.studyCenterId,
+      programId,
+      isActive: true,
+    },
+    select: { admissionSessionId: true },
+  });
+  const hasLegacyUnscopedAllocation = allocations.some(allocation => !allocation.admissionSessionId);
+  const allocatedSessionIds = new Set(allocations.map(allocation => allocation.admissionSessionId).filter(Boolean));
+  const availableSessions = hasLegacyUnscopedAllocation
+    ? sessions
+    : sessions.filter(session => allocatedSessionIds.has(session.id));
+  res.json({ success: true, count: availableSessions.length, data: availableSessions });
 });
 
 export const updateEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -21,6 +21,8 @@ interface ProgramFee {
   admissionSessionId?: { id: string; name: string } | string | null;
   baseFee: number;
   fullProgramFee?: number;
+  yearlyFee?: number | null;
+  semesterFee?: number | null;
   additionalFees: { label: string; amount: number }[];
   feeBreakdown?: any[];
   currency: string;
@@ -44,12 +46,17 @@ interface Program {
   code: string;
   universityId: any;
   duration?: number;
+  hasSemesters?: boolean;
+  semesters?: { number: number; name: string }[];
   specialisations?: string[];
 }
 
 interface AdmissionSession {
   id: string;
   name: string;
+  programId?: string | null;
+  universityId?: string | null;
+  status?: string;
 }
 
 interface StudyCenter {
@@ -58,7 +65,12 @@ interface StudyCenter {
   code?: string;
   universityIds?: string[];
   programIds?: string[];
-  programAllocations?: { programId: string }[];
+  programAllocations?: {
+    id: string;
+    programId: string;
+    admissionSessionId?: string | null;
+    admissionSession?: { id: string; name: string } | null;
+  }[];
 }
 
 export function ProgramFeeStructurePanel() {
@@ -71,6 +83,7 @@ export function ProgramFeeStructurePanel() {
   const [selectedUniversityId, setSelectedUniversityId] = useState<string>('');
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
+  const [selectedAdmissionSessionId, setSelectedAdmissionSessionId] = useState<string>('');
   const [feeView, setFeeView] = useState<'center' | 'university'>('center');
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -108,10 +121,13 @@ export function ProgramFeeStructurePanel() {
     baseFee: '0',
     universityFee: '0',
     fullProgramFee: '0',
+    yearlyFee: '0',
+    semesterFee: '0',
   });
 
   
   useEffect(() => {
+    if (form.level !== 'university') return;
     let dur = 36; // Default to 3 years
     
     if (!form.programId) return;
@@ -219,7 +235,7 @@ export function ProgramFeeStructurePanel() {
       programId: selectedProgramId, 
       studyCenterId: isUniversityFee ? '' : selectedCenterId,
       universityId: activeUniId,
-      admissionSessionId: 'all',
+      admissionSessionId: isUniversityFee ? 'all' : selectedAdmissionSessionId || '',
       billingCycle: 'per_year', 
       currency: 'INR', 
       effectiveFrom: '', 
@@ -227,7 +243,9 @@ export function ProgramFeeStructurePanel() {
       feeBreakdown: [],
       baseFee: 0,
       universityFee: 0,
-      fullProgramFee: 0
+      fullProgramFee: 0,
+      yearlyFee: 0,
+      semesterFee: 0,
     });
     setOpen(true);
   };
@@ -244,6 +262,14 @@ export function ProgramFeeStructurePanel() {
     const uniId = typeof fee.universityId === 'object' ? fee.universityId?.id : fee.universityId;
     const sessId = typeof fee.admissionSessionId === 'object' ? fee.admissionSessionId?.id : fee.admissionSessionId;
     const activeUniId = uniId || selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
+    const selectedProgram = programs.find(program => program.id === progId);
+    const fullProgramFee = Number(fee.fullProgramFee || 0);
+    const yearlyFee = fee.yearlyFee ?? (fullProgramFee
+      ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 12))
+      : fee.baseFee || 0);
+    const semesterFee = fee.semesterFee ?? (fullProgramFee
+      ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 6))
+      : fee.baseFee || 0);
 
     let parsedBreakdown = fee.feeBreakdown || [];
     if (typeof parsedBreakdown === 'string') {
@@ -272,11 +298,14 @@ export function ProgramFeeStructurePanel() {
       effectiveFrom: fee.effectiveFrom ? fee.effectiveFrom.slice(0, 10) : '',
       baseFee: fee.baseFee || 0,
       universityFee: fee.universityFee || 0,
-      fullProgramFee: fee.fullProgramFee || 0,
+      fullProgramFee,
+      yearlyFee,
+      semesterFee,
       commissionRate: fee.commissionRate !== undefined ? String(fee.commissionRate) : '0',
       additionalFees: otherFees.map(f => `${f.label}:${f.amount}`).join(', '),
       feeBreakdown: parsedBreakdown
     });
+    setSelectedAdmissionSessionId(sessId || '');
     setOpen(true);
   };
 
@@ -292,6 +321,14 @@ export function ProgramFeeStructurePanel() {
       }
       if (form.level === 'program' && !selectedCenterId) {
         toast.error('Please select a study centre');
+        return;
+      }
+      if (form.level === 'program' && Number(form.fullProgramFee) <= 0) {
+        toast.error('Full program fee must be greater than zero');
+        return;
+      }
+      if (form.level === 'program' && (Number(form.yearlyFee) <= 0 || Number(form.semesterFee) <= 0)) {
+        toast.error('Yearly and semester payments must both be greater than zero');
         return;
       }
 
@@ -329,11 +366,15 @@ export function ProgramFeeStructurePanel() {
         programId: form.programId,
         studyCenterId: form.level === 'program' ? selectedCenterId : undefined,
         universityId: finalUniId,
-        admissionSessionId: form.admissionSessionId && form.admissionSessionId !== 'all'
-          ? form.admissionSessionId
-          : undefined,
-        baseFee: totalBaseFee,
+        admissionSessionId: form.level === 'program'
+          ? selectedAdmissionSessionId || undefined
+          : form.admissionSessionId && form.admissionSessionId !== 'all'
+            ? form.admissionSessionId
+            : undefined,
+        baseFee: form.level === 'program' ? Number(form.yearlyFee) : totalBaseFee,
         fullProgramFee: Number(form.fullProgramFee || 0),
+        yearlyFee: form.level === 'program' ? Number(form.yearlyFee) : undefined,
+        semesterFee: form.level === 'program' ? Number(form.semesterFee) : undefined,
         universityFee: totalUniversityFee,
         billingCycle: form.billingCycle,
         currency: form.currency,
@@ -420,21 +461,46 @@ export function ProgramFeeStructurePanel() {
 
   const selectedCenter = centers.find(center => center.id === selectedCenterId);
 
-  const centerPrograms = useMemo(() => {
+  const centerProgramEntries = useMemo(() => {
     if (!selectedCenter) return [];
-    const allocatedProgramIds = selectedCenter.programAllocations?.map(allocation => allocation.programId) || [];
+    const allocations = selectedCenter.programAllocations || [];
+    if (allocations.length > 0) {
+      return allocations.map(allocation => {
+        const program = programs.find(item => item.id === allocation.programId);
+        if (!program) return null;
+        const session = allocation.admissionSession
+          || sessions.find(item => item.id === allocation.admissionSessionId)
+          || null;
+        return {
+          program,
+          sessionId: allocation.admissionSessionId || '',
+          sessionName: session?.name || 'All Sessions',
+          key: `${program.id}:${allocation.admissionSessionId || 'all'}`,
+        };
+      }).filter(Boolean) as { program: Program; sessionId: string; sessionName: string; key: string }[];
+    }
+    const allocatedProgramIds = allocations.map(allocation => allocation.programId);
     const centerProgramIds = allocatedProgramIds.length > 0
       ? allocatedProgramIds
       : selectedCenter.programIds || [];
-    return programs.filter(program => centerProgramIds.includes(program.id));
-  }, [programs, selectedCenter]);
+    return programs
+      .filter(program => centerProgramIds.includes(program.id))
+      .map(program => ({
+        program,
+        sessionId: '',
+        sessionName: 'All Sessions',
+        key: `${program.id}:all`,
+      }));
+  }, [programs, selectedCenter, sessions]);
 
-  const filteredPrograms = feeView === 'university' ? programs : centerPrograms;
+  const filteredPrograms = feeView === 'university'
+    ? programs.map(program => ({ program, sessionId: '', sessionName: '', key: program.id }))
+    : centerProgramEntries;
   const selectedPrograms = useMemo(() => feeView === 'university'
-    ? filteredPrograms.filter(program => {
-        const programUniversityId = typeof program.universityId === 'object'
-          ? program.universityId?.id
-          : program.universityId;
+    ? filteredPrograms.filter(entry => {
+        const programUniversityId = typeof entry.program.universityId === 'object'
+          ? entry.program.universityId?.id
+          : entry.program.universityId;
         return programUniversityId === selectedUniversityId;
       })
     : filteredPrograms, [filteredPrograms, feeView, selectedUniversityId]);
@@ -446,31 +512,50 @@ export function ProgramFeeStructurePanel() {
     const programUniversityId = typeof selectedProgram?.universityId === 'object'
       ? selectedProgram.universityId?.id
       : selectedProgram?.universityId;
-    return fees.filter(f => {
+    const matchingFees = fees.filter(f => {
       const pId = typeof f.programId === 'object' ? f.programId?.id : f.programId;
       if (pId !== selectedProgramId) return false;
       if (feeView === 'university') {
         const feeUniversityId = typeof f.universityId === 'object' ? f.universityId?.id : f.universityId;
         return f.level === 'university' && feeUniversityId === programUniversityId;
       }
-      return f.level === 'program' && f.studyCenterId === selectedCenterId;
+      if (f.level !== 'program' || f.studyCenterId !== selectedCenterId) return false;
+      const feeSessionId = typeof f.admissionSessionId === 'object'
+        ? f.admissionSessionId?.id
+        : f.admissionSessionId;
+      return feeSessionId === selectedAdmissionSessionId;
     });
-  }, [fees, selectedProgramId, selectedCenterId, selectedUniversityId, feeView, programs]);
+    if (feeView === 'center' && selectedAdmissionSessionId && matchingFees.length === 0) {
+      return fees.filter(f => {
+        const pId = typeof f.programId === 'object' ? f.programId?.id : f.programId;
+        return pId === selectedProgramId
+          && f.level === 'program'
+          && f.studyCenterId === selectedCenterId
+          && !f.admissionSessionId;
+      });
+    }
+    return matchingFees;
+  }, [fees, selectedProgramId, selectedCenterId, selectedAdmissionSessionId, selectedUniversityId, feeView, programs]);
 
   // Keep a valid program selected when switching between center and university views.
   useEffect(() => {
     if (selectedPrograms.length > 0) {
-      if (!selectedProgramId || !selectedPrograms.some(p => p.id === selectedProgramId)) {
-        setSelectedProgramId(selectedPrograms[0].id);
+      if (!selectedProgramId || !selectedPrograms.some(entry =>
+        entry.program.id === selectedProgramId
+        && (feeView === 'university' || entry.sessionId === selectedAdmissionSessionId)
+      )) {
+        setSelectedProgramId(selectedPrograms[0].program.id);
+        setSelectedAdmissionSessionId(selectedPrograms[0].sessionId);
       }
     } else {
       setSelectedProgramId('');
+      setSelectedAdmissionSessionId('');
     }
-  }, [selectedPrograms, selectedProgramId]);
+  }, [selectedPrograms, selectedProgramId, selectedAdmissionSessionId, feeView]);
 
   // Keep fee creation within the selected view's programs.
   const dialogFilteredPrograms = selectedPrograms.filter(p => {
-    const pUniId = typeof p.universityId === 'object' ? p.universityId?.id : p.universityId;
+    const pUniId = typeof p.program.universityId === 'object' ? p.program.universityId?.id : p.program.universityId;
     return !form.universityId || pUniId === form.universityId;
   });
 
@@ -525,6 +610,7 @@ export function ProgramFeeStructurePanel() {
               <Button variant="outline" className="h-10 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => {
                 setSelectedUniversityId('');
                 setSelectedProgramId('');
+                setSelectedAdmissionSessionId('');
                 setFeeView('university');
               }}>
                 <Building2 className="w-4 h-4 mr-2" /> University Fee Configuration
@@ -543,7 +629,7 @@ export function ProgramFeeStructurePanel() {
           <CardTitle className="text-lg flex items-center gap-2">
             <Building2 className="w-5 h-5 text-indigo-500" /> Study Centres
           </CardTitle>
-          <CardDescription>Select a centre to view its allocated programs.</CardDescription>
+          <CardDescription>Select a centre to view its allocated program sessions.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {loading && centers.length === 0 ? (
@@ -556,6 +642,7 @@ export function ProgramFeeStructurePanel() {
               type="button"
               onClick={() => {
                 setSelectedProgramId('');
+                setSelectedAdmissionSessionId('');
                 setSelectedCenterId(center.id);
               }}
               className={`rounded-xl border p-4 text-left transition-all ${
@@ -589,6 +676,7 @@ export function ProgramFeeStructurePanel() {
               type="button"
               onClick={() => {
                 setSelectedProgramId('');
+                setSelectedAdmissionSessionId('');
                 setSelectedUniversityId(university.id);
               }}
               className={`rounded-xl border p-4 text-left transition-all ${
@@ -630,16 +718,22 @@ export function ProgramFeeStructurePanel() {
                   {feeView === 'university' ? 'No programs are available.' : 'No programs are allocated to this study centre.'}
                 </div>
               ) : (
-                selectedPrograms.map((p: Program) => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => setSelectedProgramId(p.id)}
-                    className={`p-3 border rounded-xl cursor-pointer transition-all group ${selectedProgramId === p.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm'}`}
+                selectedPrograms.map(({ program: p, sessionId, sessionName, key }) => (
+                  <div
+                    key={key}
+                    onClick={() => {
+                      setSelectedProgramId(p.id);
+                      setSelectedAdmissionSessionId(sessionId);
+                    }}
+                    className={`p-3 border rounded-xl cursor-pointer transition-all group ${selectedProgramId === p.id && (feeView === 'university' || selectedAdmissionSessionId === sessionId) ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm'}`}
                   >
                     <div className="flex justify-between items-start gap-2">
                       <div>
                         <h4 className="font-semibold text-sm leading-none">{p.name}</h4>
                         <span className="text-[10px] font-mono text-muted-foreground uppercase">{p.code}</span>
+                        {feeView === 'center' && (
+                          <span className="mt-1 block text-xs text-muted-foreground">{sessionName}</span>
+                        )}
                       </div>
                       <Badge variant="outline" className="text-[10px] py-0">{p.specialisations?.length || 0} Specs</Badge>
                     </div>
@@ -706,7 +800,9 @@ export function ProgramFeeStructurePanel() {
                             <Badge variant="secondary" className={fee.level === 'university' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}>
                               {fee.level === 'university' ? 'University Fee' : selectedCenter?.name || 'Study Centre Fee'}
                             </Badge>
-                            <Badge variant="outline" className="text-xs">{fee.billingCycle?.replace('_', ' ')}</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {fee.level === 'university' ? fee.billingCycle?.replace('_', ' ') : 'Yearly / Semester'}
+                            </Badge>
                             {sess && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-none text-xs">{sess}</Badge>}
                             {!sess && <Badge variant="outline" className="text-xs">All Sessions</Badge>}
                           </div>
@@ -725,9 +821,19 @@ export function ProgramFeeStructurePanel() {
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {fee.level !== 'university' && (
-                              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
-                                {fee.currency || 'INR'} {fee.baseFee.toLocaleString()} Tuition
-                              </Badge>
+                              <>
+                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
+                                  {fee.currency || 'INR'} {Number(fee.fullProgramFee || 0).toLocaleString()} One-Time
+                                </Badge>
+                                <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-sm font-medium px-2 py-0.5">
+                                  {fee.currency || 'INR'} {Number(fee.yearlyFee ?? fee.baseFee).toLocaleString()} / Year
+                                </Badge>
+                                {fee.semesterFee !== undefined && fee.semesterFee !== null && (
+                                  <Badge variant="secondary" className="bg-violet-50 text-violet-700 hover:bg-violet-100 border-violet-200 shadow-sm font-medium px-2 py-0.5">
+                                    {fee.currency || 'INR'} {Number(fee.semesterFee).toLocaleString()} / Semester
+                                  </Badge>
+                                )}
+                              </>
                             )}
                             {fee.level === 'university' && fee.universityFee !== undefined && fee.universityFee > 0 && (
                               <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-sm font-medium px-2 py-0.5">
@@ -944,6 +1050,7 @@ export function ProgramFeeStructurePanel() {
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
                   value={form.programId}
+                  disabled={form.level === 'program'}
                   onChange={e => {
                     const program = programs.find(item => item.id === e.target.value);
                     const programUniversityId = typeof program?.universityId === 'object'
@@ -958,23 +1065,91 @@ export function ProgramFeeStructurePanel() {
                   required
                 >
                   <option value="">Select program...</option>
-                  {dialogFilteredPrograms.map(p => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
+                  {dialogFilteredPrograms.map(({ program: p, key, sessionName }) => (
+                    <option key={key} value={p.id}>
+                      {p.name} ({p.code}){sessionName ? ` - ${sessionName}` : ''}
+                    </option>
+                  ))}
                 </select>
             </div>
 
             <div className="space-y-1">
               <Label>Admission Session</Label>
-              <select
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                value={form.admissionSessionId}
-                onChange={e => setForm(f => ({ ...f, admissionSessionId: e.target.value }))}
-              >
-                <option value="all">All Sessions</option>
-                {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              {form.level === 'program' ? (
+                <Input
+                  value={selectedAdmissionSessionId
+                    ? sessions.find(session => session.id === selectedAdmissionSessionId)?.name || ''
+                    : 'All Sessions'}
+                  disabled
+                  aria-readonly="true"
+                />
+              ) : (
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  value={form.admissionSessionId}
+                  onChange={e => setForm(f => ({ ...f, admissionSessionId: e.target.value }))}
+                >
+                  <option value="all">All Sessions</option>
+                  {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {form.level === 'program' ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label>Full Program Fee (One-Time Payment) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.fullProgramFee}
+                    onChange={e => {
+                      const fullFee = Number(e.target.value) || 0;
+                      const program = programs.find(item => item.id === form.programId);
+                      const durationMonths = Math.max(1, Number(program?.duration) || 12);
+                      const yearCount = Math.max(1, Math.ceil(durationMonths / 12));
+                      const semesterCount = Math.max(1, Math.ceil(durationMonths / 6));
+                      setForm(f => ({
+                        ...f,
+                        fullProgramFee: e.target.value,
+                        yearlyFee: fullFee > 0 ? (fullFee / yearCount).toFixed(2) : '',
+                        semesterFee: fullFee > 0 ? (fullFee / semesterCount).toFixed(2) : '',
+                      }));
+                    }}
+                    placeholder="Enter full program fee"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Yearly Payment <span className="text-destructive">*</span></Label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={form.yearlyFee}
+                      onChange={e => setForm(f => ({ ...f, yearlyFee: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Semester Payment <span className="text-destructive">*</span></Label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={form.semesterFee}
+                      onChange={e => setForm(f => ({ ...f, semesterFee: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The yearly and semester amounts are pre-calculated from the full program fee and can be adjusted.
+                </p>
+              </div>
+            ) : (
               <div className="space-y-1">
                 <Label>Billing Cycle</Label>
                 <select
@@ -987,13 +1162,7 @@ export function ProgramFeeStructurePanel() {
                   <option value="total">Total (one-time)</option>
                 </select>
               </div>
-              {form.level === 'program' && (
-                <div className="space-y-1">
-                  <Label>Full Program Fee (One-Time Payment)</Label>
-                  <Input type="number" value={form.fullProgramFee} onChange={e => setForm(f => ({ ...f, fullProgramFee: parseFloat(e.target.value) || 0 }))} placeholder="E.g. 150000" />
-                </div>
-              )}
-            </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <div className="space-y-1">
