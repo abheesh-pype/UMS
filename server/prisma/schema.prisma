@@ -565,6 +565,7 @@ model StudyCenter {
   internalMarks          InternalMark[]
   invoices               Invoice[]
   programAllocations     ProgramAllocation[]
+  programFeeStructures   ProgramFeeStructure[]
   universityAllocations  UniversityAllocation[]
   sessionRequests        SessionRequest[]
   students               Student[]
@@ -1692,6 +1693,7 @@ model ProgramFeeStructure {
   id                 String            @id @default(uuid())
   level              String            @default("program") // "program" or "university"
   programId          String?
+  studyCenterId      String?
   universityId       String?
   admissionSessionId String?
   organizationId     String
@@ -1709,10 +1711,13 @@ model ProgramFeeStructure {
   creator            User              @relation("ProgramFeeCreatedBy", fields: [createdBy], references: [id])
   organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   program            Program?          @relation(fields: [programId], references: [id])
+  studyCenter        StudyCenter?      @relation(fields: [studyCenterId], references: [id], onDelete: Cascade)
   university         University?       @relation(fields: [universityId], references: [id])
   admissionSession   AdmissionSession? @relation(fields: [admissionSessionId], references: [id])
 
   @@index([organizationId])
+  @@index([organizationId, studyCenterId, programId])
+  @@index([organizationId, universityId, programId])
 }
 
 model UniversityFeePayment {

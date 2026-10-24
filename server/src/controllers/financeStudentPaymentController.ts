@@ -94,7 +94,13 @@ export const getStudentPaymentLogs = asyncHandler(async (req: AuthRequest, res: 
           code: true, 
           universityId: true,
           programFeeStructure: {
-            select: { billingCycle: true, admissionSessionId: true, organizationId: true }
+            select: {
+              level: true,
+              studyCenterId: true,
+              billingCycle: true,
+              admissionSessionId: true,
+              organizationId: true,
+            }
           }
         }
       },
@@ -160,9 +166,32 @@ export const getStudentPaymentLogs = asyncHandler(async (req: AuthRequest, res: 
       sessionName: enr.session?.name || '',
       program: {
         ...enr.program,
-        billingCycle: enr.program?.programFeeStructure?.find(
-          f => f.admissionSessionId === enr.sessionId && f.organizationId === enr.organizationId
-        )?.billingCycle || enr.program?.programFeeStructure?.[0]?.billingCycle
+        billingCycle: (
+          enr.program?.programFeeStructure?.find(
+            f => f.level === 'program'
+              && f.studyCenterId === enr.studyCenterId
+              && f.admissionSessionId === enr.sessionId
+              && f.organizationId === enr.organizationId
+          )
+          || enr.program?.programFeeStructure?.find(
+            f => f.level === 'program'
+              && f.studyCenterId === enr.studyCenterId
+              && !f.admissionSessionId
+              && f.organizationId === enr.organizationId
+          )
+          || enr.program?.programFeeStructure?.find(
+            f => f.level === 'program'
+              && !f.studyCenterId
+              && f.admissionSessionId === enr.sessionId
+              && f.organizationId === enr.organizationId
+          )
+          || enr.program?.programFeeStructure?.find(
+            f => f.level === 'program'
+              && !f.studyCenterId
+              && !f.admissionSessionId
+              && f.organizationId === enr.organizationId
+          )
+        )?.billingCycle
       },
       totalFee,
       payable: totalFee,

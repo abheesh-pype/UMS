@@ -130,41 +130,99 @@ export const generateInvoiceForEnrollment = async (
   const studyCenter = enrollment.studyCenter;
 
   // 1. Fetch fee structure
-  let feeStructure = await prisma.programFeeStructure.findFirst({
-    where: {
-      organizationId: enrollment.organizationId,
-      programId: enrollment.programId,
-      admissionSessionId: enrollment.sessionId,
-      level: 'program'
-    }
-  });
+  let feeStructure = enrollment.studyCenterId
+    ? await prisma.programFeeStructure.findFirst({
+        where: {
+          organizationId: enrollment.organizationId,
+          programId: enrollment.programId,
+          studyCenterId: enrollment.studyCenterId,
+          admissionSessionId: enrollment.sessionId,
+          level: 'program'
+        }
+      })
+    : null;
+
+  if (!feeStructure && enrollment.studyCenterId) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: enrollment.organizationId,
+        programId: enrollment.programId,
+        studyCenterId: enrollment.studyCenterId,
+        admissionSessionId: null,
+        level: 'program'
+      }
+    });
+  }
 
   if (!feeStructure) {
     feeStructure = await prisma.programFeeStructure.findFirst({
       where: {
         organizationId: enrollment.organizationId,
         programId: enrollment.programId,
+        studyCenterId: null,
+        admissionSessionId: enrollment.sessionId,
         level: 'program'
       }
     });
   }
 
-  if (!feeStructure && university?.id) {
+  if (!feeStructure) {
     feeStructure = await prisma.programFeeStructure.findFirst({
       where: {
         organizationId: enrollment.organizationId,
+        programId: enrollment.programId,
+        studyCenterId: null,
+        admissionSessionId: null,
+        level: 'program'
+      }
+    });
+  }
+
+  if (!feeStructure && !enrollment.studyCenterId && university?.id) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: enrollment.organizationId,
+        programId: enrollment.programId,
         universityId: university.id,
         admissionSessionId: enrollment.sessionId,
+        studyCenterId: null,
         level: 'university'
       }
     });
   }
 
-  if (!feeStructure && university?.id) {
+  if (!feeStructure && !enrollment.studyCenterId && university?.id) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: enrollment.organizationId,
+        programId: enrollment.programId,
+        universityId: university.id,
+        admissionSessionId: null,
+        studyCenterId: null,
+        level: 'university'
+      }
+    });
+  }
+
+  if (!feeStructure && !enrollment.studyCenterId && university?.id) {
     feeStructure = await prisma.programFeeStructure.findFirst({
       where: {
         organizationId: enrollment.organizationId,
         universityId: university.id,
+        admissionSessionId: enrollment.sessionId,
+        studyCenterId: null,
+        level: 'university'
+      }
+    });
+  }
+
+  if (!feeStructure && !enrollment.studyCenterId && university?.id) {
+    feeStructure = await prisma.programFeeStructure.findFirst({
+      where: {
+        organizationId: enrollment.organizationId,
+        universityId: university.id,
+        admissionSessionId: null,
+        studyCenterId: null,
         level: 'university'
       }
     });

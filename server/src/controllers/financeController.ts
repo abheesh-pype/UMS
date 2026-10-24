@@ -1544,9 +1544,21 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
     }
 
     // Find best-matching fee structure (session-specific first, then program-only)
+    const centerFees = feeStructures.filter(
+      fee => fee.level === 'program'
+        && fee.programId === enrollment.programId
+        && fee.studyCenterId === enrollment.studyCenterId
+    );
+    const legacyProgramFees = feeStructures.filter(
+      fee => fee.level === 'program'
+        && fee.programId === enrollment.programId
+        && !fee.studyCenterId
+    );
     const feeStruct =
-      feeStructures.find(f => f.programId === enrollment.programId && f.admissionSessionId === enrollment.sessionId) ||
-      feeStructures.find(f => f.programId === enrollment.programId && !f.admissionSessionId);
+      centerFees.find(fee => fee.admissionSessionId === enrollment.sessionId) ||
+      centerFees.find(fee => !fee.admissionSessionId) ||
+      legacyProgramFees.find(fee => fee.admissionSessionId === enrollment.sessionId) ||
+      legacyProgramFees.find(fee => !fee.admissionSessionId);
 
     const additionalFees: any[] = Array.isArray(feeStruct?.additionalFees) ? feeStruct.additionalFees : [];
     const coordinatorFee = additionalFees.find((f: any) => {
@@ -1665,22 +1677,33 @@ export const getReregPendingReport = asyncHandler(async (req: AuthRequest, res: 
     const sessionId = e.sessionId || null;
     
     // Find candidate fee structures
-    const candidates = feeStructures.filter((c: any) => 
-      (c.programId === e.programId) ||
-      (c.level === 'university' && c.universityId === (e.program as any).university?.id)
+    const candidates = feeStructures.filter((c: any) =>
+      (
+        c.level === 'program'
+        && c.programId === e.programId
+        && (c.studyCenterId === e.studyCenterId || c.studyCenterId === null)
+      ) ||
+      (
+        !e.studyCenterId
+        && c.level === 'university'
+        && c.universityId === (e.program as any).university?.id
+        && (c.programId === e.programId || c.programId === null)
+      )
     );
 
     // Rank candidate fee structures
     const sorted = candidates.map(c => {
       let score = 0;
       if (c.level === 'program' && c.programId === e.programId) {
-        if (c.admissionSessionId === sessionId) score = 100;
-        else if (c.admissionSessionId === null) score = 80;
-        else score = 60;
+        const centerMatch = Boolean(e.studyCenterId && c.studyCenterId === e.studyCenterId);
+        if (c.admissionSessionId === sessionId) score = centerMatch ? 150 : 100;
+        else if (c.admissionSessionId === null) score = centerMatch ? 130 : 80;
+        else score = centerMatch ? 110 : 60;
       } else if (c.level === 'university' && c.universityId === (e.program as any).university?.id) {
-        if (c.admissionSessionId === sessionId) score = 40;
-        else if (c.admissionSessionId === null) score = 20;
-        else score = 10;
+        const programMatch = c.programId === e.programId;
+        if (c.admissionSessionId === sessionId) score = programMatch ? 50 : 40;
+        else if (c.admissionSessionId === null) score = programMatch ? 30 : 20;
+        else score = programMatch ? 15 : 10;
       }
       return { c, score };
     }).sort((a, b) => b.score - a.score);

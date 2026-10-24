@@ -93,6 +93,16 @@ const calculateEnrollmentFee = (feeStructure: any, paymentMethod: string) => {
   const additionalTotal = recurringFees.reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
   let breakdown = Array.isArray(feeStructure.feeBreakdown) ? feeStructure.feeBreakdown : [];
   if (typeof feeStructure.feeBreakdown === 'string') breakdown = parseJsonArray(feeStructure.feeBreakdown);
+  if (feeStructure.level === 'university') {
+    if (breakdown.length > 0) {
+      if (paymentMethod === 'full_payment') {
+        const fullFee = Number(feeStructure.fullProgramFee) || 0;
+        return fullFee || breakdown.reduce((sum: number, item: any) => sum + (Number(item.universityFee) || 0), 0);
+      }
+      return Number(breakdown[0].universityFee) || 0;
+    }
+    return Number(feeStructure.universityFee) || 0;
+  }
   const breakdownAdditional = (item: any) => {
     if (typeof item?.additionalFees !== 'string') return 0;
     return item.additionalFees.split(',').reduce((sum: number, entry: string) => {
@@ -128,7 +138,12 @@ const getPublicProgramAndSession = async (organizationId: string, programId: str
     },
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
-      programFeeStructure: { where: { organizationId } },
+      programFeeStructure: {
+        where: {
+          organizationId,
+          OR: [{ studyCenterId: null }, { level: 'university' }],
+        },
+      },
     },
   });
   if (!program) return { program: null, session: null };
@@ -153,16 +168,22 @@ const findFeeStructure = async (organizationId: string, programId: string, unive
     where: {
       organizationId,
       OR: [
-        { programId },
-        { universityId, level: 'university' },
+        { programId, studyCenterId: null },
+        {
+          universityId,
+          level: 'university',
+          OR: [{ programId }, { programId: null }],
+        },
       ],
     },
   });
   return candidates.find((fee: any) => fee.level === 'program' && fee.programId === programId && fee.admissionSessionId === sessionId)
     || candidates.find((fee: any) => fee.level === 'program' && fee.programId === programId && !fee.admissionSessionId)
     || candidates.find((fee: any) => fee.level === 'program' && fee.programId === programId)
-    || candidates.find((fee: any) => fee.level === 'university' && fee.universityId === universityId && fee.admissionSessionId === sessionId)
-    || candidates.find((fee: any) => fee.level === 'university' && fee.universityId === universityId && !fee.admissionSessionId)
+    || candidates.find((fee: any) => fee.level === 'university' && fee.programId === programId && fee.universityId === universityId && fee.admissionSessionId === sessionId)
+    || candidates.find((fee: any) => fee.level === 'university' && fee.programId === programId && fee.universityId === universityId && !fee.admissionSessionId)
+    || candidates.find((fee: any) => fee.level === 'university' && !fee.programId && fee.universityId === universityId && fee.admissionSessionId === sessionId)
+    || candidates.find((fee: any) => fee.level === 'university' && !fee.programId && fee.universityId === universityId && !fee.admissionSessionId)
     || candidates.find((fee: any) => fee.level === 'university' && fee.universityId === universityId)
     || null;
 };
@@ -178,7 +199,12 @@ export const getPublicStudentEnrollmentPrograms = asyncHandler(async (_req: Requ
     },
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
-      programFeeStructure: { where: { organizationId } },
+      programFeeStructure: {
+        where: {
+          organizationId,
+          OR: [{ studyCenterId: null }, { level: 'university' }],
+        },
+      },
     },
     orderBy: { name: 'asc' },
   });

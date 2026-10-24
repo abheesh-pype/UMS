@@ -580,25 +580,29 @@ export const getStudentInstallments = asyncHandler(async (req: AuthRequest, res:
     where: {
       organizationId: req.user.organizationId,
       OR: [
-        { programId: student.programId },
-        { universityId: student.program.universityId, level: 'university' }
+        {
+          programId: student.programId,
+          ...(student.centerId ? {
+            OR: [
+              { studyCenterId: student.centerId },
+              { studyCenterId: null },
+            ],
+          } : { studyCenterId: null }),
+        },
+        ...(!student.centerId
+          ? [{ universityId: student.program.universityId, level: 'university' }]
+          : [])
       ]
     }
   });
 
-  // Rank candidate fee structures in memory:
-  // 1. Program-level and exact session match -> 100
-  // 2. Program-level and standard/null session match -> 80
-  // 3. Program-level and any other session match -> 60
-  // 4. University-level and exact session match -> 40
-  // 5. University-level and standard/null session match -> 20
-  // 6. University-level and other session match -> 10
   const sorted = candidates.map(c => {
     let score = 0;
     if (c.level === 'program' && c.programId === student.programId) {
-      if (c.admissionSessionId === sessionId) score = 100;
-      else if (c.admissionSessionId === null) score = 80;
-      else score = 60;
+      const centerMatch = Boolean(student.centerId && c.studyCenterId === student.centerId);
+      if (c.admissionSessionId === sessionId) score = centerMatch ? 150 : 100;
+      else if (c.admissionSessionId === null) score = centerMatch ? 130 : 80;
+      else score = centerMatch ? 110 : 60;
     } else if (c.level === 'university' && c.universityId === student.program.universityId) {
       if (c.admissionSessionId === sessionId) score = 40;
       else if (c.admissionSessionId === null) score = 20;
@@ -815,8 +819,18 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
     where: {
       organizationId: req.user.organizationId,
       OR: [
-        { programId: student.programId },
-        { universityId: student.program.universityId, level: 'university' },
+        {
+          programId: student.programId,
+          ...(student.centerId ? {
+            OR: [
+              { studyCenterId: student.centerId },
+              { studyCenterId: null },
+            ],
+          } : { studyCenterId: null }),
+        },
+        ...(!student.centerId
+          ? [{ universityId: student.program.universityId, level: 'university' }]
+          : []),
       ],
     },
   });
@@ -827,9 +841,10 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
         && candidate.universityId === student.program.universityId;
       let score = 0;
       if (isProgramFee) {
+        const centerMatch = Boolean(student.centerId && candidate.studyCenterId === student.centerId);
         score = candidate.admissionSessionId === sessionId
-          ? 100
-          : candidate.admissionSessionId === null ? 80 : 60;
+          ? centerMatch ? 150 : 100
+          : candidate.admissionSessionId === null ? centerMatch ? 130 : 80 : centerMatch ? 110 : 60;
       } else if (isUniversityFee) {
         score = candidate.admissionSessionId === sessionId
           ? 40

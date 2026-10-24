@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 interface ProgramFee {
   id: string;
   level: string; // "program" or "university"
+  studyCenterId?: string | null;
   programId?: { id: string; name: string; code: string; universityId: any;
   duration?: number; specialisations?: any } | string | null;
   universityId?: { id: string; name: string } | string | null;
@@ -70,6 +71,7 @@ export function ProgramFeeStructurePanel() {
   const [selectedUniversityId, setSelectedUniversityId] = useState<string>('');
   const [selectedCenterId, setSelectedCenterId] = useState<string>('');
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
+  const [feeView, setFeeView] = useState<'center' | 'university'>('center');
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProgramFee | null>(null);
@@ -95,6 +97,7 @@ export function ProgramFeeStructurePanel() {
   const [form, setForm] = useState({ 
     level: 'program',
     programId: '', 
+    studyCenterId: '',
     universityId: '',
     admissionSessionId: '',
     billingCycle: 'per_year', 
@@ -111,11 +114,9 @@ export function ProgramFeeStructurePanel() {
   useEffect(() => {
     let dur = 36; // Default to 3 years
     
-    if (form.level === 'program') {
-       if (!form.programId) return;
-       const prog = programs.find(p => p.id === form.programId);
-       if (prog) dur = prog.duration || 36;
-    }
+    if (!form.programId) return;
+    const prog = programs.find(p => p.id === form.programId);
+    if (prog) dur = prog.duration || 36;
 
     let numBlocks = 1;
     if (form.billingCycle === 'per_year') numBlocks = Math.max(1, Math.floor(dur / 12));
@@ -179,7 +180,7 @@ export function ProgramFeeStructurePanel() {
       setSelectedCenterId(previous => (
         previous && fetchedCenters.some(center => center.id === previous)
           ? previous
-          : fetchedCenters[0]?.id || ''
+          : ''
       ));
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to load data');
@@ -194,27 +195,29 @@ export function ProgramFeeStructurePanel() {
 
   // Keep the selected center's university as the context for fee creation.
   useEffect(() => {
+    if (feeView !== 'center') return;
     const center = centers.find(item => item.id === selectedCenterId);
     const centerUniversityId = center?.universityIds?.find(id => universities.some(university => university.id === id));
     const userUniversityId = (user as any)?.universityId;
     const universityId = centerUniversityId
       || (userUniversityId && universities.some(university => university.id === userUniversityId) ? userUniversityId : '')
-      || universities[0]?.id
       || '';
     if (universityId && universityId !== selectedUniversityId) setSelectedUniversityId(universityId);
-  }, [centers, selectedCenterId, universities, selectedUniversityId, user]);
+  }, [centers, selectedCenterId, universities, selectedUniversityId, user, feeView]);
 
-  const openCreate = (forUniversityFee = false) => {
+  const openCreate = () => {
     setEditing(null);
     const selectedProgram = programs.find(program => program.id === selectedProgramId);
     const programUniversityId = typeof selectedProgram?.universityId === 'object'
       ? selectedProgram.universityId?.id
       : selectedProgram?.universityId;
     const activeUniId = programUniversityId || selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
-    setConfiguringUniversityFee(forUniversityFee);
+    const isUniversityFee = feeView === 'university';
+    setConfiguringUniversityFee(isUniversityFee);
     setForm({ 
-      level: 'program',
+      level: isUniversityFee ? 'university' : 'program',
       programId: selectedProgramId, 
+      studyCenterId: isUniversityFee ? '' : selectedCenterId,
       universityId: activeUniId,
       admissionSessionId: 'all',
       billingCycle: 'per_year', 
@@ -223,6 +226,7 @@ export function ProgramFeeStructurePanel() {
       additionalFees: '',
       feeBreakdown: [],
       baseFee: 0,
+      universityFee: 0,
       fullProgramFee: 0
     });
     setOpen(true);
@@ -230,7 +234,7 @@ export function ProgramFeeStructurePanel() {
 
   const openEdit = (fee: ProgramFee) => {
     setEditing(fee);
-    setConfiguringUniversityFee(false);
+    setConfiguringUniversityFee(fee.level === 'university');
     
     const otherFees = fee.additionalFees?.filter(
       f => !['registration fee', 'exam fee', 'gst'].includes(f.label.toLowerCase())
@@ -260,12 +264,14 @@ export function ProgramFeeStructurePanel() {
     setForm({
       level: fee.level || 'program',
       programId: progId || '',
+      studyCenterId: fee.studyCenterId || '',
       universityId: activeUniId,
       admissionSessionId: sessId || 'all',
       billingCycle: fee.billingCycle || 'per_year',
       currency: fee.currency || 'INR',
       effectiveFrom: fee.effectiveFrom ? fee.effectiveFrom.slice(0, 10) : '',
       baseFee: fee.baseFee || 0,
+      universityFee: fee.universityFee || 0,
       fullProgramFee: fee.fullProgramFee || 0,
       commissionRate: fee.commissionRate !== undefined ? String(fee.commissionRate) : '0',
       additionalFees: otherFees.map(f => `${f.label}:${f.amount}`).join(', '),
@@ -276,12 +282,16 @@ export function ProgramFeeStructurePanel() {
 
   const handleSubmit = async () => {
     try {
-      if (form.level === 'program' && !form.programId) {
+      if (!form.programId) {
         toast.error('Please select a program');
         return;
       }
       if (form.level === 'university' && !form.universityId) {
         toast.error('Please select a university');
+        return;
+      }
+      if (form.level === 'program' && !selectedCenterId) {
+        toast.error('Please select a study centre');
         return;
       }
 
@@ -316,7 +326,8 @@ export function ProgramFeeStructurePanel() {
       const finalUniId = form.universityId || selectedUniversityId || undefined;
       const payload = {
         level: form.level,
-        programId: form.level === 'program' ? form.programId : undefined,
+        programId: form.programId,
+        studyCenterId: form.level === 'program' ? selectedCenterId : undefined,
         universityId: finalUniId,
         admissionSessionId: form.admissionSessionId && form.admissionSessionId !== 'all'
           ? form.admissionSessionId
@@ -409,7 +420,7 @@ export function ProgramFeeStructurePanel() {
 
   const selectedCenter = centers.find(center => center.id === selectedCenterId);
 
-  const filteredPrograms = useMemo(() => {
+  const centerPrograms = useMemo(() => {
     if (!selectedCenter) return [];
     const allocatedProgramIds = selectedCenter.programAllocations?.map(allocation => allocation.programId) || [];
     const centerProgramIds = allocatedProgramIds.length > 0
@@ -418,27 +429,47 @@ export function ProgramFeeStructurePanel() {
     return programs.filter(program => centerProgramIds.includes(program.id));
   }, [programs, selectedCenter]);
 
+  const filteredPrograms = feeView === 'university' ? programs : centerPrograms;
+  const selectedPrograms = useMemo(() => feeView === 'university'
+    ? filteredPrograms.filter(program => {
+        const programUniversityId = typeof program.universityId === 'object'
+          ? program.universityId?.id
+          : program.universityId;
+        return programUniversityId === selectedUniversityId;
+      })
+    : filteredPrograms, [filteredPrograms, feeView, selectedUniversityId]);
+  const hasSelectedScope = feeView === 'center' ? !!selectedCenterId : !!selectedUniversityId;
+
   const filteredFees = useMemo(() => {
     if (!selectedProgramId) return [];
+    const selectedProgram = programs.find(program => program.id === selectedProgramId);
+    const programUniversityId = typeof selectedProgram?.universityId === 'object'
+      ? selectedProgram.universityId?.id
+      : selectedProgram?.universityId;
     return fees.filter(f => {
       const pId = typeof f.programId === 'object' ? f.programId?.id : f.programId;
-      return pId === selectedProgramId;
+      if (pId !== selectedProgramId) return false;
+      if (feeView === 'university') {
+        const feeUniversityId = typeof f.universityId === 'object' ? f.universityId?.id : f.universityId;
+        return f.level === 'university' && feeUniversityId === programUniversityId;
+      }
+      return f.level === 'program' && f.studyCenterId === selectedCenterId;
     });
-  }, [fees, selectedProgramId]);
+  }, [fees, selectedProgramId, selectedCenterId, selectedUniversityId, feeView, programs]);
 
-  // Auto-select first program when university's programs are available
+  // Keep a valid program selected when switching between center and university views.
   useEffect(() => {
-    if (filteredPrograms.length > 0) {
-      if (!selectedProgramId || !filteredPrograms.some(p => p.id === selectedProgramId)) {
-        setSelectedProgramId(filteredPrograms[0].id);
+    if (selectedPrograms.length > 0) {
+      if (!selectedProgramId || !selectedPrograms.some(p => p.id === selectedProgramId)) {
+        setSelectedProgramId(selectedPrograms[0].id);
       }
     } else {
       setSelectedProgramId('');
     }
-  }, [filteredPrograms, selectedProgramId]);
+  }, [selectedPrograms, selectedProgramId]);
 
-  // Keep fee creation within the selected center's allocated programs.
-  const dialogFilteredPrograms = filteredPrograms.filter(p => {
+  // Keep fee creation within the selected view's programs.
+  const dialogFilteredPrograms = selectedPrograms.filter(p => {
     const pUniId = typeof p.universityId === 'object' ? p.universityId?.id : p.universityId;
     return !form.universityId || pUniId === form.universityId;
   });
@@ -446,12 +477,13 @@ export function ProgramFeeStructurePanel() {
 
 
   const getProgramName = (fee: ProgramFee) => {
+    const prog = typeof fee.programId === 'object' ? fee.programId : programs.find(p => p.id === fee.programId);
+    if (prog) return `${prog.name} (${prog.code})`;
     if (fee.level === 'university') {
       const uni = typeof fee.universityId === 'object' ? fee.universityId : universities.find(u => u.id === fee.universityId);
       return uni ? `${uni.name} (University Level)` : 'Unknown University';
     }
-    const prog = typeof fee.programId === 'object' ? fee.programId : programs.find(p => p.id === fee.programId);
-    return prog ? `${prog.name} (${prog.code})` : 'Unknown Program';
+    return 'Unknown Program';
   };
 
   const getProgramSpecialisations = (fee: ProgramFee) => {
@@ -466,18 +498,22 @@ export function ProgramFeeStructurePanel() {
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200/60 dark:border-slate-800">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Fee Structure</h2>
-          <p className="text-muted-foreground text-sm mt-1 max-w-xl">Select a study centre to configure fees for its allocated programs.</p>
+          <p className="text-muted-foreground text-sm mt-1 max-w-xl">
+            {feeView === 'center'
+              ? 'Configure independent fee structures for programs allocated to each study centre.'
+              : 'Configure university fees independently for each university program.'}
+          </p>
           
-          <div className="mt-4 flex items-center gap-3">
+          {hasSelectedScope && <div className="mt-4 flex items-center gap-3">
              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
                 <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Programs</span>
-                <span className="text-sm font-black text-slate-900 dark:text-white">{filteredPrograms.length}</span>
+                <span className="text-sm font-black text-slate-900 dark:text-white">{selectedPrograms.length}</span>
              </div>
              <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg border border-emerald-200/60 dark:border-emerald-800 shadow-sm">
                 <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Fee Configs</span>
                 <span className="text-sm font-black text-emerald-700 dark:text-emerald-300">{filteredFees.length}</span>
              </div>
-          </div>
+          </div>}
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
@@ -485,17 +521,24 @@ export function ProgramFeeStructurePanel() {
             <Button variant="outline" className="h-10 w-10 p-0 border-slate-200 shadow-sm hover:bg-slate-100 dark:hover:bg-slate-800" onClick={fetchAllData} disabled={loading} title="Refresh Data">
               <RefreshCw className={`w-4 h-4 text-slate-600 dark:text-slate-400 ${loading ? 'animate-spin' : ''}`} />
             </Button>
-            <Button variant="outline" className="h-10 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => openCreate(true)} disabled={!selectedProgramId}>
-              <Building2 className="w-4 h-4 mr-2" /> University Fee Config
-            </Button>
-            <Button className="h-10 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all hover:shadow-md" onClick={() => openCreate()} disabled={!selectedProgramId}>
-              <Plus className="w-4 h-4 mr-2" /> Fee Configuration
-            </Button>
+            {feeView === 'center' ? (
+              <Button variant="outline" className="h-10 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => {
+                setSelectedUniversityId('');
+                setSelectedProgramId('');
+                setFeeView('university');
+              }}>
+                <Building2 className="w-4 h-4 mr-2" /> University Fee Configuration
+              </Button>
+            ) : (
+              <Button variant="outline" className="h-10 border-slate-200" onClick={() => setFeeView('center')}>
+                <Building2 className="w-4 h-4 mr-2" /> Study Centre Fee Structures
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm rounded-xl">
+      {feeView === 'center' && <Card className="border-slate-200 shadow-sm rounded-xl">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Building2 className="w-5 h-5 text-indigo-500" /> Study Centres
@@ -511,7 +554,10 @@ export function ProgramFeeStructurePanel() {
             <button
               key={center.id}
               type="button"
-              onClick={() => setSelectedCenterId(center.id)}
+              onClick={() => {
+                setSelectedProgramId('');
+                setSelectedCenterId(center.id);
+              }}
               className={`rounded-xl border p-4 text-left transition-all ${
                 selectedCenterId === center.id
                   ? 'border-primary bg-primary/5 ring-1 ring-primary'
@@ -523,29 +569,68 @@ export function ProgramFeeStructurePanel() {
             </button>
           ))}
         </CardContent>
-      </Card>
+      </Card>}
+
+      {feeView === 'university' && <Card className="border-slate-200 shadow-sm rounded-xl">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-indigo-500" /> Universities
+          </CardTitle>
+          <CardDescription>Select a university to view its programs and configure university fees.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {loading && universities.length === 0 ? (
+            <div className="h-16 bg-muted rounded-lg animate-pulse" />
+          ) : universities.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No universities are available.</p>
+          ) : universities.map(university => (
+            <button
+              key={university.id}
+              type="button"
+              onClick={() => {
+                setSelectedProgramId('');
+                setSelectedUniversityId(university.id);
+              }}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                selectedUniversityId === university.id
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                  : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'
+              }`}
+            >
+              <span className="block font-semibold text-sm">{university.name}</span>
+              {university.code && <span className="mt-1 block text-xs text-muted-foreground">{university.code}</span>}
+            </button>
+          ))}
+        </CardContent>
+      </Card>}
 
       {/* Main content grid - Programs & Fee Structures */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {hasSelectedScope && <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Programs List */}
         <div className="lg:col-span-4 space-y-4">
           <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden h-full">
             <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
               <CardTitle className="text-lg flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-500" /> Programs List
+                <BookOpen className="w-5 h-5 text-indigo-500" /> {feeView === 'university' ? 'University Programs' : 'Programs List'}
               </CardTitle>
-              <CardDescription>{selectedCenter ? `Programs at ${selectedCenter.name}` : 'Select a study centre first'}</CardDescription>
+              <CardDescription>
+                {feeView === 'university'
+                  ? 'Select any program to view or configure its university fee.'
+                  : selectedCenter ? `Programs at ${selectedCenter.name}` : 'Select a study centre first'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
-              {!selectedCenter ? (
+              {feeView === 'center' && !selectedCenter ? (
                 <div className="text-center py-8 text-sm text-muted-foreground">Please select a study centre first.</div>
               ) : loading ? (
                 <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}</div>
-              ) : filteredPrograms.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">No programs are allocated to this study centre.</div>
+              ) : selectedPrograms.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  {feeView === 'university' ? 'No programs are available.' : 'No programs are allocated to this study centre.'}
+                </div>
               ) : (
-                filteredPrograms.map((p: Program) => (
+                selectedPrograms.map((p: Program) => (
                   <div 
                     key={p.id} 
                     onClick={() => setSelectedProgramId(p.id)}
@@ -569,10 +654,27 @@ export function ProgramFeeStructurePanel() {
         <div className="lg:col-span-8 space-y-4">
           <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden">
             <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <IndianRupee className="w-5 h-5 text-emerald-500" /> Fee Configurations
-              </CardTitle>
-              <CardDescription>Defined pricing structures for centers</CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <IndianRupee className="w-5 h-5 text-emerald-500" />
+                    {feeView === 'university' ? 'University Fee Configuration' : 'Study Centre Fee Configuration'}
+                  </CardTitle>
+                  <CardDescription>
+                    {feeView === 'university'
+                      ? 'University fee configuration for the selected program.'
+                      : `Fee structures for ${selectedCenter?.name || 'the selected study centre'}.`}
+                  </CardDescription>
+                </div>
+                <Button
+                  className={feeView === 'university' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+                  onClick={openCreate}
+                  disabled={!selectedProgramId || (feeView === 'center' && !selectedCenterId)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {feeView === 'university' ? 'Add University Fee Configuration' : 'Add Fee Configuration'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
               {!selectedProgramId ? (
@@ -583,7 +685,9 @@ export function ProgramFeeStructurePanel() {
                 <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />)}</div>
               ) : filteredFees.length === 0 ? (
                 <div className="text-center py-16 border rounded-xl border-dashed text-muted-foreground">
-                  No fee structures defined yet. Add pricing rules.
+                {feeView === 'university'
+                  ? 'No university fee configuration exists for this program yet.'
+                  : 'No fee structure exists for this program and study centre yet.'}
                 </div>
               ) : (
                 filteredFees.map((fee: ProgramFee) => {
@@ -599,8 +703,12 @@ export function ProgramFeeStructurePanel() {
                               {fee.level === 'university' ? <Building2 className="w-4 h-4 text-indigo-500" /> : <BookOpen className="w-4 h-4 text-blue-500" />}
                               {getProgramName(fee)}
                             </h4>
+                            <Badge variant="secondary" className={fee.level === 'university' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}>
+                              {fee.level === 'university' ? 'University Fee' : selectedCenter?.name || 'Study Centre Fee'}
+                            </Badge>
                             <Badge variant="outline" className="text-xs">{fee.billingCycle?.replace('_', ' ')}</Badge>
                             {sess && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-none text-xs">{sess}</Badge>}
+                            {!sess && <Badge variant="outline" className="text-xs">All Sessions</Badge>}
                           </div>
                           
                           {/* Specialisations listing in Fee Structure */}
@@ -616,10 +724,12 @@ export function ProgramFeeStructurePanel() {
                           )}
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
-                              {fee.currency || 'INR'} {fee.baseFee.toLocaleString()} Tuition
-                            </Badge>
-                            {fee.universityFee !== undefined && fee.universityFee > 0 && (
+                            {fee.level !== 'university' && (
+                              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
+                                {fee.currency || 'INR'} {fee.baseFee.toLocaleString()} Tuition
+                              </Badge>
+                            )}
+                            {fee.level === 'university' && fee.universityFee !== undefined && fee.universityFee > 0 && (
                               <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-sm font-medium px-2 py-0.5">
                                 {fee.currency || 'INR'} {fee.universityFee.toLocaleString()} Uni Fee
                               </Badge>
@@ -637,10 +747,13 @@ export function ProgramFeeStructurePanel() {
                                 <div key={idx} className="p-2 bg-slate-50 border rounded-md text-xs">
                                   <div className="font-semibold mb-1">{fee.billingCycle === 'per_semester' ? 'Sem' : 'Year'} {b.year} <span className="font-normal text-muted-foreground ml-1">Due: {b.dueDate ? new Date(b.dueDate).toLocaleDateString() : 'N/A'}</span></div>
                                   <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-muted-foreground">
-                                    <span>Tui: {b.baseFee}</span>
-                                    <span>Uni: {b.universityFee}</span>
-                                    <span>Exam: {b.examFee}</span>
-                                    {b.commissionRate > 0 && <span className="col-span-2 text-indigo-600">Comm: {b.commissionRate}%</span>}
+                                    {fee.level === 'university'
+                                      ? <span className="col-span-2">University fee: {b.universityFee}</span>
+                                      : <>
+                                          <span>Tui: {b.baseFee}</span>
+                                          <span>Exam: {b.examFee}</span>
+                                          {b.commissionRate > 0 && <span className="col-span-2 text-indigo-600">Comm: {b.commissionRate}%</span>}
+                                        </>}
                                     {b.additionalFees && <span className="col-span-2 text-xs text-slate-500">Add: {b.additionalFees}</span>}
                                   </div>
                                 </div>
@@ -665,7 +778,7 @@ export function ProgramFeeStructurePanel() {
           </Card>
         </div>
 
-      </div>
+      </div>}
 
       {/* Dialog for Program Creation with Multiple Specialisations */}
       <Dialog open={programDialogOpen} onOpenChange={setProgramDialogOpen}>
@@ -803,11 +916,11 @@ export function ProgramFeeStructurePanel() {
           <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle>
               {editing ? 'Edit Fee Structure' : 'Add New Fee Structure'}
-              {!editing && configuringUniversityFee && <span className="block mt-1 text-sm font-normal text-muted-foreground">University Fee Config</span>}
+              {configuringUniversityFee && <span className="block mt-1 text-sm font-normal text-muted-foreground">University Fee Configuration</span>}
             </DialogTitle>
-            {!editing && configuringUniversityFee && (
+            {configuringUniversityFee && (
               <p className="text-xs text-muted-foreground">
-                Configure the university fee for this program and admission session. The saved amount is available to study centre and sales admissions.
+                Configure this university program fee independently from every study-centre fee structure.
               </p>
             )}
           </DialogHeader>
@@ -826,20 +939,28 @@ export function ProgramFeeStructurePanel() {
               </select>
             </div>
 
-            {form.level === 'program' && (
-              <div className="space-y-1">
+            <div className="space-y-1">
                 <Label>Program <span className="text-destructive">*</span></Label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
                   value={form.programId}
-                  onChange={e => setForm(f => ({ ...f, programId: e.target.value }))}
+                  onChange={e => {
+                    const program = programs.find(item => item.id === e.target.value);
+                    const programUniversityId = typeof program?.universityId === 'object'
+                      ? program.universityId?.id
+                      : program?.universityId;
+                    setForm(f => ({
+                      ...f,
+                      programId: e.target.value,
+                      universityId: programUniversityId || f.universityId,
+                    }));
+                  }}
                   required
                 >
                   <option value="">Select program...</option>
                   {dialogFilteredPrograms.map(p => <option key={p.id} value={p.id}>{p.name} ({p.code})</option>)}
                 </select>
-              </div>
-            )}
+            </div>
 
             <div className="space-y-1">
               <Label>Admission Session</Label>
@@ -866,10 +987,12 @@ export function ProgramFeeStructurePanel() {
                   <option value="total">Total (one-time)</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <Label>Full Program Fee (One-Time Payment)</Label>
-                <Input type="number" value={form.fullProgramFee} onChange={e => setForm(f => ({ ...f, fullProgramFee: parseFloat(e.target.value) || 0 }))} placeholder="E.g. 150000" />
-              </div>
+              {form.level === 'program' && (
+                <div className="space-y-1">
+                  <Label>Full Program Fee (One-Time Payment)</Label>
+                  <Input type="number" value={form.fullProgramFee} onChange={e => setForm(f => ({ ...f, fullProgramFee: parseFloat(e.target.value) || 0 }))} placeholder="E.g. 150000" />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -890,30 +1013,37 @@ export function ProgramFeeStructurePanel() {
                   <div key={idx} className="p-4 border rounded-lg space-y-4 bg-slate-50 dark:bg-slate-900">
                     <h4 className="font-medium text-emerald-700">{form.billingCycle === 'per_semester' ? 'Semester' : 'Year'} {block.year}</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                      <div className="space-y-1">
-                        <Label>Tuition / Base Fee</Label>
-                        <Input type="number" value={block.baseFee} onChange={e => handleBreakdownChange(idx, 'baseFee', e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>University Fee</Label>
-                        <Input type="number" value={block.universityFee} onChange={e => handleBreakdownChange(idx, 'universityFee', e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Exam Fee</Label>
-                        <Input type="number" value={block.examFee} onChange={e => handleBreakdownChange(idx, 'examFee', e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Commission Rate (%)</Label>
-                        <Input type="number" step="0.01" value={block.commissionRate} onChange={e => handleBreakdownChange(idx, 'commissionRate', e.target.value)} />
-                      </div>
+                      {form.level === 'university' ? (
+                        <div className="space-y-1">
+                          <Label>University Fee</Label>
+                          <Input type="number" value={block.universityFee} onChange={e => handleBreakdownChange(idx, 'universityFee', e.target.value)} />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-1">
+                            <Label>Tuition / Base Fee</Label>
+                            <Input type="number" value={block.baseFee} onChange={e => handleBreakdownChange(idx, 'baseFee', e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Exam Fee</Label>
+                            <Input type="number" value={block.examFee} onChange={e => handleBreakdownChange(idx, 'examFee', e.target.value)} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Commission Rate (%)</Label>
+                            <Input type="number" step="0.01" value={block.commissionRate} onChange={e => handleBreakdownChange(idx, 'commissionRate', e.target.value)} />
+                          </div>
+                        </>
+                      )}
                       <div className="space-y-1">
                         <Label>Payment Due Date</Label>
                         <Input type="date" value={block.dueDate} onChange={e => handleBreakdownChange(idx, 'dueDate', e.target.value)} />
                       </div>
-                      <div className="space-y-1 md:col-span-2 lg:col-span-3">
-                        <Label>Additional Fees <span className="text-muted-foreground text-xs">(label:amount, comma-separated)</span></Label>
-                        <Input value={block.additionalFees || ''} onChange={e => handleBreakdownChange(idx, 'additionalFees', e.target.value)} placeholder="Verification:100, Library:50" />
-                      </div>
+                      {form.level === 'program' && (
+                        <div className="space-y-1 md:col-span-2 lg:col-span-3">
+                          <Label>Additional Fees <span className="text-muted-foreground text-xs">(label:amount, comma-separated)</span></Label>
+                          <Input value={block.additionalFees || ''} onChange={e => handleBreakdownChange(idx, 'additionalFees', e.target.value)} placeholder="Verification:100, Library:50" />
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

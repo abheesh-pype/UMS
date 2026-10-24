@@ -224,86 +224,63 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
     res.status(409).json({ success: false, message: 'Enrollment must be approved by Operations before Finance can approve it' });
     return;
   }
-  // 2. Fetch program fee structure matching session
-  let feeStructure = await prisma.programFeeStructure.findFirst({
+  const findFeeForScope = async (
+    level: string,
+    scope: Record<string, string | null>,
+    sessionId: string | null | 'any',
+  ) => prisma.programFeeStructure.findFirst({
     where: {
       organizationId: req.user.organizationId,
-      programId: dbEnrollment.programId,
-      admissionSessionId: dbEnrollment.sessionId,
-      level: 'program'
-    }
+      level,
+      ...scope,
+      ...(sessionId === 'any' ? {} : { admissionSessionId: sessionId }),
+    },
   });
 
-  // Prefer the standard structure when there is no exact session match.
-  if (!feeStructure) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
+  const findFeeForSessions = async (level: string, scope: Record<string, string | null>) => (
+    await findFeeForScope(level, scope, dbEnrollment.sessionId)
+    || await findFeeForScope(level, scope, null)
+    || await findFeeForScope(level, scope, 'any')
+  );
+
+  // Use the selected centre's own pricing before any legacy shared fee.
+  let feeStructure = dbEnrollment.studyCenterId
+    ? await findFeeForSessions('program', {
         programId: dbEnrollment.programId,
-        admissionSessionId: null,
-        level: 'program'
-      }
-    });
-  }
+        studyCenterId: dbEnrollment.studyCenterId,
+      })
+    : null;
 
-  // Fallback 1: Any program level structure
   if (!feeStructure) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        programId: dbEnrollment.programId,
-        level: 'program'
-      }
+    feeStructure = await findFeeForSessions('program', {
+      programId: dbEnrollment.programId,
+      studyCenterId: null,
     });
   }
 
-  // Fallback 2: Any available structure
-  if (!feeStructure) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        programId: dbEnrollment.programId
-      }
+  // A university-scoped configuration is independent of centre pricing.
+  if (!feeStructure && !dbEnrollment.studyCenterId && dbEnrollment.program?.universityId) {
+    feeStructure = await findFeeForSessions('university', {
+      programId: dbEnrollment.programId,
+      universityId: dbEnrollment.program.universityId,
+      studyCenterId: null,
     });
   }
 
-  // Fall back to the university fee when no program-specific fee is configured.
-  if (!feeStructure && dbEnrollment.program?.universityId) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        universityId: dbEnrollment.program.universityId,
-        admissionSessionId: dbEnrollment.sessionId,
-        level: 'university'
-      }
-    });
-  }
-
-  if (!feeStructure && dbEnrollment.program?.universityId) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        universityId: dbEnrollment.program.universityId,
-        admissionSessionId: null,
-        level: 'university'
-      }
-    });
-  }
-
-  if (!feeStructure && dbEnrollment.program?.universityId) {
-    feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        universityId: dbEnrollment.program.universityId,
-        level: 'university'
-      }
+  if (!feeStructure && !dbEnrollment.studyCenterId && dbEnrollment.program?.universityId) {
+    feeStructure = await findFeeForSessions('university', {
+      programId: null,
+      universityId: dbEnrollment.program.universityId,
+      studyCenterId: null,
     });
   }
 
   if (!feeStructure) {
     res.status(400).json({
       success: false,
-      message: 'No fee structure is configured for this program or its university. Please configure a program or university fee before approving the enrollment.'
+      message: dbEnrollment.studyCenterId
+        ? 'No fee structure is configured for this study centre and program. Configure the centre fee before approving the enrollment.'
+        : 'No fee structure is configured for this program or its university. Please configure a program or university fee before approving the enrollment.'
     });
     return;
   }
@@ -502,37 +479,59 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
   }
 
   if (enrollment.studentId && enrollment.programId) {
-    if (feeStructure.universityFee !== undefined) {
-      const existing = await prisma.universityFeePayment.findMany({
-        where: { enrollmentId: enrollment.id }
-      });
+    const programUniversityFee = dbEnrollment.program?.universityId
+      ? await findFeeForSessions('university', {
+          programId: enrollment.programId,
+          universityId: dbEnrollment.program.universityId,
+          studyCenterId: null,
+        })
+      : null;
+    const universityFeeStructure = programUniversityFee || (
+      dbEnrollment.program?.universityId
+        ? await findFeeForSessions('university', {
+            programId: null,
+            universityId: dbEnrollment.program.universityId,
+            studyCenterId: null,
+          })
+        : null
+    );
+    const universityFeeSource = universityFeeStructure
+      || (Number(feeStructure.universityFee) > 0 ? feeStructure : null);
 
-      if (existing.length === 0) {
-        const breakdown = (feeStructure.feeBreakdown as any[]) || [];
-        const isSemester = feeStructure.billingCycle === 'per_semester';
+    const existing = await prisma.universityFeePayment.findMany({
+      where: { enrollmentId: enrollment.id }
+    });
+    if (existing.length === 0 && universityFeeSource) {
+      const breakdown = Array.isArray(universityFeeSource.feeBreakdown)
+        ? universityFeeSource.feeBreakdown as any[]
+        : [];
+      const isSemester = universityFeeSource.billingCycle === 'per_semester';
 
-        if (breakdown.length > 0) {
-          const paymentsToCreate = breakdown.map((cycle, index) => ({
+      if (breakdown.length > 0) {
+        const paymentsToCreate = breakdown
+          .map((cycle, index) => ({
             organizationId: req.user.organizationId,
             studentId: enrollment.studentId!,
             enrollmentId: enrollment.id,
             semesterOrYear: isSemester ? `Semester ${index + 1}` : `Year ${index + 1}`,
             amount: Number(cycle.universityFee || 0),
             status: 'pending'
-          }));
+          }))
+          .filter(payment => payment.amount > 0);
+        if (paymentsToCreate.length > 0) {
           await prisma.universityFeePayment.createMany({ data: paymentsToCreate });
-        } else if (feeStructure.universityFee > 0) {
-          await prisma.universityFeePayment.create({
-            data: {
-              organizationId: req.user.organizationId,
-              studentId: enrollment.studentId!,
-              enrollmentId: enrollment.id,
-              semesterOrYear: isSemester ? 'Semester 1' : 'Year 1',
-              amount: feeStructure.universityFee,
-              status: 'pending'
-            }
-          });
         }
+      } else if (universityFeeSource.universityFee > 0) {
+        await prisma.universityFeePayment.create({
+          data: {
+            organizationId: req.user.organizationId,
+            studentId: enrollment.studentId!,
+            enrollmentId: enrollment.id,
+            semesterOrYear: isSemester ? 'Semester 1' : 'Year 1',
+            amount: universityFeeSource.universityFee,
+            status: 'pending'
+          }
+        });
       }
     }
   }

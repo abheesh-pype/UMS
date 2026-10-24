@@ -46,7 +46,15 @@ export const getSalesEnrollmentPrograms = asyncHandler(async (req: AuthRequest, 
     },
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
-      programFeeStructure: { where: { organizationId: req.user.organizationId } },
+      programFeeStructure: {
+        where: {
+          organizationId: req.user.organizationId,
+          OR: [
+            { level: 'university' },
+            { level: 'program', studyCenterId: null },
+          ],
+        },
+      },
     },
     orderBy: { name: 'asc' },
   });

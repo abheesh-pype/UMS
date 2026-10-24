@@ -18,13 +18,18 @@ interface Program {
   certificateRequirements?: { name: string; isMandatory: boolean }[];
   university?: { id: string; name: string; code: string; category?: string };
   programFeeStructure?: {
+    id?: string;
     level: string;
+    studyCenterId?: string | null;
     admissionSessionId?: string | null;
     baseFee: number;
+    universityFee?: number;
+    fullProgramFee?: number;
     currency: string;
     billingCycle?: string;
     gstPercentage?: number;
     additionalFees: { label: string; amount: number }[];
+    feeBreakdown?: any[] | string;
   }[];
 }
 
@@ -224,24 +229,58 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
 
   const getSelectedProgramFeeStructure = (p: Program) => {
     if (!p.programFeeStructure || p.programFeeStructure.length === 0) return undefined;
-    return p.programFeeStructure.find(
-      f => f.level === 'program' && f.admissionSessionId === selectedSessionId
-    ) || p.programFeeStructure.find(
-      f => f.level === 'program' && !f.admissionSessionId
-    ) || p.programFeeStructure.find(f => f.level === 'program') || p.programFeeStructure[0];
+    const feeStructures = p.programFeeStructure;
+    const forSession = (fee: NonNullable<Program['programFeeStructure']>[number]) => fee.admissionSessionId === selectedSessionId;
+    const allSessions = (fee: NonNullable<Program['programFeeStructure']>[number]) => !fee.admissionSessionId;
+
+    if (mode === 'center' && centerConfig?.centerId) {
+      const centerFees = feeStructures.filter(fee => fee.level === 'program' && fee.studyCenterId === centerConfig.centerId);
+      const legacyFees = feeStructures.filter(fee => fee.level === 'program' && !fee.studyCenterId);
+      return centerFees.find(forSession)
+        || centerFees.find(allSessions)
+        || centerFees[0]
+        || legacyFees.find(forSession)
+        || legacyFees.find(allSessions)
+        || legacyFees[0];
+    }
+
+    const universityFees = feeStructures.filter(fee => fee.level === 'university');
+    const legacyFees = feeStructures.filter(fee => fee.level === 'program' && !fee.studyCenterId);
+    return universityFees.find(forSession)
+      || universityFees.find(allSessions)
+      || universityFees[0]
+      || legacyFees.find(forSession)
+      || legacyFees.find(allSessions)
+      || legacyFees[0]
+      || feeStructures.find(fee => fee.level === 'program');
   };
 
   const getTotalFee = (p: Program, pm?: string) => {
     const fs = getSelectedProgramFeeStructure(p);
     if (!fs) return 0;
-    
-    let subtotal = 0;
-    
-    let breakdowns = (fs as any).feeBreakdown;
+
+    let breakdowns = fs.feeBreakdown;
     if (typeof breakdowns === 'string') {
-      try { breakdowns = JSON.parse(breakdowns); } catch (e) { breakdowns = []; }
+      try {
+        breakdowns = JSON.parse(breakdowns);
+      } catch {
+        breakdowns = [];
+      }
     }
-    
+    if (fs.level === 'university') {
+      const method = pm || paymentMethod;
+      if (Array.isArray(breakdowns) && breakdowns.length > 0) {
+        if (method === 'full_payment') {
+          const fullFee = Number(fs.fullProgramFee || 0);
+          return fullFee || breakdowns.reduce((total: number, cycle: any) => total + Number(cycle.universityFee || 0), 0);
+        }
+        return Number(breakdowns[0].universityFee || 0);
+      }
+      return Number(fs.universityFee || 0);
+    }
+
+    let subtotal = 0;
+
     const addFees = Array.isArray(fs.additionalFees) ? fs.additionalFees : [];
     const nonGstFees = addFees.filter(f => f.label !== 'GST');
     const additionalFeesTotal = nonGstFees.reduce((s, f) => s + f.amount, 0);
@@ -294,6 +333,15 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       }
     }
 
+    if (feeStructure.level === 'university') {
+      if (!Array.isArray(breakdowns) || breakdowns.length === 0) {
+        return Number(feeStructure.universityFee || 0);
+      }
+      if ((pm || paymentMethod) === 'full_payment') {
+        return breakdowns.reduce((total: number, breakdown: any) => total + Number(breakdown.universityFee || 0), 0);
+      }
+      return Number(breakdowns[0].universityFee || 0);
+    }
     if (!Array.isArray(breakdowns) || breakdowns.length === 0) {
       return Number((feeStructure as any).universityFee || 0);
     }

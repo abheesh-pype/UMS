@@ -155,7 +155,12 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
       programFeeStructure: {
         where: {
-          organizationId: req.user.organizationId
+          organizationId: req.user.organizationId,
+          OR: [
+            { level: 'university' },
+            { level: 'program', studyCenterId: req.user.studyCenterId || null },
+            { level: 'program', studyCenterId: null },
+          ],
         }
       }
     }
@@ -852,20 +857,24 @@ export const processPaymentStage = asyncHandler(async (req: AuthRequest, res: Re
 
   if (category === 'direct_iits' && paymentType === 'wallet') {
     // Determine fee
-    let feeStructure = await prisma.programFeeStructure.findFirst({
-      where: {
-        organizationId: req.user.organizationId,
-        programId: dbEnrollment.programId,
-        admissionSessionId: dbEnrollment.sessionId,
-        level: 'program'
-      }
-    });
+    let feeStructure = dbEnrollment.studyCenterId
+      ? await prisma.programFeeStructure.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          programId: dbEnrollment.programId,
+          studyCenterId: dbEnrollment.studyCenterId,
+          admissionSessionId: dbEnrollment.sessionId,
+          level: 'program'
+        }
+      })
+      : null;
 
-    if (!feeStructure) {
+    if (!feeStructure && dbEnrollment.studyCenterId) {
       feeStructure = await prisma.programFeeStructure.findFirst({
         where: {
           organizationId: req.user.organizationId,
           programId: dbEnrollment.programId,
+          studyCenterId: dbEnrollment.studyCenterId,
           admissionSessionId: null,
           level: 'program'
         }
@@ -874,7 +883,36 @@ export const processPaymentStage = asyncHandler(async (req: AuthRequest, res: Re
 
     if (!feeStructure) {
       feeStructure = await prisma.programFeeStructure.findFirst({
-        where: { organizationId: req.user.organizationId, programId: dbEnrollment.programId }
+      where: {
+        organizationId: req.user.organizationId,
+        programId: dbEnrollment.programId,
+        studyCenterId: null,
+        admissionSessionId: dbEnrollment.sessionId,
+        level: 'program'
+      }
+      });
+    }
+
+    if (!feeStructure) {
+      feeStructure = await prisma.programFeeStructure.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          programId: dbEnrollment.programId,
+          studyCenterId: null,
+          admissionSessionId: null,
+          level: 'program'
+        }
+      });
+    }
+
+    if (!feeStructure) {
+      feeStructure = await prisma.programFeeStructure.findFirst({
+        where: {
+          organizationId: req.user.organizationId,
+          programId: dbEnrollment.programId,
+          studyCenterId: null,
+          level: 'program'
+        }
       });
     }
 
