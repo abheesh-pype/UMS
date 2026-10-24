@@ -47,6 +47,8 @@ interface Program {
   code: string;
   status?: string;
   universityId: any;
+  academicSessionId?: string | null;
+  admissionSessions?: { id: string }[];
   duration?: number;
   hasSemesters?: boolean;
   semesters?: { number: number; name: string }[];
@@ -69,6 +71,7 @@ interface StudyCenter {
   programIds?: string[];
   programAllocations?: {
     id: string;
+    centerId: string;
     programId: string;
     isActive: boolean;
     admissionSessionId?: string | null;
@@ -482,46 +485,27 @@ export function ProgramFeeStructurePanel() {
   const centerProgramEntries = useMemo(() => {
     if (!selectedCenter) return [];
     const allocations = selectedCenter.programAllocations || [];
-    if (allocations.length > 0) {
-      return allocations.filter(allocation =>
-        allocation.isActive
-        && allocation.admissionSession?.status === 'active'
-        && programs.some(program => program.id === allocation.programId && program.status === 'active')
-      ).map(allocation => {
+    return allocations
+      .filter(allocation => allocation.centerId === selectedCenter.id && allocation.isActive)
+      .flatMap(allocation => {
         const program = programs.find(item => item.id === allocation.programId);
-        if (!program) return null;
+        if (!program) return [];
         const session = allocation.admissionSession
           || sessions.find(item => item.id === allocation.admissionSessionId)
           || null;
-        return {
+        const sessionId = allocation.admissionSessionId || '';
+        const matchesProgramSession = !sessionId
+          || session?.programId === program.id
+          || program.academicSessionId === sessionId
+          || program.admissionSessions?.some(programSession => programSession.id === sessionId);
+        if (!matchesProgramSession) return [];
+        return [{
           program,
-          sessionId: allocation.admissionSessionId || '',
+          sessionId,
           sessionName: session?.name || 'All Sessions',
-          key: `${program.id}:${allocation.admissionSessionId || 'all'}`,
-        };
-      }).filter(Boolean) as { program: Program; sessionId: string; sessionName: string; key: string }[];
-    }
-    const centerProgramIds = selectedCenter.programIds || [];
-    return sessions
-      .filter(session => session.status === 'active')
-      .flatMap(session => programs
-        .filter(program =>
-          program.status === 'active'
-          && centerProgramIds.includes(program.id)
-          && (
-            session.programId
-              ? session.programId === program.id
-              : !session.universityId
-                || !program.universityId
-                || session.universityId === program.universityId
-          )
-        )
-        .map(program => ({
-          program,
-          sessionId: session.id,
-          sessionName: session.name,
-          key: `${program.id}:${session.id}`,
-        })));
+          key: `${program.id}:${sessionId || 'all'}`,
+        }];
+      });
   }, [programs, selectedCenter, sessions]);
 
   const filteredPrograms = feeView === 'university'

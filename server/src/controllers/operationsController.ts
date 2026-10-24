@@ -1120,6 +1120,7 @@ export const getStudyCenters = asyncHandler(async (req: AuthRequest, res: Respon
         },
         select: {
           id: true,
+          centerId: true,
           programId: true,
           isActive: true,
           admissionSessionId: true,
