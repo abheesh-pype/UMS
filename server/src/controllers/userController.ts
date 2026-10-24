@@ -53,6 +53,38 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
   res.status(200).json({ success: true, count: users.length, data: users });
 });
 
+export const getMyTeam = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const isOrganizationAdmin = ['org_admin', 'university_admin', 'superadmin', 'ceo'].includes(req.user.role);
+  const where: any = {
+    organizationId: req.user.organizationId,
+    role: { notIn: ['student', 'center_admin', 'superadmin', 'org_admin', 'ceo'] },
+  };
+
+  if (!isOrganizationAdmin) {
+    where.reportingTo = req.user.id;
+  }
+
+  const users = await prisma.user.findMany({
+    where,
+    include: {
+      department: { select: { id: true, name: true, type: true } },
+      subDepartment: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          parentDept: { select: { id: true, name: true, type: true } },
+        },
+      },
+      branch: { select: { id: true, name: true } },
+      designationRef: { select: { id: true, title: true } },
+    },
+    orderBy: [{ name: 'asc' }],
+  });
+
+  res.status(200).json({ success: true, count: users.length, data: users });
+});
+
 export const getUser = asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findFirst({
     where: { id: req.params.id, organizationId: req.user.organizationId },

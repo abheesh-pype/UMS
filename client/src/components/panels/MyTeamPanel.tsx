@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export interface MyTeamPanelProps {
-  departmentType: 'operations' | 'sales' | 'finance';
+  departmentType: 'operations' | 'sales' | 'finance' | 'hr' | 'branch' | 'organization';
   title?: string;
   description?: string;
 }
@@ -70,10 +70,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      // Query users API with departmentType parameter
-      const res = await api.get('/users', {
-        params: { departmentType, includeAssignedReports: true }
-      });
+      const res = await api.get('/users/my-team');
       setUsers(res.data.data || []);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to fetch team members');
@@ -104,12 +101,14 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
 
   // Explicit reporting assignments determine team membership.
   const teamMembers = useMemo(() => {
+    const isOrganizationAdmin = ['org_admin', 'university_admin', 'superadmin', 'ceo'].includes(currentUser?.role || '');
     return users.filter((user: any) => {
-      const reportingToId = typeof user.reportingTo === 'object'
-        ? user.reportingTo?.id
-        : user.reportingTo;
-
-      if (!currentUser?.id || reportingToId !== currentUser.id) return false;
+      if (!isOrganizationAdmin) {
+        const reportingToId = typeof user.reportingTo === 'object'
+          ? user.reportingTo?.id
+          : user.reportingTo;
+        if (!currentUser?.id || reportingToId !== currentUser.id) return false;
+      }
 
       if (['student', 'center_admin', 'superadmin', 'org_admin', 'ceo'].includes(user.role?.toLowerCase())) {
         return false;
@@ -117,7 +116,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
 
       return true;
     });
-  }, [users, departmentType, currentUser?.id]);
+  }, [users, currentUser?.id, currentUser?.role]);
 
   // Apply search and filter toggles
   const filteredMembers = useMemo(() => {
@@ -187,7 +186,9 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Badge variant="outline" className={cn("text-xs font-semibold px-2.5 py-0.5", currentDept.badgeClass)}>
-              {currentDept.name} Department
+              {departmentType === 'organization' || departmentType === 'branch'
+                ? `${currentDept.name} Team`
+                : `${currentDept.name} Department`}
             </Badge>
             <span className="text-xs text-muted-foreground font-medium">Team Directory</span>
           </div>
@@ -195,7 +196,9 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
             {title || `${currentDept.name} Team`}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {description || `Members, sub-administrators, and employees reporting in ${currentDept.name}`}
+            {description || (departmentType === 'organization'
+              ? 'All staff members across the organization.'
+              : `Members and employees directly reporting to you in ${currentDept.name}.`)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -329,7 +332,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
               <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                 {searchQuery || roleFilter !== 'all' || statusFilter !== 'all'
                   ? 'No members match the current filter criteria. Try clearing search or filters.'
-                  : `There are currently no employees or sub-admins assigned to the ${currentDept.name} department.`}
+                  : `There are currently no team members reporting directly to you.`}
               </p>
               {(searchQuery || roleFilter !== 'all' || statusFilter !== 'all') && (
                 <Button 

@@ -2,6 +2,7 @@
 import express from 'express';
 import {
   getUsers,
+  getMyTeam,
   getUser,
   createUser,
   updateUser,
@@ -17,6 +18,7 @@ router.use(protect);
 
 router.post('/bulk-import', authorize('superadmin', 'org_admin', 'hr_admin'), bulkImportUsers);
 router.put('/:id/role', authorize('superadmin', 'org_admin', 'hr_admin'), updateUserRole);
+router.get('/my-team', getMyTeam);
 
 router
   .route('/')

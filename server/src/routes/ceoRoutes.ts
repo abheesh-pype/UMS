@@ -4,7 +4,6 @@ import {
   getPerformanceMetrics,
   getRiskMetrics,
   getEscalations,
-  handleEscalation,
   getAnalytics,
   getDepartmentManagers,
   assignTask,
@@ -12,6 +11,7 @@ import {
   getCenterOnboardingOverview,
   getStudentEnrollmentOverview,
 } from '../controllers/ceoController.js';
+import { handleCeoEscalation } from '../controllers/escalationController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -30,7 +30,7 @@ router.get('/enrollment-overview', getStudentEnrollmentOverview);
 
 // Escalation routes
 router.get('/escalations', getEscalations);
-router.patch('/escalations/:id', handleEscalation);
+router.patch('/escalations/:id', handleCeoEscalation);
 
 // Task assignment routes
 router.get('/managers', getDepartmentManagers);

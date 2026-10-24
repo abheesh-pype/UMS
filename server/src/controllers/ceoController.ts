@@ -19,13 +19,28 @@ export const getRiskMetrics = asyncHandler(async (req: AuthRequest, res: Respons
 });
 
 export const getEscalations = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const escalations = await prisma.escalation.findMany({ where: { organizationId: req.user.organizationId }, include: { employee: true } });
-  res.json({ success: true, count: escalations.length, data: escalations });
-});
-
-export const handleEscalation = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const escalation = await prisma.escalation.update({ where: { id: req.params.id }, data: req.body });
-  res.json({ success: true, data: escalation });
+  const escalations = await prisma.escalation.findMany({
+    where: { organizationId: req.user.organizationId },
+    include: {
+      employee: { select: { id: true, name: true, email: true } },
+      task: { select: { id: true, title: true, description: true, deadline: true, priority: true } },
+      deptAdmin: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  const raisedByIds = [...new Set(escalations.map(escalation => escalation.raisedById).filter(Boolean))];
+  const raisers = await prisma.user.findMany({
+    where: { organizationId: req.user.organizationId, id: { in: raisedByIds } },
+    select: { id: true, name: true, email: true },
+  });
+  const raisersById = new Map(raisers.map(raiser => [raiser.id, raiser]));
+  const data = escalations.map(escalation => ({
+    ...escalation,
+    taskId: escalation.task,
+    raisedBy: escalation.raisedById ? raisersById.get(escalation.raisedById) || null : null,
+    priority: escalation.impact,
+  }));
+  res.json({ success: true, count: data.length, data });
 });
 
 export const getAnalytics = asyncHandler(async (req: AuthRequest, res: Response) => {

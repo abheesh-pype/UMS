@@ -259,7 +259,7 @@ export function ModernEmployeeDashboard({ initialTab, onNavigate }: { initialTab
                     { label: 'Notice Board', tab: 'notice-board', color: 'text-success' },
                     { label: 'Announcements', tab: 'announcements', color: 'text-primary', hidden: true },
                     { label: 'My Team', tab: 'team', color: 'text-warning' },
-                    { label: 'Raise Escalation', tab: 'escalations', color: 'text-error' },
+                    { label: 'Create Escalation', tab: 'escalations', color: 'text-error' },
                   ].map(item => (
                     <button
                       key={item.tab}

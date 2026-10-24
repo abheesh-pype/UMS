@@ -76,9 +76,9 @@ export const register = asyncHandler(async (req: AuthRequest, res: Response) => 
 export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { email, password } = req.body;
   const loginIdentifier = typeof email === 'string' ? email.trim() : '';
-  const cleanPassword = typeof password === 'string' ? password.trim() : '';
+  const loginPassword = typeof password === 'string' ? password : '';
 
-  if (!loginIdentifier || !cleanPassword) {
+  if (!loginIdentifier || !loginPassword) {
     res.status(400).json({ 
       success: false, 
       message: 'Please provide email and password' 
@@ -111,7 +111,7 @@ export const login = asyncHandler(async (req: AuthRequest, res: Response) => {
   }
 
   // Check if password matches
-  const isMatch = await comparePassword(cleanPassword, user.password);
+  const isMatch = await comparePassword(loginPassword, user.password);
 
   if (!isMatch) {
     res.status(401).json({ success: false, message: 'Invalid credentials' });

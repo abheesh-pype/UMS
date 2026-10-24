@@ -14,6 +14,7 @@ import {
   Wallet,
   FileText,
   Users,
+  Plus,
 } from 'lucide-react';
 import { InvoicesPanel } from '@/components/panels/InvoicesPanel';
 import { PaymentsPanel } from '@/components/panels/PaymentsPanel';
@@ -551,13 +552,24 @@ interface Escalation {
   type?: string;
   status: string;
   priority?: string;
+  impact?: string;
   raisedBy?: { name: string; email: string };
   raisedAt?: string;
+  escalatedAt?: string;
+  createdAt?: string;
 }
 
 function FinanceEscalationsPanel() {
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newEscalation, setNewEscalation] = useState({
+    type: 'approval_delay',
+    impact: 'medium',
+    description: '',
+  });
 
   const fetchEscalations = async () => {
     setLoading(true);
@@ -574,16 +586,43 @@ function FinanceEscalationsPanel() {
   useEffect(() => { fetchEscalations(); }, []);
 
   const handleResolve = async (id: string) => {
+    setResolvingId(id);
     try {
       await api.put(`/escalations/${id}/resolve`, { remarks: 'Resolved by Finance Admin' });
       toast.success('Escalation resolved');
-      fetchEscalations();
+      await fetchEscalations();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to resolve');
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newEscalation.description.trim()) {
+      toast.error('Please describe the issue');
+      return;
+    }
+    setCreating(true);
+    try {
+      await api.post('/escalations', {
+        ...newEscalation,
+        description: newEscalation.description.trim(),
+      });
+      toast.success('Escalation created');
+      setNewEscalation({ type: 'approval_delay', impact: 'medium', description: '' });
+      setCreateOpen(false);
+      await fetchEscalations();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to create escalation');
+    } finally {
+      setCreating(false);
     }
   };
 
   const STATUS_COLOR: Record<string, string> = {
+    pending:  'bg-warning/10 text-warning',
+    active:   'bg-warning/10 text-warning',
     open:     'bg-warning/10 text-warning',
     resolved: 'bg-success/10 text-success',
     closed:   'bg-muted text-muted-foreground',
@@ -596,18 +635,73 @@ function FinanceEscalationsPanel() {
           <h2 className="text-2xl font-bold">Escalations</h2>
           <p className="text-muted-foreground text-sm mt-1">View and resolve escalations in your organisation.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchEscalations} disabled={loading}>
-          <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchEscalations} disabled={loading}>
+            <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(value => !value)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Escalation
+          </Button>
+        </div>
       </div>
+
+      {createOpen && (
+        <Card className="border-primary/30">
+          <CardContent className="p-5 space-y-4">
+            <h3 className="font-semibold">Create an escalation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="space-y-1 text-sm">
+                <span className="text-muted-foreground">Issue type</span>
+                <select
+                  className="w-full border border-border rounded-lg px-3 py-2 bg-background"
+                  value={newEscalation.type}
+                  onChange={event => setNewEscalation(value => ({ ...value, type: event.target.value }))}
+                >
+                  <option value="approval_delay">Approval delay</option>
+                  <option value="task_overdue">Task / deadline issue</option>
+                  <option value="compliance">Compliance issue</option>
+                  <option value="credential_reveal">Credential / access issue</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-muted-foreground">Impact</span>
+                <select
+                  className="w-full border border-border rounded-lg px-3 py-2 bg-background"
+                  value={newEscalation.impact}
+                  onChange={event => setNewEscalation(value => ({ ...value, impact: event.target.value }))}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+            </div>
+            <textarea
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background resize-none"
+              rows={4}
+              placeholder="Describe the issue and the help needed..."
+              value={newEscalation.description}
+              onChange={event => setNewEscalation(value => ({ ...value, description: event.target.value }))}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={creating}>
+                {creating ? 'Creating...' : 'Submit Escalation'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-warning/10 text-warning"><AlertTriangle className="w-5 h-5" /></div>
             <div>
-              <p className="text-2xl font-bold">{escalations.filter(e => e.status === 'open').length}</p>
+              <p className="text-2xl font-bold">{escalations.filter(e => ['pending', 'active', 'open'].includes(e.status)).length}</p>
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Open</p>
             </div>
           </CardContent>
@@ -652,18 +746,20 @@ function FinanceEscalationsPanel() {
                       <Badge className={cn('text-[10px] uppercase font-bold', STATUS_COLOR[esc.status] || 'bg-muted text-muted-foreground')}>
                         {esc.status}
                       </Badge>
-                      {esc.priority && <Badge variant="outline" className="text-[10px] uppercase font-bold">{esc.priority}</Badge>}
+                      {(esc.priority || esc.impact) && <Badge variant="outline" className="text-[10px] uppercase font-bold">{esc.priority || esc.impact}</Badge>}
                       {esc.type && <Badge variant="outline" className="text-[10px]">{esc.type}</Badge>}
                     </div>
-                    <h4 className="font-semibold text-sm">{esc.title || 'Escalation'}</h4>
-                    {esc.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{esc.description}</p>}
+                    <h4 className="font-semibold text-sm">{esc.title || esc.type || 'Escalation'}</h4>
+                    {(esc.description || esc.title) && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{esc.description || esc.title}</p>}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                       {esc.raisedBy && <span>Raised by: {esc.raisedBy.name}</span>}
-                      {esc.raisedAt && <span>{new Date(esc.raisedAt).toLocaleDateString()}</span>}
+                      {(esc.raisedAt || esc.escalatedAt || esc.createdAt) && <span>{new Date(esc.raisedAt || esc.escalatedAt || esc.createdAt!).toLocaleDateString()}</span>}
                     </div>
                   </div>
-                  {esc.status === 'open' && (
-                    <Button size="sm" variant="outline" onClick={() => handleResolve(esc.id)}>Resolve</Button>
+                  {!['resolved', 'closed'].includes(esc.status) && (
+                    <Button size="sm" variant="outline" onClick={() => handleResolve(esc.id)} disabled={resolvingId === esc.id}>
+                  {resolvingId === esc.id ? 'Resolving...' : 'Resolve'}
+                    </Button>
                   )}
                 </div>
               </CardContent>

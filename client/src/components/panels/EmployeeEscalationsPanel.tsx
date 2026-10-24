@@ -20,6 +20,7 @@ interface Escalation {
 }
 
 const STATUS_COLOR: Record<string, string> = {
+  pending:  'bg-warning/10 text-warning',
   active:   'bg-warning/10 text-warning',
   resolved: 'bg-success/10 text-success',
 };
@@ -64,7 +65,8 @@ export function EmployeeEscalationsPanel() {
       const res = await api.get('/escalations');
       // Show only escalations raised by the current user (server filters by org, we show all they can see)
       setEscalations(res.data.data || []);
-    } catch {
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to load your escalations');
       setEscalations([]);
     } finally {
       setLoading(false);
@@ -84,10 +86,6 @@ export function EmployeeEscalationsPanel() {
         type: form.type,
         description: form.description,
         impact: form.impact,
-        entityType: 'General',
-        entityId: '000000000000000000000000', // placeholder — no specific entity
-        currentLevel: 1,
-        maxLevel: 3,
       });
       toast.success('Escalation raised successfully');
       setShowForm(false);
@@ -100,7 +98,7 @@ export function EmployeeEscalationsPanel() {
     }
   };
 
-  const active = escalations.filter(e => e.status === 'active').length;
+  const active = escalations.filter(e => ['pending', 'active'].includes(e.status)).length;
   const resolved = escalations.filter(e => e.status === 'resolved').length;
 
   return (
@@ -117,7 +115,7 @@ export function EmployeeEscalationsPanel() {
           </Button>
           <Button size="sm" onClick={() => setShowForm(v => !v)}>
             <Plus className="w-4 h-4 mr-2" />
-            Raise Escalation
+            Create Escalation
           </Button>
         </div>
       </div>
@@ -158,7 +156,7 @@ export function EmployeeEscalationsPanel() {
         <Card className="border-primary/30">
           <CardHeader>
             <CardTitle className="text-base">Raise a New Escalation</CardTitle>
-            <CardDescription>This will be visible to your department admin and escalated to management if unresolved</CardDescription>
+            <CardDescription>Authorized department admins and management can review your escalation. You can track its status here.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -217,7 +215,7 @@ export function EmployeeEscalationsPanel() {
           <CardContent className="py-16 text-center text-muted-foreground">
             <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">No escalations yet</p>
-            <p className="text-sm mt-1">Use "Raise Escalation" if you have an issue that needs attention.</p>
+            <p className="text-sm mt-1">Use "Create Escalation" if you have an issue that needs attention.</p>
           </CardContent>
         </Card>
       ) : (

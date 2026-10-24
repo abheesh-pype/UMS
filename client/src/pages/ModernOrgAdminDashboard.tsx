@@ -28,6 +28,7 @@ import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 import { UniversityExamIntegrationPanel } from '@/pages/ModernUniversityDashboard';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 
 function StudyCentreCustomisationPage() {
   const { user } = useAuth();
@@ -336,7 +337,7 @@ export function ModernOrgAdminDashboard({ initialTab, onNavigate }: { initialTab
         <TabsContent value="payments"><PaymentsPanel /></TabsContent>
         <TabsContent value="expenses"><ExpensesPanel /></TabsContent>
         <TabsContent value="employees"><EmployeesPanel adminProfileAccess /></TabsContent>
-        <TabsContent value="team"><EmployeesPanel adminProfileAccess /></TabsContent>
+        <TabsContent value="team"><MyTeamPanel departmentType="organization" title="University Team" /></TabsContent>
         <TabsContent value="leaves"><LeavesPanel /></TabsContent>
         <TabsContent value="my_leaves"><LeavesPanel isPersonalView /></TabsContent>
         <TabsContent value="leave_approvals"><LeavesPanel approvalsOnly /></TabsContent>

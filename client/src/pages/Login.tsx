@@ -70,7 +70,7 @@ export function Login() {
 
     const credentials = {
       email: email.trim(),
-      password: password.trim(),
+      password,
     };
     let loginError: any;
 
@@ -105,9 +105,9 @@ export function Login() {
       const serverMessage = typeof responseData === 'string'
         ? responseData
         : responseData?.message;
-      setError(serverMessage || 'Invalid credentials. Applicants can check status using their email and date of birth.');
+      setError(serverMessage || 'Invalid email/user ID or password. Applicants can check status using their email and date of birth.');
     } else {
-      setError('Invalid credentials. Applicants can check status using their email and date of birth.');
+      setError('Invalid email/user ID or password. Applicants can check status using their email and date of birth.');
     }
     setIsLoading(false);
   };

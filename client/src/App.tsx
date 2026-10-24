@@ -27,6 +27,7 @@ const EMPLOYEE_NAV_ITEMS = [
   { id: 'announcements', label: 'Announcements' },
   { id: 'notice-board', label: 'Notice Board' },
   { id: 'ld-portal', label: 'L&D Portal' },
+  { id: 'escalations', label: 'Escalations' },
 ];
 
 const HIDDEN_NAV_LINK_IDS = new Set([
@@ -299,7 +300,7 @@ function App() {
         { id: 'integration', label: 'Integration' },
         { id: 'expenses', label: 'Expenses' },
         { id: 'employees', label: 'Employees' },
-        { id: 'team', label: 'Team' },
+        { id: 'team', label: 'My Team' },
         { id: 'leave_requests', label: 'Leave Requests' },
         { id: 'my_leaves', label: 'My Leaves' },
         { id: 'leave_approvals', label: 'Leave Approvals' },

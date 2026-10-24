@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { LeadsPanel } from '@/components/panels/LeadsPanel';
 import { TargetsPanel } from '@/components/panels/TargetsPanel';
 import { SalesInvitePanel } from '@/components/panels/SalesInvitePanel';
-import { TeamPerformancePanel } from '@/components/panels/TeamPerformancePanel';
+import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 import { SalesCentersPanel } from '@/components/panels/SalesCentersPanel';
 
 // Ops panels
@@ -109,7 +109,7 @@ export function ModernBranchManagerDashboard({ initialTab, onNavigate }: { initi
       case 'leads': return <LeadsPanel />;
       case 'targets': return <TargetsPanel endpoint="/sales/targets" title="Branch Targets" />;
       case 'invite_links': return <SalesInvitePanel />;
-      case 'my_team': return <TeamPerformancePanel />;
+      case 'my_team': return <MyTeamPanel departmentType="branch" title="Branch Team" />;
       case 'branch_centers_sales': return <SalesCentersPanel />;
       // Ops
       case 'students': return <StudentsPanel />;

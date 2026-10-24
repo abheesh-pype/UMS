@@ -460,6 +460,9 @@ interface Escalation {
   taskId?: { id: string; title: string; description: string; deadline: string; priority: string };
   employeeId?: { id: string; name: string; email: string };
   deptAdminId?: { id: string; name: string; email: string };
+  raisedBy?: { id: string; name: string; email: string };
+  description?: string;
+  type?: string;
   organizationId: string;
   priority: string;
   status: string;
@@ -626,12 +629,12 @@ function EscalationsPanel() {
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">{timeAgo(esc.escalatedAt)}</span>
                         </div>
-                        <h4 className="font-semibold text-sm">{esc.taskId?.title || 'Task Escalation'}</h4>
-                        {esc.taskId?.description && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{esc.taskId.description}</p>
+                        <h4 className="font-semibold text-sm">{esc.taskId?.title || esc.type || 'Escalation'}</h4>
+                        {(esc.description || esc.taskId?.description) && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{esc.description || esc.taskId?.description}</p>
                         )}
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          {esc.employeeId && <span>Employee: {esc.employeeId.name}</span>}
+                          {(esc.raisedBy || esc.employeeId) && <span>Raised by: {(esc.raisedBy || esc.employeeId)?.name}</span>}
                           {esc.deptAdminId && <span>Dept Admin: {esc.deptAdminId.name}</span>}
                           {esc.taskId?.deadline && <span>Deadline: {new Date(esc.taskId.deadline).toLocaleDateString()}</span>}
                         </div>
