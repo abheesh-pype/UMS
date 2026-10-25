@@ -1,15 +1,119 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Edit, GraduationCap, Loader2, Plus, Search, Trash2, Video } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowDownToLine, BookOpen, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Copy, Edit, Eye, Filter, GraduationCap, Loader2, MapPin, Plus, RotateCcw, Search, Trash2, Video } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+
+const CALENDAR_CATEGORIES = [
+  'Classes & Teaching',
+  'Assessment & Assignments',
+  'University Events',
+  'Meetings',
+  'Examinations',
+  'Holidays',
+  'Administrative Deadlines',
+  'Others',
+] as const;
+
+const CATEGORY_CONFIG: Record<string, {
+  color: string;
+  bg: string;
+  text: string;
+  border: string;
+  dot: string;
+  badgeBg: string;
+  badgeText: string;
+  shortLabel: string;
+}> = {
+  'Classes & Teaching': {
+    color: '#10b981',
+    bg: 'bg-emerald-100 hover:bg-emerald-200/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80',
+    text: 'text-emerald-800 dark:text-emerald-300',
+    border: 'border-emerald-200 dark:border-emerald-800',
+    dot: 'bg-emerald-600',
+    badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300',
+    badgeText: 'text-emerald-800',
+    shortLabel: 'Academic',
+  },
+  'Examinations': {
+    color: '#f43f5e',
+    bg: 'bg-rose-100 hover:bg-rose-200/80 dark:bg-rose-950/60 dark:hover:bg-rose-900/80',
+    text: 'text-rose-800 dark:text-rose-300',
+    border: 'border-rose-200 dark:border-rose-800',
+    dot: 'bg-rose-500',
+    badgeBg: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300',
+    badgeText: 'text-rose-800',
+    shortLabel: 'Examination',
+  },
+  'Assessment & Assignments': {
+    color: '#a855f7',
+    bg: 'bg-purple-100 hover:bg-purple-200/80 dark:bg-purple-950/60 dark:hover:bg-purple-900/80',
+    text: 'text-purple-800 dark:text-purple-300',
+    border: 'border-purple-200 dark:border-purple-800',
+    dot: 'bg-purple-600',
+    badgeBg: 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300',
+    badgeText: 'text-purple-800',
+    shortLabel: 'Assessment',
+  },
+  'Holidays': {
+    color: '#0284c7',
+    bg: 'bg-sky-100 hover:bg-sky-200/80 dark:bg-sky-950/60 dark:hover:bg-sky-900/80',
+    text: 'text-sky-800 dark:text-sky-300',
+    border: 'border-sky-200 dark:border-sky-800',
+    dot: 'bg-sky-500',
+    badgeBg: 'bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300',
+    badgeText: 'text-sky-800',
+    shortLabel: 'Holiday',
+  },
+  'University Events': {
+    color: '#f59e0b',
+    bg: 'bg-amber-100 hover:bg-amber-200/80 dark:bg-amber-950/60 dark:hover:bg-amber-900/80',
+    text: 'text-amber-800 dark:text-amber-300',
+    border: 'border-amber-200 dark:border-amber-800',
+    dot: 'bg-amber-500',
+    badgeBg: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300',
+    badgeText: 'text-amber-800',
+    shortLabel: 'Event',
+  },
+  'Administrative Deadlines': {
+    color: '#f97316',
+    bg: 'bg-orange-100 hover:bg-orange-200/80 dark:bg-orange-950/60 dark:hover:bg-orange-900/80',
+    text: 'text-orange-800 dark:text-orange-300',
+    border: 'border-orange-200 dark:border-orange-800',
+    dot: 'bg-orange-500',
+    badgeBg: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300',
+    badgeText: 'text-orange-800',
+    shortLabel: 'Deadline',
+  },
+  'Meetings': {
+    color: '#14b8a6',
+    bg: 'bg-teal-100 hover:bg-teal-200/80 dark:bg-teal-950/60 dark:hover:bg-teal-900/80',
+    text: 'text-teal-800 dark:text-teal-300',
+    border: 'border-teal-200 dark:border-teal-800',
+    dot: 'bg-teal-500',
+    badgeBg: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300',
+    badgeText: 'text-teal-800',
+    shortLabel: 'Meeting',
+  },
+  'Others': {
+    color: '#64748b',
+    bg: 'bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-900/60 dark:hover:bg-slate-800/80',
+    text: 'text-slate-800 dark:text-slate-300',
+    border: 'border-slate-200 dark:border-slate-800',
+    dot: 'bg-slate-500',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-900/60 dark:text-slate-300',
+    badgeText: 'text-slate-800',
+    shortLabel: 'Other',
+  },
+};
 
 interface AcademicAdminPanelProps { initialTab?: string; onNavigate?: (table: string) => void; }
 
@@ -29,6 +133,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [programForm, setProgramForm] = useState({ name: '', courseName: '', duration: '', status: 'active', description: '' });
   const [programSearch, setProgramSearch] = useState('');
+  const [programSessionFilter, setProgramSessionFilter] = useState<string>('active');
   const [programFormSessionId, setProgramFormSessionId] = useState('');
   const [programTemplateId, setProgramTemplateId] = useState('');
   const [programCopySemesters, setProgramCopySemesters] = useState(true);
@@ -55,6 +160,18 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
   const [allEbooks, setAllEbooks] = useState<any[]>([]);
   const [allEbooksLoading, setAllEbooksLoading] = useState(false);
+  const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
+  const [addNoteSaving, setAddNoteSaving] = useState(false);
+  const [addNoteSessionId, setAddNoteSessionId] = useState('');
+  const [addNoteProgramId, setAddNoteProgramId] = useState('');
+  const [addNoteSemesterId, setAddNoteSemesterId] = useState('');
+  const [addNoteModuleId, setAddNoteModuleId] = useState('');
+  const [addNoteBookName, setAddNoteBookName] = useState('');
+  const [addNoteFile, setAddNoteFile] = useState<File | null>(null);
+  const [addNoteSemesters, setAddNoteSemesters] = useState<any[]>([]);
+  const [addNoteModules, setAddNoteModules] = useState<any[]>([]);
+  const [addNoteSemestersLoading, setAddNoteSemestersLoading] = useState(false);
+  const [addNoteModulesLoading, setAddNoteModulesLoading] = useState(false);
   const [videoModule, setVideoModule] = useState<any | null>(null);
   const [videoMaterials, setVideoMaterials] = useState<any[]>([]);
   const [moduleVideoFile, setModuleVideoFile] = useState<File | null>(null);
@@ -78,6 +195,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [videoModules, setVideoModules] = useState<any[]>([]);
   const [videoSemestersLoading, setVideoSemestersLoading] = useState(false);
   const [videoModulesLoading, setVideoModulesLoading] = useState(false);
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [videoSearch, setVideoSearch] = useState('');
+  const [videoFilterSession, setVideoFilterSession] = useState('all');
+  const [videoFilterProgram, setVideoFilterProgram] = useState('all');
+  const [videoFilterSemester, setVideoFilterSemester] = useState('all');
+  const [videoFilterModule, setVideoFilterModule] = useState('all');
   const [scheduledClassForm, setScheduledClassForm] = useState({
     academicSessionId: '',
     programId: '',
@@ -95,6 +218,45 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [scheduledClassLoading, setScheduledClassLoading] = useState(false);
   const [schedulableStudentsLoading, setSchedulableStudentsLoading] = useState(false);
   const [scheduledClassSaving, setScheduledClassSaving] = useState(false);
+
+  // Academic Calendar states
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarDate, setCalendarDate] = useState<Date>(() => new Date(2026, 9, 25)); // Default to October 2026
+  const [calendarView, setCalendarView] = useState<'month' | 'week' | 'agenda'>('month');
+
+  // Academic Calendar filters
+  const [calFilterSession, setCalFilterSession] = useState<string>('all');
+  const [calFilterSemester, setCalFilterSemester] = useState<string>('all');
+  const [calFilterCategory, setCalFilterCategory] = useState<string>('all');
+  const [calFilterDepartment, setCalFilterDepartment] = useState<string>('all');
+  const [calFilterStudyCenter, setCalFilterStudyCenter] = useState<string>('all');
+  const [calDepartments, setCalDepartments] = useState<any[]>([]);
+  const [calStudyCenters, setCalStudyCenters] = useState<any[]>([]);
+
+  // Academic Calendar add / edit modal
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calendarSaving, setCalendarSaving] = useState(false);
+  const [editingCalendarEventId, setEditingCalendarEventId] = useState<string | null>(null);
+  const [calendarForm, setCalendarForm] = useState({
+    title: '',
+    category: '',
+    academicSessionId: '',
+    programId: '',
+    semesterId: '',
+    startDate: '',
+    endDate: '',
+    startTime: '',
+    endTime: '',
+    description: '',
+  });
+  const [calendarModalSemesters, setCalendarModalSemesters] = useState<any[]>([]);
+  const [calendarModalSemestersLoading, setCalendarModalSemestersLoading] = useState(false);
+
+  // Academic Calendar event detail & delete
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<any | null>(null);
+  const [deletingCalendarEventId, setDeletingCalendarEventId] = useState<string | null>(null);
+
   const [semesters, setSemesters] = useState<any[]>([]);
   const [semesterLoading, setSemesterLoading] = useState(false);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
@@ -237,7 +399,319 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     if (initialTab === 'academic-ebooks') fetchAllEbooks();
     if (initialTab === 'academic-video-classes') fetchVideoClasses();
     if (initialTab === 'academic-scheduled-classes') fetchScheduledClasses();
+    if (initialTab === 'academic-calendar') {
+      fetchCalendarEvents();
+      fetchCalendarAuxiliaryData();
+    }
   }, [initialTab]);
+
+  const fetchCalendarEvents = async (customFilters?: {
+    academicSessionId?: string;
+    semesterId?: string;
+    category?: string;
+    departmentId?: string;
+    studyCenterId?: string;
+  }) => {
+    setCalendarLoading(true);
+    try {
+      const activeSession = customFilters?.academicSessionId !== undefined ? customFilters.academicSessionId : calFilterSession;
+      const activeSemester = customFilters?.semesterId !== undefined ? customFilters.semesterId : calFilterSemester;
+      const activeCategory = customFilters?.category !== undefined ? customFilters.category : calFilterCategory;
+      const activeDept = customFilters?.departmentId !== undefined ? customFilters.departmentId : calFilterDepartment;
+      const activeCenter = customFilters?.studyCenterId !== undefined ? customFilters.studyCenterId : calFilterStudyCenter;
+
+      const params: any = {};
+      if (activeSession && activeSession !== 'all') params.academicSessionId = activeSession;
+      if (activeSemester && activeSemester !== 'all') params.semesterId = activeSemester;
+      if (activeCategory && activeCategory !== 'all') params.category = activeCategory;
+      if (activeDept && activeDept !== 'all') params.departmentId = activeDept;
+      if (activeCenter && activeCenter !== 'all') params.studyCenterId = activeCenter;
+
+      const response = await api.get('/operations/academic-calendar', { params });
+      setCalendarEvents(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load academic calendar');
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  const fetchCalendarAuxiliaryData = async () => {
+    try {
+      const [deptRes, centerRes] = await Promise.all([
+        api.get('/departments').catch(() => ({ data: [] })),
+        api.get('/operations/centers').catch(() => ({ data: { data: [] } })),
+      ]);
+      const depts = Array.isArray(deptRes.data) ? deptRes.data : deptRes.data?.data || [];
+      const centers = Array.isArray(centerRes.data) ? centerRes.data : centerRes.data?.data || [];
+      setCalDepartments(depts);
+      setCalStudyCenters(centers);
+    } catch {
+      // ignore
+    }
+  };
+
+  const applyCalendarFilters = () => {
+    fetchCalendarEvents();
+  };
+
+  const resetCalendarFilters = () => {
+    setCalFilterSession('all');
+    setCalFilterSemester('all');
+    setCalFilterCategory('all');
+    setCalFilterDepartment('all');
+    setCalFilterStudyCenter('all');
+    fetchCalendarEvents({
+      academicSessionId: 'all',
+      semesterId: 'all',
+      category: 'all',
+      departmentId: 'all',
+      studyCenterId: 'all',
+    });
+  };
+
+  const openAddCalendarEventModal = (prefillDate?: string) => {
+    const defaultDate = prefillDate || '2026-10-25';
+    const activeSession = sessions.find((s: any) => s.status === 'active') || sessions[0];
+    setEditingCalendarEventId(null);
+    setCalendarForm({
+      title: '',
+      category: '',
+      academicSessionId: activeSession?.id || '',
+      programId: '',
+      semesterId: '',
+      startDate: defaultDate,
+      endDate: defaultDate,
+      startTime: '',
+      endTime: '',
+      description: '',
+    });
+    setCalendarModalSemesters([]);
+    setCalendarModalOpen(true);
+  };
+
+  const handleCalendarProgramChange = async (programId: string) => {
+    setCalendarForm(prev => ({ ...prev, programId: programId === 'all' ? '' : programId, semesterId: '' }));
+    setCalendarModalSemesters([]);
+    if (!programId || programId === 'all') return;
+    setCalendarModalSemestersLoading(true);
+    try {
+      const response = await api.get(`/operations/programs/${programId}/semesters`);
+      setCalendarModalSemesters(response.data.data || []);
+    } catch {
+      toast.error('Failed to load semesters for program');
+    } finally {
+      setCalendarModalSemestersLoading(false);
+    }
+  };
+
+  const handleCalendarEventSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!calendarForm.title.trim()) {
+      toast.error('Please enter an event title');
+      return;
+    }
+    if (!calendarForm.category) {
+      toast.error('Please select an event category');
+      return;
+    }
+    if (!calendarForm.academicSessionId) {
+      toast.error('Please select an academic year');
+      return;
+    }
+    if (!calendarForm.startDate) {
+      toast.error('Please select a start date');
+      return;
+    }
+    if (!calendarForm.endDate) {
+      toast.error('Please select an end date');
+      return;
+    }
+
+    if (new Date(calendarForm.endDate) < new Date(calendarForm.startDate)) {
+      toast.error('End date cannot be earlier than start date');
+      return;
+    }
+
+    if (calendarForm.startDate === calendarForm.endDate && calendarForm.startTime && calendarForm.endTime) {
+      if (calendarForm.endTime < calendarForm.startTime) {
+        toast.error('End time cannot be earlier than start time');
+        return;
+      }
+    }
+
+    setCalendarSaving(true);
+    try {
+      const payload = {
+        title: calendarForm.title.trim(),
+        category: calendarForm.category,
+        academicSessionId: calendarForm.academicSessionId,
+        programId: calendarForm.programId && calendarForm.programId !== 'all' ? calendarForm.programId : null,
+        semesterId: calendarForm.semesterId && calendarForm.semesterId !== 'all' ? calendarForm.semesterId : null,
+        startDate: calendarForm.startDate,
+        endDate: calendarForm.endDate,
+        startTime: calendarForm.startTime ? calendarForm.startTime.trim() : null,
+        endTime: calendarForm.endTime ? calendarForm.endTime.trim() : null,
+        description: calendarForm.description ? calendarForm.description.trim() : null,
+      };
+
+      if (editingCalendarEventId) {
+        await api.put(`/operations/academic-calendar/${editingCalendarEventId}`, payload);
+        toast.success('Academic event updated successfully');
+      } else {
+        await api.post('/operations/academic-calendar', payload);
+        toast.success('Academic event created successfully');
+      }
+      setCalendarModalOpen(false);
+      setSelectedCalendarEvent(null);
+      fetchCalendarEvents();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save academic event');
+    } finally {
+      setCalendarSaving(false);
+    }
+  };
+
+  const handleEditCalendarEvent = (event: any) => {
+    setEditingCalendarEventId(event.id);
+    const startStr = event.startDate ? new Date(event.startDate).toISOString().split('T')[0] : '';
+    const endStr = event.endDate ? new Date(event.endDate).toISOString().split('T')[0] : '';
+    setCalendarForm({
+      title: event.title || '',
+      category: event.category || '',
+      academicSessionId: event.academicSessionId || '',
+      programId: event.programId || '',
+      semesterId: event.semesterId || '',
+      startDate: startStr,
+      endDate: endStr,
+      startTime: event.startTime || '',
+      endTime: event.endTime || '',
+      description: event.description || '',
+    });
+    if (event.programId) {
+      handleCalendarProgramChange(event.programId);
+    }
+    setSelectedCalendarEvent(null);
+    setCalendarModalOpen(true);
+  };
+
+  const handleDeleteCalendarEvent = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this academic event?')) return;
+    setDeletingCalendarEventId(id);
+    try {
+      await api.delete(`/operations/academic-calendar/${id}`);
+      toast.success('Academic event deleted successfully');
+      setSelectedCalendarEvent(null);
+      fetchCalendarEvents();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete academic event');
+    } finally {
+      setDeletingCalendarEventId(null);
+    }
+  };
+
+  const formatTimeDisplay = (timeStr?: string | null) => {
+    if (!timeStr) return '';
+    try {
+      const [h, m] = timeStr.split(':').map(Number);
+      const period = h >= 12 ? 'PM' : 'AM';
+      const formattedH = h % 12 || 12;
+      return `${String(formattedH).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+    } catch {
+      return timeStr;
+    }
+  };
+
+  const calendarYear = calendarDate.getFullYear();
+  const calendarMonth = calendarDate.getMonth();
+  const monthDisplayTitle = calendarDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const handleCalendarPrev = () => {
+    if (calendarView === 'month' || calendarView === 'agenda') {
+      setCalendarDate(new Date(calendarYear, calendarMonth - 1, 1));
+    } else if (calendarView === 'week') {
+      const nextDate = new Date(calendarDate);
+      nextDate.setDate(nextDate.getDate() - 7);
+      setCalendarDate(nextDate);
+    }
+  };
+
+  const handleCalendarNext = () => {
+    if (calendarView === 'month' || calendarView === 'agenda') {
+      setCalendarDate(new Date(calendarYear, calendarMonth + 1, 1));
+    } else if (calendarView === 'week') {
+      const nextDate = new Date(calendarDate);
+      nextDate.setDate(nextDate.getDate() + 7);
+      setCalendarDate(nextDate);
+    }
+  };
+
+  const handleCalendarToday = () => {
+    setCalendarDate(new Date(2026, 9, 25));
+  };
+
+  const calendarWeekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const firstDayOfWeek = new Date(calendarYear, calendarMonth, 1).getDay();
+  const daysInCurrentMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const daysInPrevMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+
+  const calendarMonthCells: {
+    date: Date;
+    dayNumber: number;
+    isCurrentMonth: boolean;
+    dateKey: string;
+  }[] = [];
+
+  for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+    const day = daysInPrevMonth - i;
+    const date = new Date(calendarYear, calendarMonth - 1, day);
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    calendarMonthCells.push({ date, dayNumber: day, isCurrentMonth: false, dateKey });
+  }
+
+  for (let d = 1; d <= daysInCurrentMonth; d++) {
+    const date = new Date(calendarYear, calendarMonth, d);
+    const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    calendarMonthCells.push({ date, dayNumber: d, isCurrentMonth: true, dateKey });
+  }
+
+  const totalCellsNeeded = calendarMonthCells.length <= 35 ? 35 : 42;
+  const nextMonthPadding = totalCellsNeeded - calendarMonthCells.length;
+  for (let d = 1; d <= nextMonthPadding; d++) {
+    const date = new Date(calendarYear, calendarMonth + 1, d);
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    calendarMonthCells.push({ date, dayNumber: d, isCurrentMonth: false, dateKey });
+  }
+
+  const getCalendarEventsForDate = (dateKey: string) => {
+    return calendarEvents.filter(event => {
+      if (!event.startDate) return false;
+      const startKey = new Date(event.startDate).toISOString().split('T')[0];
+      const endKey = event.endDate ? new Date(event.endDate).toISOString().split('T')[0] : startKey;
+      return dateKey >= startKey && dateKey <= endKey;
+    });
+  };
+
+  const currentDayOfWeek = calendarDate.getDay();
+  const weekStart = new Date(calendarDate);
+  weekStart.setDate(calendarDate.getDate() - currentDayOfWeek);
+
+  const calendarWeekDaysList = Array.from({ length: 7 }, (_, idx) => {
+    const dayDate = new Date(weekStart);
+    dayDate.setDate(weekStart.getDate() + idx);
+    const dateKey = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+    return {
+      date: dayDate,
+      dayName: calendarWeekDays[idx],
+      dayNumber: dayDate.getDate(),
+      dateKey,
+    };
+  });
+
+  const upcomingEventsList = [...calendarEvents]
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    .slice(0, 8);
 
   const fetchScheduledClasses = async () => {
     setScheduledClassLoading(true);
@@ -426,6 +900,15 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setVideoModules([]);
   };
 
+  const openAddVideoModal = () => {
+    resetVideoForm();
+    const activeSession = sessions.find((s: any) => s.status === 'active');
+    if (activeSession) {
+      setVideoForm(prev => ({ ...prev, sessionId: activeSession.id }));
+    }
+    setVideoModalOpen(true);
+  };
+
   const handleVideoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!videoForm.sessionId) {
@@ -490,6 +973,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         toast.success('Video class saved successfully');
       }
 
+      setVideoModalOpen(false);
       resetVideoForm();
       fetchVideoClasses();
     } catch (err: any) {
@@ -538,7 +1022,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setVideoModalOpen(true);
   };
 
   const handleDeleteVideo = async (item: any) => {
@@ -561,6 +1045,50 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     const match = url.match(regExp);
     return match && match[2].length === 11 ? `https://www.youtube.com/embed/${match[2]}` : null;
   };
+
+  const videoAvailableSemesters = Array.from(
+    new Map(
+      videoClasses
+        .filter(item => {
+          if (videoFilterSession !== 'all' && item.sessionId !== videoFilterSession) return false;
+          if (videoFilterProgram !== 'all' && item.programId !== videoFilterProgram) return false;
+          return Boolean(item.semesterId && item.semesterName);
+        })
+        .map(item => [item.semesterId, item.semesterName])
+    ).entries()
+  ).map(([id, name]) => ({ id, name }));
+
+  const videoAvailableModules = Array.from(
+    new Map(
+      videoClasses
+        .filter(item => {
+          if (videoFilterSession !== 'all' && item.sessionId !== videoFilterSession) return false;
+          if (videoFilterProgram !== 'all' && item.programId !== videoFilterProgram) return false;
+          if (videoFilterSemester !== 'all' && item.semesterId !== videoFilterSemester) return false;
+          return Boolean(item.moduleId && item.moduleName);
+        })
+        .map(item => [item.moduleId, item.moduleName])
+    ).entries()
+  ).map(([id, name]) => ({ id, name }));
+
+  const filteredVideoClasses = videoClasses.filter(item => {
+    if (videoSearch.trim() && !item.title?.toLowerCase().includes(videoSearch.trim().toLowerCase())) {
+      return false;
+    }
+    if (videoFilterSession !== 'all' && item.sessionId !== videoFilterSession) {
+      return false;
+    }
+    if (videoFilterProgram !== 'all' && item.programId !== videoFilterProgram) {
+      return false;
+    }
+    if (videoFilterSemester !== 'all' && item.semesterId !== videoFilterSemester) {
+      return false;
+    }
+    if (videoFilterModule !== 'all' && item.moduleId !== videoFilterModule) {
+      return false;
+    }
+    return true;
+  });
 
   const uploadModuleEbook = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -621,6 +1149,130 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setEbookEditingMaterialId(material.id);
   };
 
+  const openAddNoteModal = () => {
+    const activeSession = sessions.find((s: any) => s.status === 'active');
+    const defaultSessionId = activeSession ? activeSession.id : (sessions[0]?.id || '');
+    setAddNoteSessionId(defaultSessionId);
+    setAddNoteProgramId('');
+    setAddNoteSemesterId('');
+    setAddNoteModuleId('');
+    setAddNoteBookName('');
+    setAddNoteFile(null);
+    setAddNoteSemesters([]);
+    setAddNoteModules([]);
+    setAddNoteModalOpen(true);
+  };
+
+  const handleAddNoteSessionChange = (sessionId: string) => {
+    setAddNoteSessionId(sessionId);
+    setAddNoteProgramId('');
+    setAddNoteSemesterId('');
+    setAddNoteModuleId('');
+    setAddNoteSemesters([]);
+    setAddNoteModules([]);
+  };
+
+  const handleAddNoteProgramChange = async (programId: string) => {
+    setAddNoteProgramId(programId);
+    setAddNoteSemesterId('');
+    setAddNoteModuleId('');
+    setAddNoteSemesters([]);
+    setAddNoteModules([]);
+    if (!programId) return;
+    setAddNoteSemestersLoading(true);
+    try {
+      const res = await api.get(`/operations/programs/${programId}/semesters`);
+      setAddNoteSemesters(res.data.data || []);
+    } catch {
+      toast.error('Failed to load semesters for program');
+    } finally {
+      setAddNoteSemestersLoading(false);
+    }
+  };
+
+  const handleAddNoteSemesterChange = async (semesterId: string) => {
+    setAddNoteSemesterId(semesterId);
+    setAddNoteModuleId('');
+    setAddNoteModules([]);
+    if (!semesterId || !addNoteProgramId) return;
+    setAddNoteModulesLoading(true);
+    try {
+      const res = await api.get(`/operations/programs/${addNoteProgramId}/modules`, {
+        params: { semesterId },
+      });
+      setAddNoteModules(res.data.data || []);
+    } catch {
+      toast.error('Failed to load modules for semester');
+    } finally {
+      setAddNoteModulesLoading(false);
+    }
+  };
+
+  const handleAddNoteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addNoteSessionId) {
+      toast.error('Please select an Academic Session');
+      return;
+    }
+    if (!addNoteProgramId) {
+      toast.error('Please select a Program');
+      return;
+    }
+    if (!addNoteSemesterId) {
+      toast.error('Please select a Semester');
+      return;
+    }
+    if (!addNoteModuleId) {
+      toast.error('Please select a Module');
+      return;
+    }
+    if (!addNoteBookName.trim()) {
+      toast.error('Please enter the Book Name');
+      return;
+    }
+    if (!addNoteFile) {
+      toast.error('Please upload a note file');
+      return;
+    }
+
+    const allowedExts = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg'];
+    const fileNameLower = addNoteFile.name.toLowerCase();
+    const isAllowed = allowedExts.some(ext => fileNameLower.endsWith(ext));
+    if (!isAllowed) {
+      toast.error('Invalid file type. Please upload a Document (.pdf, .doc, .docx, .xls, .xlsx) or Image (.png, .jpg, .jpeg)');
+      return;
+    }
+
+    const selectedModule = addNoteModules.find((m: any) => m.id === addNoteModuleId);
+    const selectedSemester = addNoteSemesters.find((s: any) => s.id === addNoteSemesterId);
+    const moduleTag = selectedModule ? moduleEbookTag(selectedModule) : `Module: ${addNoteModuleId} - Unknown`;
+    const semesterNum = selectedSemester?.semesterNumber ? String(selectedSemester.semesterNumber) : addNoteSemesterId;
+
+    setAddNoteSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('title', addNoteBookName.trim());
+      formData.append('description', moduleTag);
+      formData.append('category', 'ebook');
+      formData.append('semesterNumber', semesterNum);
+      formData.append('file', addNoteFile);
+
+      await api.post(`/operations/programs/${addNoteProgramId}/materials`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      toast.success('Notes saved successfully');
+      setAddNoteModalOpen(false);
+      setAddNoteFile(null);
+      setAddNoteBookName('');
+      await fetchAllEbooks();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save notes');
+    } finally {
+      setAddNoteSaving(false);
+    }
+  };
+
   const fetchSessions = async () => {
     try {
       const response = await api.get('/operations/sessions');
@@ -664,11 +1316,23 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   useEffect(() => {
     const section = initialTab === 'academic-semesters' ? 'semesters' : initialTab === 'academic-modules' ? 'modules' : initialTab === 'academic-programs' ? 'programs' : 'programs';
     setActiveSection(section);
+    if (initialTab === 'academic-programs') {
+      setProgramSessionFilter('active');
+    }
   }, [initialTab]);
 
-  const displayedPrograms = selectedSessionId
-    ? programs.filter(program => program.academicSessionId === selectedSessionId)
-    : programs;
+  const activeSessionIds = new Set(sessions.filter(s => s.status === 'active').map(s => s.id));
+
+  const displayedPrograms = (() => {
+    if (programSessionFilter === 'all') {
+      return programs;
+    }
+    if (programSessionFilter === 'active') {
+      if (activeSessionIds.size === 0) return programs;
+      return programs.filter(program => program.academicSessionId && activeSessionIds.has(program.academicSessionId));
+    }
+    return programs.filter(program => program.academicSessionId === programSessionFilter);
+  })();
 
   const filteredPrograms = displayedPrograms.filter(program => {
     if (!programSearch.trim()) return true;
@@ -1363,9 +2027,69 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">{initialTab === 'academic-session' ? 'Academic Session' : initialTab === 'academic-semesters' ? 'Semester' : initialTab === 'academic-modules' ? 'Modules' : initialTab === 'academic-ebooks' ? 'E-Book' : initialTab === 'academic-study-material' ? 'Study Material' : initialTab === 'academic-video-classes' ? 'Video Classes' : initialTab === 'academic-scheduled-classes' ? 'Schedule Class' : initialTab === 'academic-examination-manage' ? 'Create Exam Portal' : 'Programs'}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{initialTab === 'academic-session' ? 'Manage academic sessions' : initialTab === 'academic-examination-manage' ? 'Configure the exam details before opening the student portal' : initialTab === 'academic-ebooks' ? 'Manage uploaded E-Books' : initialTab === 'academic-study-material' ? 'Study materials for academic modules' : initialTab === 'academic-video-classes' ? 'Upload and manage video classes for academic modules' : initialTab === 'academic-scheduled-classes' ? 'Schedule a live class and notify selected students' : 'Manage programs by academic session'}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">
+            {initialTab === 'academic-session'
+              ? 'Academic Session'
+              : initialTab === 'academic-semesters'
+              ? 'Semester'
+              : initialTab === 'academic-modules'
+              ? 'Modules'
+              : initialTab === 'academic-ebooks'
+              ? 'E-Book'
+              : initialTab === 'academic-study-material'
+              ? 'Study Material'
+              : initialTab === 'academic-video-classes'
+              ? 'Video Classes'
+              : initialTab === 'academic-scheduled-classes'
+              ? 'Schedule Class'
+              : initialTab === 'academic-examination-manage'
+              ? 'Create Exam Portal'
+              : initialTab === 'academic-calendar'
+              ? 'Academic Calendar'
+              : 'Programs'}
+          </h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            {initialTab === 'academic-session'
+              ? 'Manage academic sessions'
+              : initialTab === 'academic-examination-manage'
+              ? 'Configure the exam details before opening the student portal'
+              : initialTab === 'academic-ebooks'
+              ? 'Manage uploaded E-Books and study notes'
+              : initialTab === 'academic-study-material'
+              ? 'Study materials for academic modules'
+              : initialTab === 'academic-video-classes'
+              ? 'Upload and manage video classes for academic modules'
+              : initialTab === 'academic-scheduled-classes'
+              ? 'Schedule a live class and notify selected students'
+              : initialTab === 'academic-calendar'
+              ? 'Manage and view all academic events, examinations, holidays and important dates.'
+              : 'Manage programs by academic session'}
+          </p>
+        </div>
+        {initialTab === 'academic-ebooks' && (
+          <Button type="button" onClick={openAddNoteModal} className="flex items-center gap-2">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Notes
+          </Button>
+        )}
+        {initialTab === 'academic-video-classes' && (
+          <Button type="button" onClick={openAddVideoModal} className="flex items-center gap-2">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Class video
+          </Button>
+        )}
+        {initialTab === 'academic-calendar' && (
+          <Button
+            type="button"
+            onClick={() => openAddCalendarEventModal()}
+            className="bg-[#EF5A43] hover:bg-[#d94e39] text-white font-medium flex items-center gap-2 shadow-xs"
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Academic Event
+          </Button>
+        )}
       </div>
 
       {initialTab === 'academic-scheduled-classes' && (
@@ -1544,327 +2268,269 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
       {initialTab === 'academic-video-classes' && (
         <div className="space-y-6">
-          {/* Form Card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Video className="h-5 w-5 text-primary" />
-                {editingVideoId ? 'Update Video Class' : 'Add New Video Class'}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {editingVideoId
-                  ? 'Update the video class details below.'
-                  : 'Fill in the details below to upload a new video class or provide a YouTube link.'}
-              </p>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-lg">
+                    Uploaded Video Classes ({filteredVideoClasses.length}{filteredVideoClasses.length !== videoClasses.length ? ` of ${videoClasses.length}` : ''})
+                  </CardTitle>
+                  <CardDescription>
+                    Browse, filter, and manage uploaded video lectures and YouTube classes across modules
+                  </CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleVideoSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Session Dropdown */}
-                  <div className="space-y-2">
-                    <Label htmlFor="video-session">Academic Session *</Label>
-                    <Select
-                      value={videoForm.sessionId}
-                      onValueChange={handleVideoSessionChange}
-                    >
-                      <SelectTrigger id="video-session">
-                        <SelectValue placeholder="Select Session" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sessions.map(s => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {displaySession(s.id)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Programs Dropdown (based on selected session) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="video-program">Program *</Label>
-                    <Select
-                      value={videoForm.programId}
-                      onValueChange={handleVideoProgramChange}
-                      disabled={!videoForm.sessionId}
-                    >
-                      <SelectTrigger id="video-program">
-                        <SelectValue
-                          placeholder={
-                            !videoForm.sessionId ? 'First select a session' : 'Select Program'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {programs
-                          .filter(p => p.academicSessionId === videoForm.sessionId)
-                          .map(p => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Semester Dropdown (based on selected program) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="video-semester">Semester *</Label>
-                    <Select
-                      value={videoForm.semesterId}
-                      onValueChange={handleVideoSemesterChange}
-                      disabled={!videoForm.programId || videoSemestersLoading}
-                    >
-                      <SelectTrigger id="video-semester">
-                        <SelectValue
-                          placeholder={
-                            videoSemestersLoading
-                              ? 'Loading semesters...'
-                              : !videoForm.programId
-                              ? 'First select a program'
-                              : 'Select Semester'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {videoSemesters.map(s => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.semesterName || `Semester ${s.semesterNumber}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Module Dropdown (based on selected semester) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="video-module">Module *</Label>
-                    <Select
-                      value={videoForm.moduleId}
-                      onValueChange={val => setVideoForm(prev => ({ ...prev, moduleId: val }))}
-                      disabled={!videoForm.semesterId || videoModulesLoading}
-                    >
-                      <SelectTrigger id="video-module">
-                        <SelectValue
-                          placeholder={
-                            videoModulesLoading
-                              ? 'Loading modules...'
-                              : !videoForm.semesterId
-                              ? 'First select a semester'
-                              : 'Select Module'
-                          }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {videoModules.map(m => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.moduleCode ? `${m.moduleCode} - ${m.moduleName}` : m.moduleName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Video Title Field */}
-                <div className="space-y-2">
-                  <Label htmlFor="video-title">Video Title *</Label>
+            <CardContent className="space-y-4">
+              {/* Search and Filters Bar */}
+              <div className="flex flex-col lg:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="video-title"
-                    placeholder="Enter video title"
-                    value={videoForm.title}
-                    onChange={e => setVideoForm(prev => ({ ...prev, title: e.target.value }))}
-                    required
+                    placeholder="Search by video title..."
+                    value={videoSearch}
+                    onChange={e => setVideoSearch(e.target.value)}
+                    className="pl-9"
                   />
                 </div>
 
-                {/* Video Description Field */}
-                <div className="space-y-2">
-                  <Label htmlFor="video-description">Video Description</Label>
-                  <textarea
-                    id="video-description"
-                    className="flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="Enter video description..."
-                    value={videoForm.description}
-                    onChange={e => setVideoForm(prev => ({ ...prev, description: e.target.value }))}
-                    rows={2}
-                  />
-                </div>
+                <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                  {/* Session Filter */}
+                  <Select
+                    value={videoFilterSession}
+                    onValueChange={val => {
+                      setVideoFilterSession(val);
+                      setVideoFilterProgram('all');
+                      setVideoFilterSemester('all');
+                      setVideoFilterModule('all');
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-44">
+                      <SelectValue placeholder="All Sessions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sessions</SelectItem>
+                      {sessions.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name || displaySession(s.id)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                {/* File Upload Field for upload (videos, YouTube video link) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                  <div className="space-y-2">
-                    <Label htmlFor="video-file">Upload Video File</Label>
-                    <Input
-                      id="video-file"
-                      type="file"
-                      accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/*"
-                      onChange={e => setVideoFile(e.target.files?.[0] || null)}
-                    />
-                    <p className="text-xs text-muted-foreground">Supported formats: MP4, WebM, OGG, MOV (up to 100MB)</p>
-                  </div>
+                  {/* Program Filter */}
+                  <Select
+                    value={videoFilterProgram}
+                    onValueChange={val => {
+                      setVideoFilterProgram(val);
+                      setVideoFilterSemester('all');
+                      setVideoFilterModule('all');
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-44">
+                      <SelectValue placeholder="All Programs" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      {programs
+                        .filter(p => videoFilterSession === 'all' || p.academicSessionId === videoFilterSession)
+                        .map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="video-youtube">Or YouTube Video Link</Label>
-                    <Input
-                      id="video-youtube"
-                      type="url"
-                      placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
-                      value={videoForm.youtubeUrl}
-                      onChange={e => setVideoForm(prev => ({ ...prev, youtubeUrl: e.target.value }))}
-                    />
-                    <p className="text-xs text-muted-foreground">Paste full YouTube video or share URL</p>
-                  </div>
-                </div>
+                  {/* Semester Filter */}
+                  <Select
+                    value={videoFilterSemester}
+                    onValueChange={val => {
+                      setVideoFilterSemester(val);
+                      setVideoFilterModule('all');
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-40">
+                      <SelectValue placeholder="All Semesters" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
+                      {videoAvailableSemesters.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                {/* Save / Update Button */}
-                <div className="flex items-center gap-2 pt-2">
-                  <Button type="submit" disabled={videoSaving}>
-                    {videoSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {editingVideoId ? 'Update Video Class' : 'Save Video Class'}
-                  </Button>
-                  {editingVideoId && (
-                    <Button type="button" variant="outline" onClick={resetVideoForm} disabled={videoSaving}>
-                      Cancel
+                  {/* Module Filter */}
+                  <Select
+                    value={videoFilterModule}
+                    onValueChange={setVideoFilterModule}
+                  >
+                    <SelectTrigger className="w-full sm:w-44">
+                      <SelectValue placeholder="All Modules" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Modules</SelectItem>
+                      {videoAvailableModules.map(m => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {(videoSearch || videoFilterSession !== 'all' || videoFilterProgram !== 'all' || videoFilterSemester !== 'all' || videoFilterModule !== 'all') && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setVideoSearch('');
+                        setVideoFilterSession('all');
+                        setVideoFilterProgram('all');
+                        setVideoFilterSemester('all');
+                        setVideoFilterModule('all');
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Clear
                     </Button>
                   )}
                 </div>
-              </form>
+              </div>
+
+              {/* Uploaded Videos Grid */}
+              {videoLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredVideoClasses.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  {videoClasses.length === 0
+                    ? 'No video classes uploaded yet. Click "Add Class video" to add your first video class.'
+                    : 'No video classes match your search and filter criteria.'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+                  {filteredVideoClasses.map(item => {
+                    const embedUrl = getYouTubeEmbedUrl(item.youtubeUrl);
+                    const resolvedFileUrl = item.fileUrl
+                      ? (item.fileUrl.startsWith('http')
+                          ? item.fileUrl
+                          : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${item.fileUrl}`)
+                      : null;
+
+                    return (
+                      <Card key={item.id} className="flex flex-col overflow-hidden border">
+                        <div className="aspect-video w-full bg-black relative flex items-center justify-center overflow-hidden">
+                          {embedUrl ? (
+                            <iframe
+                              src={embedUrl}
+                              title={item.title}
+                              className="w-full h-full border-0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          ) : resolvedFileUrl ? (
+                            <video
+                              src={resolvedFileUrl}
+                              controls
+                              className="w-full h-full object-contain"
+                              preload="metadata"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
+                              <Video className="h-10 w-10 mb-2 opacity-50" />
+                              <span className="text-xs">No video stream</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <CardContent className="flex-1 p-4 space-y-3">
+                          <div>
+                            <h4 className="font-semibold text-base line-clamp-1" title={item.title}>
+                              {item.title}
+                            </h4>
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2" title={item.description}>
+                                {item.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 text-xs">
+                            {item.sessionName && (
+                              <Badge variant="outline" className="text-[11px] py-0 px-2">
+                                {item.sessionName}
+                              </Badge>
+                            )}
+                            {item.programName && (
+                              <Badge variant="secondary" className="text-[11px] py-0 px-2">
+                                {item.programName}
+                              </Badge>
+                            )}
+                            {item.semesterName && (
+                              <Badge variant="outline" className="text-[11px] py-0 px-2">
+                                {item.semesterName}
+                              </Badge>
+                            )}
+                            {item.moduleName && (
+                              <Badge variant="default" className="text-[11px] py-0 px-2 bg-primary/80">
+                                {item.moduleName}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {item.youtubeUrl && !embedUrl && (
+                            <a
+                              href={item.youtubeUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline line-clamp-1 block"
+                            >
+                              {item.youtubeUrl}
+                            </a>
+                          )}
+                        </CardContent>
+
+                        <div className="p-4 pt-0 border-t flex justify-end gap-2 mt-auto bg-muted/20 py-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditVideo(item)}
+                          >
+                            <Edit className="h-3.5 w-3.5 mr-1" />
+                            Update
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDeleteVideo(item)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          {/* Uploaded Videos Grid */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold tracking-tight">
-                Uploaded Video Classes ({videoClasses.length})
-              </h3>
-            </div>
-
-            {videoLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : videoClasses.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  No video classes uploaded yet. Use the form above to add your first video class.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {videoClasses.map(item => {
-                  const embedUrl = getYouTubeEmbedUrl(item.youtubeUrl);
-                  const resolvedFileUrl = item.fileUrl
-                    ? (item.fileUrl.startsWith('http')
-                        ? item.fileUrl
-                        : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${item.fileUrl}`)
-                    : null;
-
-                  return (
-                    <Card key={item.id} className="flex flex-col overflow-hidden border">
-                      <div className="aspect-video w-full bg-black relative flex items-center justify-center overflow-hidden">
-                        {embedUrl ? (
-                          <iframe
-                            src={embedUrl}
-                            title={item.title}
-                            className="w-full h-full border-0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                          />
-                        ) : resolvedFileUrl ? (
-                          <video
-                            src={resolvedFileUrl}
-                            controls
-                            className="w-full h-full object-contain"
-                            preload="metadata"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
-                            <Video className="h-10 w-10 mb-2 opacity-50" />
-                            <span className="text-xs">No video stream</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <CardContent className="flex-1 p-4 space-y-3">
-                        <div>
-                          <h4 className="font-semibold text-base line-clamp-1" title={item.title}>
-                            {item.title}
-                          </h4>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2" title={item.description}>
-                              {item.description}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap gap-1.5 text-xs">
-                          {item.sessionName && (
-                            <Badge variant="outline" className="text-[11px] py-0 px-2">
-                              {item.sessionName}
-                            </Badge>
-                          )}
-                          {item.programName && (
-                            <Badge variant="secondary" className="text-[11px] py-0 px-2">
-                              {item.programName}
-                            </Badge>
-                          )}
-                          {item.semesterName && (
-                            <Badge variant="outline" className="text-[11px] py-0 px-2">
-                              {item.semesterName}
-                            </Badge>
-                          )}
-                          {item.moduleName && (
-                            <Badge variant="default" className="text-[11px] py-0 px-2 bg-primary/80">
-                              {item.moduleName}
-                            </Badge>
-                          )}
-                        </div>
-
-                        {item.youtubeUrl && !embedUrl && (
-                          <a
-                            href={item.youtubeUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-primary hover:underline line-clamp-1 block"
-                          >
-                            {item.youtubeUrl}
-                          </a>
-                        )}
-                      </CardContent>
-
-                      <div className="p-4 pt-0 border-t flex justify-end gap-2 mt-auto bg-muted/20 py-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditVideo(item)}
-                        >
-                          <Edit className="h-3.5 w-3.5 mr-1" />
-                          Update
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDeleteVideo(item)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       {initialTab === 'academic-ebooks' && (
         <Card>
-          <CardContent className="pt-6">
+          <CardHeader>
+            <CardTitle>All E-Books & Notes ({allEbooks.length})</CardTitle>
+            <CardDescription>Manage uploaded E-Books, study notes, and reading materials across modules</CardDescription>
+          </CardHeader>
+          <CardContent>
             {allEbooksLoading ? (
               <p className="py-8 text-center text-muted-foreground">Loading E-Books...</p>
             ) : allEbooks.length === 0 ? (
@@ -1874,10 +2540,11 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40">
                     <tr>
+                      <th className="p-3 text-left">Book Name</th>
                       <th className="p-3 text-left">Program</th>
                       <th className="p-3 text-left">Session</th>
                       <th className="p-3 text-left">Module</th>
-                      <th className="p-3 text-left">E-Book File</th>
+                      <th className="p-3 text-left">File</th>
                       <th className="p-3 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -1888,6 +2555,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                         : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${material.fileUrl}`;
                       return (
                         <tr key={material.id} className="border-t">
+                          <td className="p-3 font-medium">{material.title || material.fileName}</td>
                           <td className="p-3">{material.program?.name || '-'}</td>
                           <td className="p-3">{material.session?.name || '-'}</td>
                           <td className="p-3">{material.module?.moduleName || '-'}</td>
@@ -1919,7 +2587,568 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </Card>
       )}
 
-      {initialTab === 'academic-calendar' ? <Card><CardContent className="py-16 text-center text-muted-foreground">Academic Calendar will be available here.</CardContent></Card> : null}
+      {initialTab === 'academic-calendar' && (
+        <div className="space-y-6">
+          {/* Top Filter Bar */}
+          <Card className="shadow-xs border border-border/70">
+            <CardContent className="p-4 sm:p-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-end">
+                {/* Academic Year */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground">Academic Year</Label>
+                  <Select value={calFilterSession} onValueChange={setCalFilterSession}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="All Sessions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sessions</SelectItem>
+                      {sessions.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {displaySession(s.id)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Semester */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground">Semester</Label>
+                  <Select value={calFilterSemester} onValueChange={setCalFilterSemester}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="All Semesters" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
+                      {semesters.map(sem => (
+                        <SelectItem key={sem.id} value={sem.id}>
+                          {sem.semesterName || `Semester ${sem.semesterNumber}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Event Category */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground">Event Category</Label>
+                  <Select value={calFilterCategory} onValueChange={setCalFilterCategory}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {CALENDAR_CATEGORIES.map(cat => (
+                        <SelectItem key={cat} value={cat}>
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${CATEGORY_CONFIG[cat]?.dot || 'bg-slate-400'}`} />
+                            <span>{cat}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Department */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground">Department</Label>
+                  <Select value={calFilterDepartment} onValueChange={setCalFilterDepartment}>
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="All Departments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {calDepartments.length > 0
+                        ? calDepartments.map((dept: any) => (
+                            <SelectItem key={dept.id} value={dept.id}>
+                              {dept.name}
+                            </SelectItem>
+                          ))
+                        : programs.map(p => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 mt-4 pt-3 border-t border-border/50">
+                <Button
+                  type="button"
+                  onClick={applyCalendarFilters}
+                  disabled={calendarLoading}
+                  className="bg-[#EF5A43] hover:bg-[#d94e39] text-white font-medium px-5"
+                >
+                  {calendarLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Apply
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetCalendarFilters}
+                  disabled={calendarLoading}
+                  className="font-medium px-4"
+                >
+                  Reset
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Main Calendar 2-Column Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Calendar Widget */}
+            <div className="lg:col-span-8 space-y-4">
+              <Card className="shadow-xs border border-border/70 overflow-hidden">
+                <CardContent className="p-4 sm:p-6 space-y-4">
+                  {/* Calendar Header Controls */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-2 border-b border-border/60">
+                    <div className="flex items-center gap-2.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={handleCalendarPrev}
+                        title="Previous month"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={handleCalendarNext}
+                        title="Next month"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <h3 className="text-xl font-bold tracking-tight text-foreground ml-1">
+                        {monthDisplayTitle}
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {/* View Switcher Pills */}
+                      <div className="flex rounded-lg bg-muted/60 p-1 border border-border/50">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarView('month')}
+                          className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                            calendarView === 'month'
+                              ? 'bg-sky-100 text-sky-800 shadow-2xs dark:bg-sky-950 dark:text-sky-300 font-bold'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Month
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarView('week')}
+                          className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                            calendarView === 'week'
+                              ? 'bg-sky-100 text-sky-800 shadow-2xs dark:bg-sky-950 dark:text-sky-300 font-bold'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Week
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarView('agenda')}
+                          className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                            calendarView === 'agenda'
+                              ? 'bg-sky-100 text-sky-800 shadow-2xs dark:bg-sky-950 dark:text-sky-300 font-bold'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          Agenda
+                        </button>
+                      </div>
+
+                      {/* Today Button */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCalendarToday}
+                        className="h-8 px-3 text-xs font-medium"
+                      >
+                        Today
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* View 1: Month Grid View */}
+                  {calendarView === 'month' && (
+                    <div className="rounded-xl border border-border/80 overflow-hidden bg-card shadow-2xs">
+                      {/* Sun - Sat Column Headers */}
+                      <div className="grid grid-cols-7 border-b border-border/80 bg-muted/20 text-center py-2.5 text-xs font-semibold text-muted-foreground">
+                        {calendarWeekDays.map(day => (
+                          <div key={day}>{day}</div>
+                        ))}
+                      </div>
+
+                      {/* Day Cells Grid */}
+                      <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-border/80">
+                        {calendarMonthCells.map((cell, idx) => {
+                          const cellEvents = getCalendarEventsForDate(cell.dateKey);
+                          const isToday = cell.dateKey === new Date().toISOString().split('T')[0];
+
+                          return (
+                            <div
+                              key={`${cell.dateKey}-${idx}`}
+                              className={`min-h-[105px] p-1.5 transition-colors group relative flex flex-col justify-between ${
+                                cell.isCurrentMonth
+                                  ? 'bg-card'
+                                  : 'bg-muted/15 text-muted-foreground/40'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span
+                                    className={`text-xs font-medium px-1.5 py-0.2 rounded-full ${
+                                      isToday
+                                        ? 'bg-[#EF5A43] text-white font-bold'
+                                        : cell.isCurrentMonth
+                                        ? 'text-foreground'
+                                        : 'text-muted-foreground/40'
+                                    }`}
+                                  >
+                                    {cell.dayNumber}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openAddCalendarEventModal(cell.dateKey)}
+                                    title={`Add event on ${cell.dateKey}`}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>
+
+                                {/* Event Pills */}
+                                <div className="space-y-1">
+                                  {cellEvents.slice(0, 3).map(ev => {
+                                    const cfg = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG['Others'];
+                                    return (
+                                      <div
+                                        key={ev.id}
+                                        onClick={() => setSelectedCalendarEvent(ev)}
+                                        title={`${ev.title} (${ev.category})${
+                                          ev.startTime ? ` • ${formatTimeDisplay(ev.startTime)}` : ''
+                                        }`}
+                                        className={`px-1.5 py-0.5 rounded text-[11px] font-medium leading-tight truncate cursor-pointer transition-all border ${cfg.bg} ${cfg.text} ${cfg.border} shadow-2xs hover:scale-[1.01]`}
+                                      >
+                                        {ev.title}
+                                      </div>
+                                    );
+                                  })}
+                                  {cellEvents.length > 3 && (
+                                    <div
+                                      onClick={() => {
+                                        setCalendarDate(cell.date);
+                                        setCalendarView('agenda');
+                                      }}
+                                      className="text-[10px] font-semibold text-muted-foreground hover:text-[#EF5A43] cursor-pointer px-1 pt-0.5"
+                                    >
+                                      +{cellEvents.length - 3} more
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View 2: Week View */}
+                  {calendarView === 'week' && (
+                    <div className="rounded-xl border border-border/80 overflow-hidden bg-card shadow-2xs">
+                      <div className="grid grid-cols-7 border-b border-border/80 bg-muted/20 text-center py-2.5 text-xs font-semibold text-muted-foreground divide-x divide-border/80">
+                        {calendarWeekDaysList.map(day => (
+                          <div key={day.dateKey} className="py-1">
+                            <div>{day.dayName}</div>
+                            <div
+                              className={`text-base font-bold mt-0.5 ${
+                                day.dateKey === new Date().toISOString().split('T')[0]
+                                  ? 'text-[#EF5A43]'
+                                  : 'text-foreground'
+                              }`}
+                            >
+                              {day.dayNumber}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 divide-x divide-border/80 min-h-[380px]">
+                        {calendarWeekDaysList.map(day => {
+                          const dayEvents = getCalendarEventsForDate(day.dateKey);
+                          return (
+                            <div key={day.dateKey} className="p-2 space-y-2">
+                              {dayEvents.length === 0 ? (
+                                <p className="text-[11px] text-muted-foreground/40 text-center pt-6">No events</p>
+                              ) : (
+                                dayEvents.map(ev => {
+                                  const cfg = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG['Others'];
+                                  return (
+                                    <div
+                                      key={ev.id}
+                                      onClick={() => setSelectedCalendarEvent(ev)}
+                                      className={`p-2 rounded-lg border text-xs cursor-pointer space-y-1 shadow-2xs transition-all hover:scale-[1.02] ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                                    >
+                                      <p className="font-semibold leading-tight line-clamp-2">{ev.title}</p>
+                                      {ev.startTime && (
+                                        <p className="text-[10px] opacity-80 flex items-center gap-1">
+                                          <Clock className="h-3 w-3 shrink-0" />
+                                          {formatTimeDisplay(ev.startTime)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View 3: Agenda View */}
+                  {calendarView === 'agenda' && (
+                    <div className="rounded-xl border border-border/80 overflow-hidden bg-card divide-y divide-border/80 shadow-2xs">
+                      {calendarEvents.length === 0 ? (
+                        <div className="py-16 text-center text-muted-foreground">
+                          <Calendar className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                          <p>No academic events found for current filters.</p>
+                        </div>
+                      ) : (
+                        calendarEvents.map(ev => {
+                          const cfg = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG['Others'];
+                          const dateStr = new Date(ev.startDate).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          });
+                          return (
+                            <div
+                              key={ev.id}
+                              className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/20 transition-colors"
+                            >
+                              <div className="flex items-start gap-4">
+                                <div className="flex flex-col items-center justify-center min-w-[54px] h-[54px] rounded-lg bg-slate-100 dark:bg-slate-800 border border-border/70 text-center shrink-0">
+                                  <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                                    {new Date(ev.startDate).toLocaleString('default', { month: 'short' })}
+                                  </span>
+                                  <span className="text-xl font-bold leading-none text-foreground mt-0.5">
+                                    {new Date(ev.startDate).getDate()}
+                                  </span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4
+                                      className="font-semibold text-foreground text-sm cursor-pointer hover:underline"
+                                      onClick={() => setSelectedCalendarEvent(ev)}
+                                    >
+                                      {ev.title}
+                                    </h4>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${cfg.badgeBg}`}
+                                    >
+                                      {ev.category}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                    <span>{dateStr}</span>
+                                    {ev.startTime && (
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {formatTimeDisplay(ev.startTime)}
+                                        {ev.endTime ? ` - ${formatTimeDisplay(ev.endTime)}` : ''}
+                                      </span>
+                                    )}
+                                    {ev.program && (
+                                      <span className="flex items-center gap-1">
+                                        <GraduationCap className="h-3 w-3" />
+                                        {ev.program.name}
+                                        {ev.semester
+                                          ? ` · ${ev.semester.semesterName || `Sem ${ev.semester.semesterNumber}`}`
+                                          : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {ev.description && (
+                                    <p className="text-xs text-muted-foreground/80 line-clamp-1">
+                                      {ev.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditCalendarEvent(ev)}
+                                >
+                                  <Edit className="h-3.5 w-3.5 mr-1" /> Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteCalendarEvent(ev.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right Column: Event Categories & Upcoming Events */}
+            <div className="lg:col-span-4 space-y-6">
+              {/* Event Categories Card */}
+              <Card className="shadow-xs border border-border/70">
+                <CardHeader className="pb-3 border-b border-border/50">
+                  <CardTitle className="text-base font-bold text-foreground">
+                    Event Categories
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="grid grid-cols-2 gap-y-3.5 gap-x-2 text-xs font-medium">
+                    {/* Left Column of Categories */}
+                    <div className="space-y-3.5">
+                      {[
+                        'Classes & Teaching',
+                        'Assessment & Assignments',
+                        'University Events',
+                        'Meetings',
+                      ].map(cat => {
+                        const cfg = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG['Others'];
+                        return (
+                          <div key={cat} className="flex items-center gap-2.5">
+                            <span className={`h-3 w-3 rounded-full shrink-0 ${cfg.dot}`} />
+                            <span className="text-foreground text-xs leading-tight">{cat}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Right Column of Categories */}
+                    <div className="space-y-3.5">
+                      {[
+                        'Examinations',
+                        'Holidays',
+                        'Administrative Deadlines',
+                        'Others',
+                      ].map(cat => {
+                        const cfg = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG['Others'];
+                        return (
+                          <div key={cat} className="flex items-center gap-2.5">
+                            <span className={`h-3 w-3 rounded-full shrink-0 ${cfg.dot}`} />
+                            <span className="text-foreground text-xs leading-tight">{cat}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Upcoming Events Card */}
+              <Card className="shadow-xs border border-border/70">
+                <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/50">
+                  <CardTitle className="text-base font-bold text-foreground">
+                    Upcoming Events
+                  </CardTitle>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarView('agenda')}
+                    className="text-xs text-[#EF5A43] hover:underline font-semibold"
+                  >
+                    View All
+                  </button>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-3.5">
+                  {upcomingEventsList.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-6">
+                      No upcoming events scheduled
+                    </p>
+                  ) : (
+                    upcomingEventsList.map(ev => {
+                      const cfg = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG['Others'];
+                      const evDate = new Date(ev.startDate);
+                      const monthShort = evDate.toLocaleString('default', { month: 'short' }).toUpperCase();
+                      const dayNumber = evDate.getDate();
+
+                      return (
+                        <div
+                          key={ev.id}
+                          onClick={() => setSelectedCalendarEvent(ev)}
+                          className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-muted/40 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Date Box */}
+                            <div className="flex flex-col items-center justify-center min-w-[50px] h-[50px] rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-border/70 text-center shrink-0">
+                              <span className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase leading-tight">
+                                {monthShort}
+                              </span>
+                              <span className="text-lg font-bold leading-none text-foreground mt-0.5">
+                                {dayNumber}
+                              </span>
+                            </div>
+
+                            {/* Title & Meta */}
+                            <div className="min-w-0 space-y-0.5">
+                              <p className="font-semibold text-xs sm:text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                                {ev.title}
+                              </p>
+                              <div className="flex items-center gap-2 text-[11px] text-muted-foreground truncate">
+                                {ev.startTime ? (
+                                  <span className="flex items-center gap-1 shrink-0">
+                                    <Clock className="h-3 w-3" />
+                                    {formatTimeDisplay(ev.startTime)}
+                                    {ev.endTime ? ` - ${formatTimeDisplay(ev.endTime)}` : ''}
+                                  </span>
+                                ) : null}
+                                {!ev.startTime && ev.description ? (
+                                  <span className="truncate">{ev.description}</span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Category Pill Badge */}
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium shrink-0 border ${cfg.badgeBg}`}
+                          >
+                            {cfg.shortLabel}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
 
       {initialTab === 'academic-examination-registered' && <Card>
         <CardHeader><CardTitle>Registered Students ({registeredStudents.length})</CardTitle><p className="text-sm text-muted-foreground">Total students registered for examinations</p></CardHeader>
@@ -1963,7 +3192,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
       {(!initialTab || initialTab === 'academic-session') && <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" />Select Academic Session</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" />{initialTab === 'academic-session' ? 'Academic Sessions' : 'Select Academic Session'}</CardTitle>
           <div className="flex items-center gap-2">
             {selectedSessionId && (
               <Button
@@ -2035,40 +3264,41 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </CardContent>
       </Card>}
 
-      {activeSection === 'programs' && (!initialTab || initialTab === 'academic-programs' || initialTab === 'academic-session') && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
+      {activeSection === 'programs' && (!initialTab || initialTab === 'academic-programs') && initialTab !== 'academic-session' && !['academic-calendar', 'academic-examination'].includes(initialTab || '') && (
         <Card>
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <CardTitle>
-                  {selectedSessionId
-                    ? `Programs under Academic Session: ${displaySession(selectedSessionId)} (${filteredPrograms.length})`
-                    : `All Programs (${filteredPrograms.length})`}
+                  {programSessionFilter === 'all'
+                    ? `All Programs (${filteredPrograms.length})`
+                    : programSessionFilter === 'active'
+                    ? `Active Session Programs (${filteredPrograms.length})`
+                    : `Programs under Academic Session: ${displaySession(programSessionFilter)} (${filteredPrograms.length})`}
                 </CardTitle>
-                {selectedSessionId && (() => {
-                  const currSession = sessions.find(s => s.id === selectedSessionId);
+                {programSessionFilter === 'active' ? (
+                  <Badge variant="outline" className="text-green-600 border-green-300">
+                    Active Sessions
+                  </Badge>
+                ) : programSessionFilter === 'all' ? (
+                  <Badge variant="secondary">
+                    All Sessions
+                  </Badge>
+                ) : (() => {
+                  const currSession = sessions.find(s => s.id === programSessionFilter);
                   return currSession ? (
                     <Badge variant="outline" className={currSession.status === 'active' ? 'text-green-600 border-green-300' : ''}>
                       {currSession.status === 'active' ? 'Active' : 'Inactive'}
                     </Badge>
                   ) : null;
                 })()}
-                {selectedSessionId && initialTab !== 'academic-session' && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setSelectedSessionId(null)}
-                  >
-                    View All Programs
-                  </Button>
-                )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                {selectedSessionId
-                  ? `Manage, create, or import academic programs for ${displaySession(selectedSessionId)}`
-                  : 'Manage academic programs across all sessions'}
+                {programSessionFilter === 'all'
+                  ? 'Manage academic programs across all sessions'
+                  : programSessionFilter === 'active'
+                  ? 'Manage academic programs belonging to active academic sessions'
+                  : `Manage, create, or import academic programs for ${displaySession(programSessionFilter)}`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2093,6 +3323,73 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* View All Programs button and Filter by Session dropdown on top of the search bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant={programSessionFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setProgramSessionFilter('all');
+                    setSelectedSessionId(null);
+                  }}
+                  title="View all programs across all sessions"
+                >
+                  <BookOpen className="w-4 h-4 mr-1.5" />
+                  View All Programs
+                </Button>
+                {programSessionFilter !== 'active' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setProgramSessionFilter('active');
+                      const firstActive = sessions.find(s => s.status === 'active');
+                      setSelectedSessionId(firstActive ? firstActive.id : null);
+                    }}
+                    title="View only active session programs"
+                  >
+                    Active Session Programs
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Label htmlFor="program-session-filter" className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  Filter by Session:
+                </Label>
+                <Select
+                  value={programSessionFilter}
+                  onValueChange={(val) => {
+                    setProgramSessionFilter(val);
+                    if (val === 'all') {
+                      setSelectedSessionId(null);
+                    } else if (val === 'active') {
+                      const firstActive = sessions.find(s => s.status === 'active');
+                      setSelectedSessionId(firstActive ? firstActive.id : null);
+                    } else {
+                      setSelectedSessionId(val);
+                    }
+                  }}
+                >
+                  <SelectTrigger id="program-session-filter" className="w-[230px] h-9 text-xs">
+                    <SelectValue placeholder="Filter by Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active Sessions (Default)</SelectItem>
+                    <SelectItem value="all">All Sessions</SelectItem>
+                    {sessions.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {displaySession(s.id)} {s.status === 'active' ? '(Active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -2125,13 +3422,21 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
                     {programSearch
                       ? `No programs matched "${programSearch}". Try clearing your search.`
-                      : initialTab === 'academic-session' && selectedSessionId
-                        ? `There are no academic programs configured under ${displaySession(selectedSessionId)} yet. You can import existing programs from another session or create a new one.`
-                        : 'No academic programs created yet. You can create a new program or import from an academic session.'}
+                      : programSessionFilter === 'active'
+                        ? 'There are no programs configured under the active academic session(s). You can view all programs, import existing programs, or create a new program.'
+                        : programSessionFilter !== 'all'
+                          ? `There are no academic programs configured under ${displaySession(programSessionFilter)} yet. You can import existing programs from another session or create a new one.`
+                          : 'No academic programs created yet. You can create a new program or import from an academic session.'}
                   </p>
                 </div>
                 {!programSearch && (
-                  <div className="flex justify-center gap-2 pt-2">
+                  <div className="flex flex-wrap justify-center gap-2 pt-2">
+                    {programSessionFilter !== 'all' && (
+                      <Button variant="outline" size="sm" onClick={() => setProgramSessionFilter('all')}>
+                        <BookOpen className="w-4 h-4 mr-1.5" />
+                        View All Programs
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" onClick={openImportDialog} disabled={sessions.length < 2}>
                       <ArrowDownToLine className="w-4 h-4 mr-2" />
                       Import from Another Session
@@ -2230,10 +3535,77 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
       {initialTab === 'academic-semesters' && (
         <Card>
-            <CardHeader><div><CardTitle>All Semesters ({semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).length})</CardTitle><p className="text-sm text-muted-foreground">Filter semesters by academic session and program</p></div></CardHeader>
+            <CardHeader>
+              <div>
+                <CardTitle>All Semesters ({semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).length})</CardTitle>
+                <p className="text-sm text-muted-foreground">Filter semesters by academic session and program</p>
+              </div>
+            </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-3 mb-4"><Select value={semesterSessionFilter} onValueChange={setSemesterSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={semesterProgramFilter} onValueChange={setSemesterProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2">{semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).map(semester => <div key={semester.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center border rounded-lg p-4"><div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div><div className="text-sm">{semester.programName}</div><div className="text-sm">{displaySession(semester.academicSessionId)}</div><Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge><div className="flex gap-2"><Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button><Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button><Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button></div></div>)}</div>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Select value={semesterSessionFilter} onValueChange={setSemesterSessionFilter}>
+                  <SelectTrigger className="w-60">
+                    <SelectValue placeholder="Filter by Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sessions</SelectItem>
+                    {sessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{displaySession(session.id)}</span>
+                          {session.status === 'active' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-full border border-green-500/20">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {semesterSessionFilter !== 'all' && (() => {
+                  const selectedSession = sessions.find(s => s.id === semesterSessionFilter);
+                  return selectedSession?.status === 'active' ? (
+                    <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/20 text-xs">
+                      Active
+                    </Badge>
+                  ) : null;
+                })()}
+              </div>
+              <Select value={semesterProgramFilter} onValueChange={setSemesterProgramFilter}>
+                <SelectTrigger className="w-56"><SelectValue placeholder="All Programs" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Programs</SelectItem>
+                  {programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">{semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).map(semester => {
+              const isSessionActive = sessions.find(s => s.id === semester.academicSessionId)?.status === 'active';
+              return (
+                <div key={semester.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center border rounded-lg p-4">
+                  <div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div>
+                  <div className="text-sm">{semester.programName}</div>
+                  <div className="text-sm">
+                    <div>{displaySession(semester.academicSessionId)}</div>
+                    {isSessionActive && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                        Active Session
+                      </span>
+                    )}
+                  </div>
+                  <Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button>
+                    <Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button>
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button>
+                  </div>
+                </div>
+              );
+            })}</div>
           </CardContent>
         </Card>
       )}
@@ -2241,11 +3613,11 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {initialTab === 'academic-modules' && (
         <Card>
           <CardHeader><CardTitle>All Modules ({modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).length})</CardTitle><p className="text-sm text-muted-foreground">Filter modules by academic session, program, and semester</p></CardHeader>
-          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button><Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}>Add Video</Button></div></div>)}</div></div></CardContent>
+          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-56"><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}><div className="flex items-center gap-2"><span>{displaySession(session.id)}</span>{session.status === 'active' && <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-full border border-green-500/20"><span className="h-1.5 w-1.5 rounded-full bg-green-500" />Active</span>}</div></SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button><Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}>Add Video</Button></div></div>)}</div></div></CardContent>
         </Card>
       )}
 
-      {activeSection === 'modules' && initialTab !== 'academic-modules' && (
+      {activeSection === 'modules' && initialTab !== 'academic-modules' && initialTab !== 'academic-session' && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -2288,7 +3660,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         </Card>
       )}
 
-      {activeSection === 'semesters' && initialTab !== 'academic-semesters' && (
+      {activeSection === 'semesters' && initialTab !== 'academic-semesters' && initialTab !== 'academic-session' && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div><CardTitle>Semester Management ({semesters.length})</CardTitle><p className="text-sm text-muted-foreground mt-1">Semesters for {programs.find(program => program.id === selectedProgramId)?.name || 'the selected program'}</p></div>
@@ -3051,6 +4423,682 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             </div>
             <div className="flex gap-2"><Button type="submit" className="flex-1">{editingModuleId ? 'Update Module' : 'Create Module'}</Button><Button type="button" variant="outline" onClick={() => closeModuleDialog(false)}>Cancel</Button></div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addNoteModalOpen} onOpenChange={open => { if (!open && !addNoteSaving) setAddNoteModalOpen(false); }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Notes</DialogTitle>
+            <DialogDescription>
+              Upload notes or study materials for a module. Select the academic session, program, semester, and module.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddNoteSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="addNoteSession">Academic Session *</Label>
+                <Select value={addNoteSessionId} onValueChange={handleAddNoteSessionChange}>
+                  <SelectTrigger id="addNoteSession">
+                    <SelectValue placeholder="Select Academic Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{session.name || displaySession(session.id)}</span>
+                          {session.status === 'active' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-full border border-green-500/20">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="addNoteProgram">Program *</Label>
+                <Select
+                  value={addNoteProgramId}
+                  onValueChange={handleAddNoteProgramChange}
+                  disabled={!addNoteSessionId}
+                >
+                  <SelectTrigger id="addNoteProgram">
+                    <SelectValue placeholder={!addNoteSessionId ? "Select Academic Session first" : "Select Program"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs
+                      .filter(p => !addNoteSessionId || p.academicSessionId === addNoteSessionId)
+                      .map(program => (
+                        <SelectItem key={program.id} value={program.id}>
+                          {program.name} {program.code ? `(${program.code})` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="addNoteSemester">Semester *</Label>
+                <Select
+                  value={addNoteSemesterId}
+                  onValueChange={handleAddNoteSemesterChange}
+                  disabled={!addNoteProgramId || addNoteSemestersLoading}
+                >
+                  <SelectTrigger id="addNoteSemester">
+                    <SelectValue placeholder={
+                      !addNoteProgramId
+                        ? "Select Program first"
+                        : addNoteSemestersLoading
+                        ? "Loading semesters..."
+                        : "Select Semester"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addNoteSemesters.map(semester => (
+                      <SelectItem key={semester.id} value={semester.id}>
+                        {semester.semesterName || `Semester ${semester.semesterNumber}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="addNoteModule">Module *</Label>
+                <Select
+                  value={addNoteModuleId}
+                  onValueChange={setAddNoteModuleId}
+                  disabled={!addNoteSemesterId || addNoteModulesLoading}
+                >
+                  <SelectTrigger id="addNoteModule">
+                    <SelectValue placeholder={
+                      !addNoteSemesterId
+                        ? "Select Semester first"
+                        : addNoteModulesLoading
+                        ? "Loading modules..."
+                        : "Select Module"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addNoteModules.map(module => (
+                      <SelectItem key={module.id} value={module.id}>
+                        {module.moduleCode ? `[${module.moduleCode}] ` : ''}{module.moduleName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="addNoteBookName">Book Name *</Label>
+              <Input
+                id="addNoteBookName"
+                type="text"
+                placeholder="Enter Book Name"
+                value={addNoteBookName}
+                onChange={e => setAddNoteBookName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="addNoteFile">Upload Note (Document, PDF, or Image) *</Label>
+              <Input
+                id="addNoteFile"
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={e => setAddNoteFile(e.target.files?.[0] || null)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Accepted files: Document (.doc, .docx, .xls, .xlsx), PDF (.pdf), or Image (.png, .jpg, .jpeg) up to 100MB.
+              </p>
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:justify-end pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAddNoteModalOpen(false)}
+                disabled={addNoteSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={addNoteSaving || !addNoteFile || !addNoteBookName.trim() || !addNoteModuleId}
+              >
+                {addNoteSaving ? 'Saving...' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={videoModalOpen} onOpenChange={open => { if (!open && !videoSaving) { setVideoModalOpen(false); resetVideoForm(); } }}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Video className="h-5 w-5 text-primary" />
+              {editingVideoId ? 'Update Video Class' : 'Add New Video Class'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingVideoId
+                ? 'Update the video class details below.'
+                : 'Fill in the details below to upload a new video class or provide a YouTube link.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleVideoSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Session Dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-session">Academic Session *</Label>
+                <Select
+                  value={videoForm.sessionId}
+                  onValueChange={handleVideoSessionChange}
+                >
+                  <SelectTrigger id="modal-video-session">
+                    <SelectValue placeholder="Select Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name || displaySession(s.id)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Programs Dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-program">Program *</Label>
+                <Select
+                  value={videoForm.programId}
+                  onValueChange={handleVideoProgramChange}
+                  disabled={!videoForm.sessionId}
+                >
+                  <SelectTrigger id="modal-video-program">
+                    <SelectValue
+                      placeholder={
+                        !videoForm.sessionId ? 'First select a session' : 'Select Program'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs
+                      .filter(p => p.academicSessionId === videoForm.sessionId)
+                      .map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Semester Dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-semester">Semester *</Label>
+                <Select
+                  value={videoForm.semesterId}
+                  onValueChange={handleVideoSemesterChange}
+                  disabled={!videoForm.programId || videoSemestersLoading}
+                >
+                  <SelectTrigger id="modal-video-semester">
+                    <SelectValue
+                      placeholder={
+                        videoSemestersLoading
+                          ? 'Loading semesters...'
+                          : !videoForm.programId
+                          ? 'First select a program'
+                          : 'Select Semester'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {videoSemesters.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.semesterName || `Semester ${s.semesterNumber}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Module Dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-module">Module *</Label>
+                <Select
+                  value={videoForm.moduleId}
+                  onValueChange={val => setVideoForm(prev => ({ ...prev, moduleId: val }))}
+                  disabled={!videoForm.semesterId || videoModulesLoading}
+                >
+                  <SelectTrigger id="modal-video-module">
+                    <SelectValue
+                      placeholder={
+                        videoModulesLoading
+                          ? 'Loading modules...'
+                          : !videoForm.semesterId
+                          ? 'First select a semester'
+                          : 'Select Module'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {videoModules.map(m => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.moduleCode ? `${m.moduleCode} - ${m.moduleName}` : m.moduleName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Video Title Field */}
+            <div className="space-y-2">
+              <Label htmlFor="modal-video-title">Video Title *</Label>
+              <Input
+                id="modal-video-title"
+                placeholder="Enter video title"
+                value={videoForm.title}
+                onChange={e => setVideoForm(prev => ({ ...prev, title: e.target.value }))}
+                required
+              />
+            </div>
+
+            {/* Video Description Field */}
+            <div className="space-y-2">
+              <Label htmlFor="modal-video-description">Video Description</Label>
+              <textarea
+                id="modal-video-description"
+                className="flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Enter video description..."
+                value={videoForm.description}
+                onChange={e => setVideoForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
+            {/* File Upload Field / YouTube Link */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-file">Upload Video File</Label>
+                <Input
+                  id="modal-video-file"
+                  type="file"
+                  accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,video/*"
+                  onChange={e => setVideoFile(e.target.files?.[0] || null)}
+                />
+                <p className="text-xs text-muted-foreground">Supported formats: MP4, WebM, OGG, MOV (up to 100MB)</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="modal-video-youtube">Or YouTube Video Link</Label>
+                <Input
+                  id="modal-video-youtube"
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                  value={videoForm.youtubeUrl}
+                  onChange={e => setVideoForm(prev => ({ ...prev, youtubeUrl: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">Paste full YouTube video or share URL</p>
+              </div>
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:justify-end pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setVideoModalOpen(false); resetVideoForm(); }}
+                disabled={videoSaving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={videoSaving}>
+                {videoSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingVideoId ? 'Update Video Class' : 'Save Video Class'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add / Edit Academic Event Modal */}
+      <Dialog open={calendarModalOpen} onOpenChange={setCalendarModalOpen}>
+        <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">
+              {editingCalendarEventId ? 'Edit Academic Event' : 'Add Academic Event'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCalendarEventId
+                ? 'Update academic event details on the academic calendar.'
+                : 'Fill in event details to display on the university academic calendar.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCalendarEventSubmit} className="space-y-4 pt-2">
+            {/* Event Title */}
+            <div className="space-y-1.5">
+              <Label htmlFor="event-title">Event Title *</Label>
+              <Input
+                id="event-title"
+                placeholder="e.g. Mid Semester Examination"
+                value={calendarForm.title}
+                onChange={e => setCalendarForm(prev => ({ ...prev, title: e.target.value }))}
+                required
+              />
+            </div>
+
+            {/* Event Category & Academic Year */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-category">Event Category *</Label>
+                <Select
+                  value={calendarForm.category}
+                  onValueChange={val => setCalendarForm(prev => ({ ...prev, category: val }))}
+                  required
+                >
+                  <SelectTrigger id="event-category" className="bg-background">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CALENDAR_CATEGORIES.map(cat => (
+                      <SelectItem key={cat} value={cat}>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${CATEGORY_CONFIG[cat]?.dot || 'bg-slate-400'}`} />
+                          <span>{cat}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="event-session">Academic Year *</Label>
+                <Select
+                  value={calendarForm.academicSessionId}
+                  onValueChange={val => setCalendarForm(prev => ({ ...prev, academicSessionId: val }))}
+                  required
+                >
+                  <SelectTrigger id="event-session" className="bg-background">
+                    <SelectValue placeholder="Select academic session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {displaySession(s.id)} {s.status === 'active' ? '(Active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Program & Semester */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-program">Program</Label>
+                <Select
+                  value={calendarForm.programId || 'all'}
+                  onValueChange={handleCalendarProgramChange}
+                >
+                  <SelectTrigger id="event-program" className="bg-background">
+                    <SelectValue placeholder="All Programs (or select one)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Programs</SelectItem>
+                    {programs
+                      .filter(p => !calendarForm.academicSessionId || p.academicSessionId === calendarForm.academicSessionId)
+                      .map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="event-semester">Semester</Label>
+                <Select
+                  value={calendarForm.semesterId || 'all'}
+                  onValueChange={val => setCalendarForm(prev => ({ ...prev, semesterId: val === 'all' ? '' : val }))}
+                  disabled={!calendarForm.programId || calendarForm.programId === 'all' || calendarModalSemestersLoading}
+                >
+                  <SelectTrigger id="event-semester" className="bg-background">
+                    <SelectValue
+                      placeholder={
+                        calendarModalSemestersLoading
+                          ? 'Loading semesters...'
+                          : !calendarForm.programId || calendarForm.programId === 'all'
+                          ? 'Select program first'
+                          : 'All Semesters'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Semesters</SelectItem>
+                    {calendarModalSemesters.map(sem => (
+                      <SelectItem key={sem.id} value={sem.id}>
+                        {sem.semesterName || `Semester ${sem.semesterNumber}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Start Date & End Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-start-date">Start Date *</Label>
+                <Input
+                  id="event-start-date"
+                  type="date"
+                  value={calendarForm.startDate}
+                  onChange={e => {
+                    const newStart = e.target.value;
+                    setCalendarForm(prev => ({
+                      ...prev,
+                      startDate: newStart,
+                      endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
+                    }));
+                  }}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="event-end-date">End Date *</Label>
+                <Input
+                  id="event-end-date"
+                  type="date"
+                  min={calendarForm.startDate || undefined}
+                  value={calendarForm.endDate}
+                  onChange={e => setCalendarForm(prev => ({ ...prev, endDate: e.target.value }))}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Start Time & End Time */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-start-time">Start Time (Optional)</Label>
+                <Input
+                  id="event-start-time"
+                  type="time"
+                  value={calendarForm.startTime}
+                  onChange={e => setCalendarForm(prev => ({ ...prev, startTime: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="event-end-time">End Time (Optional)</Label>
+                <Input
+                  id="event-end-time"
+                  type="time"
+                  min={
+                    calendarForm.startDate === calendarForm.endDate && calendarForm.startTime
+                      ? calendarForm.startTime
+                      : undefined
+                  }
+                  value={calendarForm.endTime}
+                  onChange={e => setCalendarForm(prev => ({ ...prev, endTime: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label htmlFor="event-description">Description (Optional)</Label>
+              <Textarea
+                id="event-description"
+                placeholder="Add notes, schedule, or instructions for this event..."
+                value={calendarForm.description}
+                onChange={e => setCalendarForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:justify-end pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCalendarModalOpen(false)}
+                disabled={calendarSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={calendarSaving}
+                className="bg-[#EF5A43] hover:bg-[#d94e39] text-white"
+              >
+                {calendarSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingCalendarEventId ? 'Update Event' : 'Save Event'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Event Details Dialog */}
+      <Dialog
+        open={Boolean(selectedCalendarEvent)}
+        onOpenChange={open => {
+          if (!open) setSelectedCalendarEvent(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          {selectedCalendarEvent && (() => {
+            const ev = selectedCalendarEvent;
+            const cfg = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG['Others'];
+            const startStr = new Date(ev.startDate).toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            });
+            const endStr = ev.endDate
+              ? new Date(ev.endDate).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })
+              : startStr;
+
+            return (
+              <>
+                <DialogHeader className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${cfg.badgeBg}`}>
+                      <span className={`h-2 w-2 rounded-full mr-1.5 ${cfg.dot}`} />
+                      {ev.category}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{displaySession(ev.academicSessionId)}</span>
+                  </div>
+                  <DialogTitle className="text-xl font-bold leading-snug">{ev.title}</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2 text-sm">
+                  <div className="rounded-lg bg-muted/40 p-3 space-y-2.5">
+                    <div className="flex items-start gap-2.5 text-xs">
+                      <Calendar className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-foreground">
+                          {startStr === endStr ? startStr : `${startStr} - ${endStr}`}
+                        </p>
+                        {ev.startTime && (
+                          <p className="text-muted-foreground mt-0.5">
+                            {formatTimeDisplay(ev.startTime)}{ev.endTime ? ` - ${formatTimeDisplay(ev.endTime)}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {ev.program && (
+                      <div className="flex items-center gap-2.5 text-xs">
+                        <GraduationCap className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-foreground">
+                          {ev.program.name} {ev.semester ? `· ${ev.semester.semesterName || `Semester ${ev.semester.semesterNumber}`}` : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {ev.description && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</p>
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{ev.description}</p>
+                    </div>
+                  )}
+                </div>
+
+                <DialogFooter className="flex gap-2 sm:justify-between border-t pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    disabled={deletingCalendarEventId === ev.id}
+                    onClick={() => handleDeleteCalendarEvent(ev.id)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    {deletingCalendarEventId === ev.id ? 'Deleting...' : 'Delete'}
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => setSelectedCalendarEvent(null)}>
+                      Close
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => handleEditCalendarEvent(ev)}
+                      className="bg-[#EF5A43] hover:bg-[#d94e39] text-white"
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

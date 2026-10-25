@@ -67,6 +67,7 @@ model Organization {
   examinationRegistrations ExaminationRegistration[]
   programMaterials      ProgramMaterial[]
   scheduledClasses     ScheduledClass[]
+  academicCalendarEvents AcademicCalendar[]
   programAllocations    ProgramAllocation[]
   universityAllocations UniversityAllocation[]
   examPortalIntegrations UniversityExamIntegration[]
@@ -143,6 +144,7 @@ model Department {
   vacancies          Vacancy[]
   assistantManagers  User[]          @relation("AssistantManagers")
   hiringRequests     HiringRequest[]
+  academicCalendarEvents AcademicCalendar[]
 
   @@index([organizationId, type])
   @@index([organizationId, status])
@@ -264,6 +266,7 @@ model User {
   requestedHirings              HiringRequest[]        @relation("HiringRequestedBy")
   approvedHirings               HiringRequest[]        @relation("HiringApprovedBy")
   inductionsCompleted           Candidate[]            @relation("InductionCompletedBy")
+  createdAcademicCalendarEvents AcademicCalendar[]     @relation("AcademicCalendarCreator")
 
   @@index([organizationId, role])
   @@index([departmentId])
@@ -425,6 +428,7 @@ model Program {
   scheduledClasses        ScheduledClass[]
   studyCenters            StudyCenter[]         @relation("ProgramToStudyCenter")
   assignedSubDepts        SubDepartment[]       @relation("SubDeptToProgram")
+  academicCalendarEvents  AcademicCalendar[]
 
   @@index([universityId])
   @@index([organizationId])
@@ -470,6 +474,7 @@ model Semester {
   modules           Module[]
   examinations      Examination[]
   scheduledClasses  ScheduledClass[]
+  academicCalendarEvents AcademicCalendar[]
 
   @@unique([programId, semesterNumber])
   @@index([organizationId])
@@ -583,6 +588,7 @@ model StudyCenter {
   onboardingStatus       StudyCenterOnboardingStatus? @relation("CenterOnboardingStatus", fields: [onboardingStatusId], references: [id], onDelete: SetNull)
   allowedPrograms        Program[]              @relation("ProgramToStudyCenter")
   assignedSubDepts       SubDepartment[]        @relation("SubDeptToCenter")
+  academicCalendarEvents AcademicCalendar[]
   associatedUniversities University[]           @relation("UniversityToStudyCenter")
   commissionOuts         CommissionOut[]
 
@@ -1039,6 +1045,7 @@ model AdmissionSession {
   modules                 Module[]
   examinations            Examination[]
   scheduledClasses        ScheduledClass[]
+  academicCalendarEvents  AcademicCalendar[]
   semesters               Semester[]
   studyCenter             StudyCenter?          @relation(fields: [studyCenterId], references: [id])
   subDepartment           SubDepartment?        @relation(fields: [subDepartmentId], references: [id])
@@ -2119,3 +2126,35 @@ model Shift {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees    EmployeeProfile[]
 }
+
+model AcademicCalendar {
+  id                String            @id @default(uuid())
+  organizationId    String
+  title             String
+  category          String
+  academicSessionId String?
+  programId         String?
+  semesterId        String?
+  departmentId      String?
+  studyCenterId     String?
+  startDate         DateTime
+  endDate           DateTime
+  startTime         String?
+  endTime           String?
+  description       String?
+  createdBy         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicSession   AdmissionSession? @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  program           Program?          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  semester          Semester?         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  department        Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  studyCenter       StudyCenter?      @relation(fields: [studyCenterId], references: [id], onDelete: SetNull)
+  creator           User?             @relation("AcademicCalendarCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, startDate, endDate])
+  @@index([academicSessionId, programId, semesterId])
+  @@map("academic_calendar")
+}
+

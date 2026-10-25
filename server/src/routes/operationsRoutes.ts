@@ -88,6 +88,12 @@ import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadPaymentProof, uploadVideo } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
 import { getExamPortalIntegration, saveExamPortalIntegration } from '../controllers/examIntegrationController.js';
+import {
+  getAcademicCalendarEvents,
+  createAcademicCalendarEvent,
+  updateAcademicCalendarEvent,
+  deleteAcademicCalendarEvent,
+} from '../controllers/academicCalendarController.js';
 
 const router = express.Router();
 
@@ -211,5 +217,13 @@ router.delete('/programs/:programId/materials/:materialId', authorize('ops_admin
 
 // Enrollment Uni Enrollment Number Updates
 router.put('/enrollments/:id', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'university_admin'), updateEnrollmentUniNumber);
+
+// Academic Calendar
+router.route('/academic-calendar')
+  .get(authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin', 'student', 'center_admin', 'employee'), getAcademicCalendarEvents)
+  .post(authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), createAcademicCalendarEvent);
+router.route('/academic-calendar/:id')
+  .put(authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), updateAcademicCalendarEvent)
+  .delete(authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), deleteAcademicCalendarEvent);
 
 export default router;
