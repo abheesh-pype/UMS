@@ -121,9 +121,9 @@ export function StudyCenterWalletPanel() {
           <Button variant="outline" size="sm" onClick={fetchAll} disabled={loading}>
             <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
           </Button>
-          <Button size="sm" onClick={() => setOpen(true)}>
+          {/* <Button size="sm" onClick={() => setOpen(true)}>
             <Upload className="w-4 h-4 mr-2" />Request Top-Up
-          </Button>
+          </Button> */}
         </div>
       </div>
 

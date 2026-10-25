@@ -7,6 +7,7 @@ import { hashPassword, generateUserId, generateStudyCenterUserId } from '../util
 import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '../utils/courseTypeHelper.js';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
 // Universities
 export const getUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -1412,7 +1413,75 @@ export const getAdmissionSessions = asyncHandler(async (req: AuthRequest, res: R
       { OR: [{ universityId: program.universityId }, { universityId: null }] },
     ];
   }
-  const sessions = await prisma.admissionSession.findMany({ where, orderBy: { name: 'asc' } });
+  const sessions = await prisma.admissionSession.findMany({
+    where,
+    orderBy: { name: 'asc' },
+    ...(req.query.includeDetails === 'true' ? {
+      include: {
+        university: { select: { id: true, name: true, code: true } },
+        program: { select: { id: true, name: true, code: true, status: true } },
+        studyCenter: { select: { id: true, name: true, code: true, status: true } },
+        subDepartment: { select: { id: true, name: true, type: true } },
+        creator: { select: { id: true, name: true } },
+        approver: { select: { id: true, name: true } },
+        academicPrograms: {
+          where: { organizationId: req.user.organizationId },
+          select: { id: true, name: true, code: true, status: true },
+          orderBy: { name: 'asc' },
+        },
+        semesters: {
+          where: { organizationId: req.user.organizationId },
+          select: {
+            id: true,
+            semesterName: true,
+            semesterNumber: true,
+            startDate: true,
+            endDate: true,
+            status: true,
+            program: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: [{ program: { name: 'asc' } }, { semesterNumber: 'asc' }],
+        },
+        programAllocations: {
+          where: { organizationId: req.user.organizationId },
+          select: {
+            id: true,
+            isActive: true,
+            allocatedAt: true,
+            center: { select: { id: true, name: true, code: true } },
+            program: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { allocatedAt: 'desc' },
+        },
+        programFeeStructures: {
+          where: { organizationId: req.user.organizationId },
+          select: {
+            id: true,
+            level: true,
+            billingCycle: true,
+            baseFee: true,
+            currency: true,
+            program: { select: { id: true, name: true, code: true } },
+            studyCenter: { select: { id: true, name: true, code: true } },
+            university: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        _count: {
+          select: {
+            academicPrograms: true,
+            semesters: true,
+            enrollments: true,
+            programAllocations: true,
+            programFeeStructures: true,
+            modules: true,
+            examinations: true,
+            scheduledClasses: true,
+          },
+        },
+      },
+    } : {}),
+  });
   res.json({ success: true, count: sessions.length, data: sessions });
 });
 export const getAdmissionSession = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -1727,7 +1796,7 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
 
   if (req.file) {
     updateData.paymentProof = {
-      url: `/uploads/${req.file.filename}`,
+      url: getPaymentProofDataUrl(req.file),
       uploadedAt: new Date().toISOString(),
       remarks: remarks?.trim() || ''
     };

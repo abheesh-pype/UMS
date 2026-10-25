@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
-export function StudentsPanel({ operationsMode = false }: { operationsMode?: boolean }) {
+export function StudentsPanel({ operationsMode = false, financeMode = false }: { operationsMode?: boolean; financeMode?: boolean }) {
   const { user } = useAuth();
   const canCreate = ['org_admin', 'superadmin', 'center_admin'].includes(user?.role || '');
   const canEdit = canCreate || (operationsMode && ['ops_admin', 'ops_sub_admin', 'employee'].includes(user?.role || ''));
@@ -72,7 +72,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState('enrolled');
+  const [statusFilter, setStatusFilter] = useState(financeMode ? 'all' : 'enrolled');
   const [universityFilter, setUniversityFilter] = useState('');
   const [centerFilter, setCenterFilter] = useState('');
   const [programFilter, setProgramFilter] = useState('');
@@ -423,6 +423,62 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
         )}
       </div>
 
+      {financeMode ? (
+        <div className="flex gap-2 flex-wrap mb-4">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="enrolled">Enrolled</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="hold">Hold</SelectItem>
+              <SelectItem value="dropout">Dropout</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={sessionFilter} onValueChange={setSessionFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Sessions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sessions</SelectItem>
+              {sessions.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={programFilter} onValueChange={setProgramFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Programs" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Programs</SelectItem>
+              {programs.filter(p => p && p.id).map(program => (
+                <SelectItem key={program.id} value={program.id.toString()}>
+                  {program.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {user?.role !== 'center_admin' && (
+            <Select value={centerFilter} onValueChange={setCenterFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Centers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Centers</SelectItem>
+                {centers.map(center => (
+                  <SelectItem key={center.id} value={center.id}>{center.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      ) : (
       <div className="flex gap-2 flex-wrap mb-4">
         {(operationsMode
           ? [
@@ -507,6 +563,7 @@ export function StudentsPanel({ operationsMode = false }: { operationsMode?: boo
           )}
         </div>
       </div>
+      )}
 
       <div className="flex gap-2 mb-4">
         <Input 

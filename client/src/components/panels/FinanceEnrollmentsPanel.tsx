@@ -685,7 +685,9 @@ export function FinanceEnrollmentsPanel() {
                       </div>
                       {paymentProof && (
                         <a
-                          href={paymentProof.url.startsWith('/') ? paymentProof.url : `/uploads/${paymentProof.url}`}
+                          href={paymentProof.url.startsWith('data:')
+                            ? paymentProof.url
+                            : paymentProof.url.startsWith('/') ? paymentProof.url : `/uploads/${paymentProof.url}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-sm font-semibold text-primary hover:underline"

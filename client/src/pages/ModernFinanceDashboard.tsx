@@ -119,10 +119,10 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'fees': return <ProgramFeeStructurePanel />;
       case 'payroll': return <PayrollPanel />;
       case 'payroll-batches': return <PayrollBatchesPanel allowBatchCreation />;
-      case 'students': return <StudentsPanel />;
+      case 'students': return <StudentsPanel financeMode />;
       case 'study_centers': return <StudyCentersPanel financeMode />;
       case 'broadcast_notifications': return <BroadcastNotificationsPanel />;
-      case 'admission_sessions': return <AdmissionSessionsPanel />;
+      case 'admission_sessions': return <AdmissionSessionsPanel financeMode />;
       case 'auth_fees': return <FinanceAuthFeePanel />;
       case 'pending_payment': return <FinanceCenterVerificationPanel />;
       case 'program_fees': return <ProgramFeeStructurePanel />;
@@ -178,11 +178,11 @@ export function getFinanceNavItems() {
     { id: 'payments', label: 'Payment' },
     { id: 'student_payment_log', label: 'Student Payment Log' },
     { id: 'pending_payment', label: 'Pending Payment' },
-    { id: 'wallet_topups', label: 'Wallet Top Ups' },
+    // { id: 'wallet_topups', label: 'Wallet Top Ups' },
 
     { id: '__student_admission_finance_section', label: 'Student & Admission Finance', isSection: true },
     { id: 'students', label: 'Students' },
-    { id: 'admission_sessions', label: 'Admission' },
+    { id: 'admission_sessions', label: 'Admission Session' },
     { id: 'enrollments_finance', label: 'Enrollment' },
     { id: 'rereg_report_admission', label: 'Re-Registration Report' },
     { id: 'auth_fees', label: 'Auth Fee' },
@@ -294,7 +294,7 @@ function OverviewContent({ metrics, invoices, expenses, payrollBatches, loading,
         {[
           { label: 'My Team', value: 'Team', sub: 'Department Members', icon: <Users className="w-4 h-4" />, tab: 'my_team', urgent: false },
           { label: 'Payroll Batches', value: pendingBatches.length, sub: 'Pending approval', icon: <Users className="w-4 h-4" />, tab: 'payroll-batches', urgent: pendingBatches.length > 0 },
-          { label: 'Wallet Top-Ups', value: metrics.pendingWalletTopUps || 0, sub: 'Awaiting review', icon: <Wallet className="w-4 h-4" />, tab: 'wallet_topups', urgent: (metrics.pendingWalletTopUps || 0) > 0 },
+          // { label: 'Wallet Top-Ups', value: metrics.pendingWalletTopUps || 0, sub: 'Awaiting review', icon: <Wallet className="w-4 h-4" />, tab: 'wallet_topups', urgent: (metrics.pendingWalletTopUps || 0) > 0 },
           { label: 'Enrollments', value: metrics.pendingEnrollments || 0, sub: 'Finance review', icon: <FileText className="w-4 h-4" />, tab: 'enrollments_finance', urgent: (metrics.pendingEnrollments || 0) > 0 },
           { label: 'Pending Centers', value: metrics.pendingCenters || 0, sub: 'Payment verification', icon: <Receipt className="w-4 h-4" />, tab: 'pending_payment', urgent: (metrics.pendingCenters || 0) > 0 },
         ].map(item => (

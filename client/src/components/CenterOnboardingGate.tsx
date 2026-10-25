@@ -209,7 +209,9 @@ export function CenterOnboardingGate({ children }: Props) {
                             <DialogTitle>Payment Proof</DialogTitle>
                           </DialogHeader>
                           <img
-                            src={data.paymentProof.url.startsWith('http') ? data.paymentProof.url : `${window.location.origin}${data.paymentProof.url}`}
+                            src={data.paymentProof.url.startsWith('http') || data.paymentProof.url.startsWith('data:')
+                              ? data.paymentProof.url
+                              : `${window.location.origin}${data.paymentProof.url}`}
                             alt="Uploaded payment proof"
                             className="max-h-[75vh] w-full rounded-md border object-contain bg-muted"
                           />

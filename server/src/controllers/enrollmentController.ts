@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -499,6 +500,18 @@ export const getMyEnrollments = asyncHandler(async (req: AuthRequest, res: Respo
   res.json({ success: true, count: enrollments.length, data: enrollments });
 });
 
+export const uploadEnrollmentPaymentProof = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, message: 'No payment proof uploaded' });
+    return;
+  }
+  res.json({
+    success: true,
+    url: getPaymentProofDataUrl(req.file),
+    filename: req.file.originalname,
+  });
+});
+
 export const getMyCenterStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
   const center = await prisma.studyCenter.findUnique({ where: { id: req.user.studyCenterId || '' } });
   if (!center) {
@@ -577,7 +590,7 @@ export const submitMyCenterPayment = asyncHandler(async (req: AuthRequest, res: 
       onboardingStatusId: targetStatus?.id || existingCenter.onboardingStatusId,
       status: 'pending_payment' as any,
       paymentProof: {
-        url: `/uploads/${req.file.filename}`,
+        url: getPaymentProofDataUrl(req.file),
         uploadedAt: new Date().toISOString(),
         remarks
       },

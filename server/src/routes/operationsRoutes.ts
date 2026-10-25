@@ -85,7 +85,7 @@ import {
   deleteProgramMaterial,
 } from '../controllers/programMaterialController.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload, uploadVideo } from '../middleware/upload.js';
+import { upload, uploadPaymentProof, uploadVideo } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
 import { getExamPortalIntegration, saveExamPortalIntegration } from '../controllers/examIntegrationController.js';
 
@@ -139,7 +139,7 @@ router.put('/examinations/:id/modules', authorize('org_admin', 'superadmin', 'op
 
 // Onboarding — document verification (must be before /centers/:id to avoid route conflict)
 router.get('/centers/pending-verification', authorize('ops_admin', 'ops_sub_admin', 'employee'), getPendingVerificationCenters);
-router.put('/centers/:id/verify', authorize('ops_admin', 'ops_sub_admin', 'employee'), upload.single('paymentProof'), verifyCenter);
+router.put('/centers/:id/verify', authorize('ops_admin', 'ops_sub_admin', 'employee'), uploadPaymentProof.single('paymentProof'), verifyCenter);
 
 // Study Centers Bulk Import
 router.post('/centers/bulk-import', authorize('org_admin', 'superadmin', 'ops_admin'), bulkImportStudyCenters);

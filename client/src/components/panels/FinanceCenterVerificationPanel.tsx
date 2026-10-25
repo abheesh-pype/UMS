@@ -55,6 +55,9 @@ const normalizeProofUrl = (url?: string) => {
 const getPaymentProofUrl = (paymentProof?: PaymentProof | string | null) =>
   typeof paymentProof === 'string' ? paymentProof : paymentProof?.url || '';
 
+const isImageProofUrl = (url: string) =>
+  url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url);
+
 const hasPaymentProof = (paymentProof?: PaymentProof | string | null) => {
   const url = getPaymentProofUrl(paymentProof);
   return typeof url === 'string' && url.trim().length > 0;
@@ -276,7 +279,7 @@ export function FinanceCenterVerificationPanel() {
   if (selectedCenter) {
     const rawProofUrl = getPaymentProofUrl(selectedCenter.paymentProof);
     const proofUrl = normalizeProofUrl(rawProofUrl);
-    const isImageProof = !!proofUrl && /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(proofUrl);
+    const isImageProof = !!proofUrl && isImageProofUrl(proofUrl);
     const proofDetails = typeof selectedCenter.paymentProof === 'string' ? null : selectedCenter.paymentProof;
     const fees = selectedCenter.authFees || [];
 
@@ -286,7 +289,7 @@ export function FinanceCenterVerificationPanel() {
           <Dialog open={!!proofPreviewUrl} onOpenChange={(open) => !open && setProofPreviewUrl(null)}>
             <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 bg-transparent shadow-none">
               <div className="rounded-2xl border bg-background p-2 shadow-2xl">
-                {/\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(proofPreviewUrl) ? (
+                {isImageProofUrl(proofPreviewUrl) ? (
                   previewImageFailed ? (
                     <p role="alert" className="p-3 text-sm text-destructive">
                       Unable to load the saved payment proof image. Check that the uploaded file is available on the server.
@@ -470,7 +473,7 @@ export function FinanceCenterVerificationPanel() {
         <Dialog open onOpenChange={open => !open && setProofPreviewUrl(null)}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 bg-transparent shadow-none">
             <div className="rounded-2xl border bg-background p-2 shadow-2xl">
-              {/\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(proofPreviewUrl) ? (
+              {isImageProofUrl(proofPreviewUrl) ? (
                 previewImageFailed ? (
                   <p role="alert" className="p-3 text-sm text-destructive">
                     Unable to load the saved payment proof image. Check that the uploaded file is available on the server.

@@ -42,7 +42,7 @@ import {
   getReregPendingReport,
   getReregCompletedReport,
 } from '../controllers/financeController.js';
-import { upload } from '../middleware/upload.js';
+import { upload, uploadPaymentProof } from '../middleware/upload.js';
 import {
   getProgramFees,
   getProgramFee,
@@ -143,7 +143,7 @@ router.put('/auth-fees/:id', authorize('finance_admin'), updateAuthFee);
 // Study Center Payment Verification & Creation
 router.get('/centers/pending-payment', authorize('finance_admin', 'finance_sub_admin'), getPendingPaymentCenters);
 router.put('/centers/:id/assign', authorize('finance_admin'), assignFinanceCenter);
-router.put('/centers/:id/payment-proof', authorize('finance_admin', 'finance_sub_admin'), upload.single('proofFile'), updateCenterPaymentProof);
+router.put('/centers/:id/payment-proof', authorize('finance_admin', 'finance_sub_admin'), uploadPaymentProof.single('proofFile'), updateCenterPaymentProof);
 router.post('/centers', authorize('finance_admin', 'org_admin', 'superadmin'), createStudyCenter);
 router.put('/centers/:id/finance-verify', authorize('finance_admin', 'finance_sub_admin'), financeVerifyCenter);
 

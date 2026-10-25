@@ -91,11 +91,11 @@ export function ModernStudyCenterDashboard({ initialTab, onNavigate }: { initial
                     <p className="text-sm font-semibold">Enroll Student</p>
                     <p className="text-xs text-muted-foreground">Submit a new enrollment</p>
                   </button>
-                  <button onClick={() => onNavigate ? onNavigate('center_wallet') : handleTabChange('wallet')} className="p-4 rounded-xl border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left">
+                  {/* <button onClick={() => onNavigate ? onNavigate('center_wallet') : handleTabChange('wallet')} className="p-4 rounded-xl border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left">
                     <Wallet className="w-5 h-5 text-success mb-2" />
                     <p className="text-sm font-semibold">Top Up Wallet</p>
                     <p className="text-xs text-muted-foreground">Request balance top-up</p>
-                  </button>
+                  </button> */}
                 </div>              </div>
             </div>
 </div>

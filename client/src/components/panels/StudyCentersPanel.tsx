@@ -623,7 +623,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
       : rawPaymentProofUrl.startsWith('/')
         ? `${window.location.origin}${rawPaymentProofUrl}`
         : `${window.location.origin}/${rawPaymentProofUrl.replace(/^\.?\//, '')}`;
-    const isPaymentImage = /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(paymentProofUrl);
+    const isPaymentImage = paymentProofUrl.startsWith('data:image/') || /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(paymentProofUrl);
     const detailRows = [
       ['Center Name', selectedCenter.name],
       ['Center Code', selectedCenter.code],

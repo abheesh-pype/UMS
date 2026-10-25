@@ -403,7 +403,7 @@ function CenterDetailsContent({ details }: { details: any }) {
   const proof = typeof center.paymentProof === 'string'
     ? { url: center.paymentProof }
     : center.paymentProof;
-  const fileUrl = (url: string) => url.startsWith('/') ? url : `/uploads/${url}`;
+  const fileUrl = (url: string) => url.startsWith('data:') || url.startsWith('/') ? url : `/uploads/${url}`;
   const statusLabel = STATUS_CONFIG[center.status]?.label || center.status.replace(/_/g, ' ');
   const infoRows: [string, string][] = [
     ['Center Code', center.code],

@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
+import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 import {
   calculateFinancialYear,
   generateNextInvoiceNumber,
@@ -853,7 +854,7 @@ export const updateCenterPaymentProof = asyncHandler(async (req: AuthRequest, re
   }
 
   const paymentProof = {
-    url: `/uploads/${req.file.filename}`,
+    url: getPaymentProofDataUrl(req.file),
     uploadedAt: new Date().toISOString(),
     remarks: typeof req.body.remarks === 'string' ? req.body.remarks.trim() : ''
   };

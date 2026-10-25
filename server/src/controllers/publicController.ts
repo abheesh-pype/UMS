@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { getSingleTenantContext } from '../utils/contextHelper.js';
 import { getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
 export const validateInviteToken = asyncHandler(async (req: Request, res: Response) => {
   const invite = await prisma.studyCenterInvite.findUnique({ where: { token: req.params.token } });
@@ -801,7 +802,7 @@ const savePublicStudentPaymentProof = async (enrollment: any, req: Request, res:
   documents.push({
     name: req.file.originalname,
     reqName: 'Student Payment Proof',
-    url: `/uploads/${req.file.filename}`,
+    url: getPaymentProofDataUrl(req.file),
     uploadedAt: new Date().toISOString(),
     remarks: typeof req.body.remarks === 'string' ? req.body.remarks.trim().slice(0, 500) : '',
   });

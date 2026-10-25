@@ -384,10 +384,14 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
 
     const formData = new FormData();
     formData.append('file', file);
+    const isPaymentProof = /payment proof|payment receipt/i.test(reqName || '');
 
     setUploading(true);
     try {
-      const res = await api.post(mode === 'public' ? '/public/student-enrollment/upload' : '/enrollment/upload', formData, {
+      const uploadUrl = isPaymentProof && mode !== 'public'
+        ? '/enrollment/payment-proof-upload'
+        : mode === 'public' ? '/public/student-enrollment/upload' : '/enrollment/upload';
+      const res = await api.post(uploadUrl, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (res.data.success) {

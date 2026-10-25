@@ -44,6 +44,27 @@ export const upload = multer({
   fileFilter,
 });
 
+const paymentProofFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+  if (allowedTypes.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+  cb(new Error('Invalid payment proof type. Upload a JPEG, PNG, GIF, WebP, or PDF file.'));
+};
+
+export const uploadPaymentProof = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600'),
+  },
+  fileFilter: paymentProofFileFilter,
+});
+
 const videoFileFilter = (
   req: Request,
   file: Express.Multer.File,

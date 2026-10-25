@@ -11,6 +11,7 @@ import {
   getMyEnrollments,
   getMyCenterStatus,
   submitMyCenterPayment,
+  uploadEnrollmentPaymentProof,
   getAllEnrollments,
   getActiveSessions,
   checkEmailUniqueness,
@@ -31,7 +32,7 @@ import {
   rejectUniversityEnrollment,
 } from '../controllers/universityEnrollmentController.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload } from '../middleware/upload.js';
+import { upload, uploadPaymentProof } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -54,7 +55,8 @@ router.get('/enrollments', authorize('center_admin'), getMyEnrollments);
 
 // Center onboarding status & payment (authenticated)
 router.get('/my-center-status', authorize('center_admin'), getMyCenterStatus);
-router.post('/submit-payment', authorize('center_admin'), upload.single('proofFile'), submitMyCenterPayment);
+router.post('/submit-payment', authorize('center_admin'), uploadPaymentProof.single('proofFile'), submitMyCenterPayment);
+router.post('/payment-proof-upload', uploadPaymentProof.single('file'), uploadEnrollmentPaymentProof);
 
 // Dedicated file upload for enrollment documents
 router.post('/upload', upload.single('file'), (req, res) => {

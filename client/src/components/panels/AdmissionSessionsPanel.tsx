@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Calendar, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Copy, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -11,7 +11,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
-export function AdmissionSessionsPanel() {
+export function AdmissionSessionsPanel({ financeMode = false }: { financeMode?: boolean }) {
   const { user } = useAuth();
   const canWrite = ['org_admin', 'superadmin'].includes(user?.role || '');
   const [sessions, setSessions] = useState<any[]>([]);
@@ -21,6 +21,7 @@ export function AdmissionSessionsPanel() {
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     subDepartmentId: '',
@@ -35,12 +36,18 @@ export function AdmissionSessionsPanel() {
     fetchSessions();
     fetchDepartments();
     fetchUniversities();
-  }, [universityFilter]);
+  }, [universityFilter, financeMode]);
 
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const q = universityFilter && universityFilter !== 'all' ? `?universityId=${universityFilter}` : '';
+      const params = new URLSearchParams();
+      if (financeMode) {
+        params.set('includeDetails', 'true');
+      }
+      if (universityFilter && universityFilter !== 'all') params.set('universityId', universityFilter);
+      const query = params.toString();
+      const q = query ? `?${query}` : '';
       const res = await api.get(`/operations/sessions${q}`);
       setSessions(res.data.data || []);
     } catch (err) {
@@ -139,8 +146,10 @@ export function AdmissionSessionsPanel() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Admission Session Management</h2>
-          <p className="text-muted-foreground">Manage admission sessions and cycles</p>
+          <h2 className="text-2xl font-bold">{financeMode ? 'Admission Sessions' : 'Admission Session Management'}</h2>
+          <p className="text-muted-foreground">
+            {financeMode ? 'View active admission sessions and their related details' : 'Manage admission sessions and cycles'}
+          </p>
         </div>
         {canWrite && (
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
@@ -232,36 +241,150 @@ export function AdmissionSessionsPanel() {
             <div className="text-center py-8 text-muted-foreground">No sessions found</div>
           ) : (
             <div className="space-y-2">
-              {sessions.filter(s => s && (s.id || s.id)).map((s) => {
-                const sid = s.id || s.id;
-                const subDeptName = typeof s.subDepartmentId === 'object' ? s.subDepartmentId?.name : '';
+              {sessions.filter(s => s && s.id).map((s) => {
+                const sid = s.id;
+                const isExpanded = expandedSessionId === sid;
+                const primaryProgram = s.program;
+                const academicPrograms = s.academicPrograms || [];
+                const semesters = s.semesters || [];
+                const allocations = s.programAllocations || [];
+                const feeStructures = s.programFeeStructures || [];
+                const counts = s._count || {};
                 return (
-                  <div key={sid} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Calendar className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <div className="font-medium">{s.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {subDeptName && `${subDeptName} • `}
-                          {s.startDate && new Date(s.startDate).toLocaleDateString()} – {s.endDate && new Date(s.endDate).toLocaleDateString()}
-                        </div>
-                        {s.examDate && (
-                          <div className="text-xs text-muted-foreground">Exam: {new Date(s.examDate).toLocaleDateString()}</div>
+                  <div key={sid} className="border rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50">
+                      <button
+                        type="button"
+                        className="flex items-center gap-3 min-w-0 text-left"
+                        aria-expanded={isExpanded}
+                        onClick={() => setExpandedSessionId(isExpanded ? null : sid)}
+                      >
+                        {isExpanded
+                          ? <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />
+                          : <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />}
+                        <span className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Calendar className="w-5 h-5 text-primary" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium truncate">{s.name}</span>
+                          <span className="block text-sm text-muted-foreground">
+                            {s.startDate && new Date(s.startDate).toLocaleDateString()} – {s.endDate && new Date(s.endDate).toLocaleDateString()}
+                          </span>
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge className={s.status === 'active' ? 'bg-green-600 text-white hover:bg-green-600' : ''}>
+                          {s.status}
+                        </Badge>
+                        {canWrite && (
+                          <>
+                            <Button title="Duplicate" variant="ghost" size="sm" onClick={() => handleDuplicate(sid)}><Copy className="w-4 h-4" /></Button>
+                            <Button title="Edit" variant="ghost" size="sm" onClick={() => handleEdit(s)}><Edit className="w-4 h-4" /></Button>
+                            <Button title="Delete" variant="ghost" size="sm" onClick={() => handleDelete(sid)}><Trash2 className="w-4 h-4" /></Button>
+                          </>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge>{s.status}</Badge>
-                      {canWrite && (
-                        <>
-                          <Button title="Duplicate" variant="ghost" size="sm" onClick={() => handleDuplicate(sid)}><Copy className="w-4 h-4" /></Button>
-                          <Button title="Edit" variant="ghost" size="sm" onClick={() => handleEdit(s)}><Edit className="w-4 h-4" /></Button>
-                          <Button title="Delete" variant="ghost" size="sm" onClick={() => handleDelete(sid)}><Trash2 className="w-4 h-4" /></Button>
-                        </>
-                      )}
-                    </div>
+                    {isExpanded && (
+                      <div className="border-t bg-muted/20 p-4 space-y-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {[
+                            ['Session ID', s.id],
+                            ['Status', s.status],
+                            ['Capacity', s.capacity ?? 'Not set'],
+                            ['Start Date', s.startDate ? new Date(s.startDate).toLocaleDateString() : 'Not set'],
+                            ['End Date', s.endDate ? new Date(s.endDate).toLocaleDateString() : 'Not set'],
+                            ['Re-registration Payment Closing Date', s.reregPaymentClosingDate ? new Date(s.reregPaymentClosingDate).toLocaleDateString() : 'Not set'],
+                            ['University', s.university ? `${s.university.name} (${s.university.code})` : 'Not assigned'],
+                            ['Primary Program', primaryProgram ? `${primaryProgram.name} (${primaryProgram.code})` : 'Not assigned'],
+                            ['Study Centre', s.studyCenter ? `${s.studyCenter.name} (${s.studyCenter.code})` : 'Not assigned'],
+                            ['Department', s.subDepartment?.name || 'Not assigned'],
+                            ['Created', s.createdAt ? new Date(s.createdAt).toLocaleString() : 'Not available'],
+                            ['Last Updated', s.updatedAt ? new Date(s.updatedAt).toLocaleString() : 'Not available'],
+                            ['Created By', s.creator?.name || 'Not available'],
+                            ['Approved By', s.approver?.name || 'Not approved'],
+                            ['Approved At', s.approvedAt ? new Date(s.approvedAt).toLocaleString() : 'Not approved'],
+                          ].map(([label, value]) => (
+                            <div key={label} className="min-w-0">
+                              <p className="text-xs text-muted-foreground">{label}</p>
+                              <p className="text-sm font-medium break-words">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                          {[
+                            ['Programs', counts.academicPrograms ?? academicPrograms.length],
+                            ['Semesters', counts.semesters ?? semesters.length],
+                            ['Enrollments', counts.enrollments ?? 0],
+                            ['Program Allocations', counts.programAllocations ?? allocations.length],
+                            ['Fee Configurations', counts.programFeeStructures ?? feeStructures.length],
+                            ['Modules', counts.modules ?? 0],
+                            ['Examinations', counts.examinations ?? 0],
+                            ['Scheduled Classes', counts.scheduledClasses ?? 0],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-md border bg-background p-2">
+                              <p className="text-xs text-muted-foreground">{label}</p>
+                              <p className="text-base font-semibold">{value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {academicPrograms.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-2">Programs in this Session</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {academicPrograms.map((program: any) => (
+                                <Badge key={program.id} variant="outline">{program.name} ({program.code}) · {program.status}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {semesters.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-2">Semester Records</h4>
+                            <div className="space-y-2">
+                              {semesters.map((semester: any) => (
+                                <div key={semester.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3">
+                                  <span className="text-sm font-medium">
+                                    {semester.program?.name || 'Program'} · {semester.semesterName}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(semester.startDate).toLocaleDateString()} – {new Date(semester.endDate).toLocaleDateString()} · {semester.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {allocations.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-2">Study Centre Program Allocations</h4>
+                            <div className="space-y-2">
+                              {allocations.map((allocation: any) => (
+                                <div key={allocation.id} className="rounded-md border bg-background p-3 text-sm">
+                                  {allocation.center?.name || 'Study Centre'} ({allocation.center?.code || '—'})
+                                  {' · '}{allocation.program?.name || 'Program'} ({allocation.program?.code || '—'})
+                                  {' · '}{allocation.isActive ? 'Active' : 'Inactive'}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {feeStructures.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-2">Fee Configurations</h4>
+                            <div className="space-y-2">
+                              {feeStructures.map((fee: any) => (
+                                <div key={fee.id} className="rounded-md border bg-background p-3 text-sm">
+                                  {fee.level} · {fee.program?.name || 'All Programs'}
+                                  {' · '}{fee.studyCenter?.name || fee.university?.name || 'Organization-wide'}
+                                  {' · '}{fee.billingCycle} · {fee.currency} {Number(fee.baseFee || 0).toLocaleString()}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
