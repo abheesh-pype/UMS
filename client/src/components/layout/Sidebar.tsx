@@ -248,12 +248,12 @@ export function Sidebar({ isCollapsed, onToggle, activeModule, onModuleChange }:
   return (
     <div
       className={cn(
-        'flex flex-col h-screen bg-slate-900 text-white transition-all duration-300 border-r border-slate-800',
+        'flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 border-r border-sidebar-border',
         isCollapsed ? 'w-16' : 'w-64'
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800">
+      <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="UMS" className="w-8 h-8 object-contain rounded-lg" />
@@ -267,7 +267,7 @@ export function Sidebar({ isCollapsed, onToggle, activeModule, onModuleChange }:
           variant="ghost"
           size="icon"
           onClick={onToggle}
-          className="text-slate-400 hover:text-white hover:bg-slate-800"
+          className="text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
         >
           {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </Button>
@@ -294,13 +294,13 @@ export function Sidebar({ isCollapsed, onToggle, activeModule, onModuleChange }:
         {!isCollapsed && (
           <div className="mb-4 px-2">
             <p className="text-sm font-medium text-white">{user.name}</p>
-            <p className="text-xs text-slate-400 capitalize">{user.role.replace('_', ' ')}</p>
+            <p className="text-xs text-sidebar-foreground/60 capitalize">{user.role.replace('_', ' ')}</p>
           </div>
         )}
         <Button
           variant="ghost"
           className={cn(
-            'w-full text-slate-400 hover:text-white hover:bg-slate-800',
+            'w-full text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent',
             isCollapsed && 'px-2'
           )}
           onClick={logout}
@@ -347,8 +347,8 @@ function NavItemComponent({ item, isCollapsed, isActive, activeChild, onClick, l
         className={cn(
           'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
           isActive
-            ? 'bg-blue-600 text-white'
-            : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+            ? 'bg-[#35252c] text-[#ff5945] ring-1 ring-white/70'
+            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground',
           isCollapsed && 'justify-center px-2'
         )}
         style={{ paddingLeft: isCollapsed ? undefined : `${12 + level * 12}px` }}
@@ -384,8 +384,8 @@ function NavItemComponent({ item, isCollapsed, isActive, activeChild, onClick, l
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                 activeChild === child.id
-                  ? 'bg-blue-600/50 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                  ? 'bg-[#35252c] text-[#ff5945]'
+                  : 'text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground'
               )}
             >
               <child.icon className="w-4 h-4 flex-shrink-0" />

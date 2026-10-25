@@ -473,7 +473,7 @@ export function PrismaLayout({
           </div>
         </header>
 
-        <section className="flex-1 overflow-auto p-4 lg:p-8 bg-[radial-gradient(circle_at_top_right,hsl(30_82%_73%_/_0.14),transparent_30%),hsl(var(--background))]">
+        <section data-app-content className="flex-1 overflow-auto p-4 lg:p-6 bg-background">
           <div className="max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
             {children}
           </div>
