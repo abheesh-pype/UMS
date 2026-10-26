@@ -64,6 +64,9 @@ interface EditSalesStudentDialogProps {
   onOpenChange: (open: boolean) => void;
   enrollment: any | null;
   onSuccess?: () => void;
+  // 'resubmit' corrects an Operations-rejected application and sends it back for review;
+  // 'update' saves corrected details without changing where the application is in the workflow
+  mode?: 'resubmit' | 'update';
 }
 
 export function EditSalesStudentDialog({
@@ -71,7 +74,9 @@ export function EditSalesStudentDialog({
   onOpenChange,
   enrollment,
   onSuccess,
+  mode = 'resubmit',
 }: EditSalesStudentDialogProps) {
+  const isUpdate = mode === 'update';
   const [activeTab, setActiveTab] = useState<'basic' | 'personal' | 'education' | 'documents'>('basic');
   const [programs, setPrograms] = useState<Program[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -313,12 +318,17 @@ export function EditSalesStudentDialog({
         documents,
       };
 
-      await api.put(`/sales/student-applications/${enrollment.id}/resubmit`, payload);
-      toast.success('Enrollment updated and re-submitted to Operations successfully!');
+      if (isUpdate) {
+        await api.put(`/sales/student-applications/${enrollment.id}`, payload);
+        toast.success('Student details updated successfully');
+      } else {
+        await api.put(`/sales/student-applications/${enrollment.id}/resubmit`, payload);
+        toast.success('Enrollment updated and re-submitted to Operations successfully!');
+      }
       onOpenChange(false);
       onSuccess?.();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to update and re-submit enrollment');
+      toast.error(err.response?.data?.message || (isUpdate ? 'Failed to update student details' : 'Failed to update and re-submit enrollment'));
     } finally {
       setSubmitting(false);
     }
@@ -333,18 +343,26 @@ export function EditSalesStudentDialog({
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle className="text-xl">Edit &amp; Re-Submit Application</DialogTitle>
-            <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-400/40">
-              Rejected by Operations
-            </Badge>
+            <DialogTitle className="text-xl">{isUpdate ? 'Update Student Details' : 'Edit & Re-Submit Application'}</DialogTitle>
+            {isUpdate ? (
+              <Badge variant="outline" className="border-yellow-400/40 bg-yellow-500/10 text-yellow-700">
+                {String(enrollment.status || '').replace(/_/g, ' ')}
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="bg-red-500/10 text-red-600 border-red-400/40">
+                Rejected by Operations
+              </Badge>
+            )}
           </div>
           <DialogDescription>
-            Correct the rejected student details and re-submit the application to Operations for verification.
+            {isUpdate
+              ? 'Correct the student details. The application keeps its current review status.'
+              : 'Correct the rejected student details and re-submit the application to Operations for verification.'}
           </DialogDescription>
         </DialogHeader>
 
         {/* Operations Feedback Banner */}
-        {rejectionRemarks && (
+        {!isUpdate && rejectionRemarks && (
           <div className="rounded-lg border border-red-300/60 bg-red-50 p-4 text-sm dark:bg-red-950/30 dark:border-red-900/50">
             <div className="flex items-start gap-2.5">
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
@@ -801,7 +819,12 @@ export function EditSalesStudentDialog({
               {submitting ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Re-submitting...
+                  {isUpdate ? 'Saving...' : 'Re-submitting...'}
+                </>
+              ) : isUpdate ? (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Save Changes
                 </>
               ) : (
                 <>

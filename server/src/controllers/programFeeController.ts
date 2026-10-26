@@ -42,6 +42,21 @@ export const getProgramFee = asyncHandler(async (req: AuthRequest, res: Response
   }
 });
 
+// Older university configurations only send a billing-cycle breakdown; validate the payment options when they are sent
+const getUniversityPaymentOptionsError = (level: string, fullProgramFee: unknown, yearlyFee: unknown, semesterFees: unknown) => {
+  if (level !== 'university' || yearlyFee === undefined || yearlyFee === null) return null;
+  if (![fullProgramFee, yearlyFee].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
+    return 'Full program and yearly university fees must both be greater than zero';
+  }
+  if (semesterFees !== undefined && (
+    !Array.isArray(semesterFees)
+    || !semesterFees.every(value => Number.isFinite(Number(value)) && Number(value) > 0)
+  )) {
+    return 'Every semester university fee must be greater than zero';
+  }
+  return null;
+};
+
 export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Response) => {
   const {
     level,
@@ -86,6 +101,12 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
   if (level === 'program' && ![fullProgramFee, yearlyFee]
     .every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
     res.status(400).json({ success: false, message: 'Full program and yearly fees must both be greater than zero' });
+    return;
+  }
+  // University fees configured with the one-time / yearly / semester form
+  const universityPaymentOptionsError = getUniversityPaymentOptionsError(level, fullProgramFee, yearlyFee, semesterFees);
+  if (universityPaymentOptionsError) {
+    res.status(400).json({ success: false, message: universityPaymentOptionsError });
     return;
   }
 
@@ -198,11 +219,13 @@ export const createProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
       billingCycle,
       baseFee: level === 'program' ? parseFloat(yearlyFee) : (baseFee !== undefined ? parseFloat(baseFee) : 0),
       fullProgramFee: fullProgramFee !== undefined ? parseFloat(fullProgramFee) : 0,
-      yearlyFee: level === 'program' ? parseFloat(yearlyFee) : null,
-      semesterFee: level === 'program' && configuredSemesterFees.length > 0
+      yearlyFee: level === 'program'
+        ? parseFloat(yearlyFee)
+        : yearlyFee !== undefined ? parseFloat(yearlyFee) : null,
+      semesterFee: (level === 'program' || Array.isArray(semesterFees)) && configuredSemesterFees.length > 0
         ? configuredSemesterFees.reduce((total, fee) => total + Number(fee), 0) / configuredSemesterFees.length
         : null,
-      semesterFees: level === 'program' ? configuredSemesterFees.map(Number) : [],
+      semesterFees: level === 'program' || Array.isArray(semesterFees) ? configuredSemesterFees.map(Number) : [],
       universityFee: universityFee !== undefined ? parseFloat(universityFee) : 0,
       additionalFees: additionalFees || [],
       feeBreakdown: feeBreakdown || [],
@@ -273,6 +296,11 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
     yearlyFee ?? existingFee.yearlyFee ?? existingFee.baseFee,
   ].every(value => Number.isFinite(Number(value)) && Number(value) > 0)) {
     res.status(400).json({ success: false, message: 'Full program and yearly fees must both be greater than zero' });
+    return;
+  }
+  const universityPaymentOptionsError = getUniversityPaymentOptionsError(nextLevel, fullProgramFee, yearlyFee, semesterFees);
+  if (universityPaymentOptionsError) {
+    res.status(400).json({ success: false, message: universityPaymentOptionsError });
     return;
   }
 
@@ -396,6 +424,13 @@ export const updateProgramFee = asyncHandler(async (req: AuthRequest, res: Respo
   } else {
     if (baseFee !== undefined) data.baseFee = parseFloat(baseFee);
     if (fullProgramFee !== undefined) data.fullProgramFee = parseFloat(fullProgramFee);
+    if (yearlyFee !== undefined) data.yearlyFee = yearlyFee === null ? null : parseFloat(yearlyFee);
+    if (Array.isArray(semesterFees)) {
+      data.semesterFees = semesterFees.map(Number);
+      data.semesterFee = semesterFees.length > 0
+        ? semesterFees.reduce((total, fee) => total + Number(fee), 0) / semesterFees.length
+        : null;
+    }
   }
   if (universityFee !== undefined) data.universityFee = parseFloat(universityFee);
   if (additionalFees !== undefined) data.additionalFees = additionalFees;

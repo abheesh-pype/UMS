@@ -456,27 +456,27 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
   const isDirectToUni = dbEnrollment.paymentType === 'direct_to_university' || NO_WALLET_CATEGORIES.includes(uniCategory);
 
   // Automatically calculate and create expected CommissionIn
-  if ((feeStructure.commissionRate && feeStructure.commissionRate > 0) || isDirectToUni) {
-    // For no-wallet universities: use commissionRate if set, otherwise 0
-    // This allows the admin to set a commission rate on the fee structure and have it reflected here
-    const expectedAmount = (feeStructure.commissionRate && feeStructure.commissionRate > 0 && feeStructure.baseFee)
-      ? (feeStructure.baseFee * feeStructure.commissionRate) / 100
-      : 0;
-
-    const existingComm = await prisma.commissionIn.findUnique({
-      where: { enrollmentId: enrollment.id }
-    });
-    if (!existingComm) {
-      await prisma.commissionIn.create({
-        data: {
-          organizationId: req.user.organizationId,
-          enrollmentId: enrollment.id,
-          expectedAmount,
-          status: 'pending'
-        }
-      });
-    }
-  }
+  // if ((feeStructure.commissionRate && feeStructure.commissionRate > 0) || isDirectToUni) {
+  //   // For no-wallet universities: use commissionRate if set, otherwise 0
+  //   // This allows the admin to set a commission rate on the fee structure and have it reflected here
+  //   const expectedAmount = (feeStructure.commissionRate && feeStructure.commissionRate > 0 && feeStructure.baseFee)
+  //     ? (feeStructure.baseFee * feeStructure.commissionRate) / 100
+  //     : 0;
+  //
+  //   const existingComm = await prisma.commissionIn.findUnique({
+  //     where: { enrollmentId: enrollment.id }
+  //   });
+  //   if (!existingComm) {
+  //     await prisma.commissionIn.create({
+  //       data: {
+  //         organizationId: req.user.organizationId,
+  //         enrollmentId: enrollment.id,
+  //         expectedAmount,
+  //         status: 'pending'
+  //       }
+  //     });
+  //   }
+  // }
 
   if (enrollment.studentId && enrollment.programId) {
     const programUniversityFee = dbEnrollment.program?.universityId

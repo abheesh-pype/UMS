@@ -90,6 +90,13 @@ import {
   autoGenerateInvoices,
   recalculateInvoice
 } from '../controllers/financeInvoiceController.js';
+import {
+  getDetailedIncomeExpenditureReport,
+  getFinanceTransactions,
+  createFinanceTransaction,
+  updateFinanceTransaction,
+  deleteFinanceTransaction,
+} from '../controllers/incomeExpenditureController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -177,6 +184,11 @@ router.post('/enrollments/:id/refund', authorize('finance_admin', 'superadmin', 
 
 // Reports
 router.get('/reports/income-expenditure', authorize('finance_admin'), getIncomeExpenditureReport);
+router.get('/reports/income-expenditure/detailed', authorize('finance_admin', 'superadmin', 'org_admin', 'ceo'), getDetailedIncomeExpenditureReport);
+router.get('/transactions', authorize('finance_admin', 'superadmin', 'org_admin', 'ceo'), getFinanceTransactions);
+router.post('/transactions', authorize('finance_admin'), createFinanceTransaction);
+router.put('/transactions/:id', authorize('finance_admin'), updateFinanceTransaction);
+router.delete('/transactions/:id', authorize('finance_admin'), deleteFinanceTransaction);
 
 // Sales users (for target assignment)
 router.get('/sales-users', authorize('finance_admin'), getFinanceSalesUsers);

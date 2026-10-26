@@ -257,6 +257,13 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       || feeStructures.find(fee => fee.level === 'program');
   };
 
+  // Amount configured in Fee Structure for a payment method: full program fee, yearly fee, or first semester fee
+  const getConfiguredPaymentOptionAmount = (fs: NonNullable<Program['programFeeStructure']>[number], method: string) => {
+    if (method === 'full_payment') return Number(fs.fullProgramFee || 0);
+    if (method === 'yearly') return Number(fs.yearlyFee || 0);
+    return Number(fs.semesterFees?.[0] ?? fs.semesterFee ?? 0);
+  };
+
   const getTotalFee = (p: Program, pm?: string) => {
     const fs = getSelectedProgramFeeStructure(p);
     if (!fs) return 0;
@@ -271,6 +278,9 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     }
     if (fs.level === 'university') {
       const method = pm || paymentMethod;
+      // University fees set up with one-time / yearly / semester amounts in Fee Structure
+      const configuredUniversityAmount = getConfiguredPaymentOptionAmount(fs, method);
+      if (configuredUniversityAmount > 0) return configuredUniversityAmount;
       if (Array.isArray(breakdowns) && breakdowns.length > 0) {
         if (method === 'full_payment') {
           const fullFee = Number(fs.fullProgramFee || 0);
@@ -345,6 +355,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     }
 
     if (feeStructure.level === 'university') {
+      const configuredUniversityAmount = getConfiguredPaymentOptionAmount(feeStructure, pm || paymentMethod);
+      if (configuredUniversityAmount > 0) return configuredUniversityAmount;
       if (!Array.isArray(breakdowns) || breakdowns.length === 0) {
         return Number(feeStructure.universityFee || 0);
       }

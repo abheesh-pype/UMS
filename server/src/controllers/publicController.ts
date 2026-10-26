@@ -696,17 +696,20 @@ const getTrackingEnrollment = async (token: string) => {
   });
 };
 
-const getCredentialEnrollment = async (email: unknown, password: unknown) => {
+// anySource: also match applications added by a study centre or Sales (status check only);
+// payment proof and resubmission stay limited to applications made through the public link
+const getCredentialEnrollment = async (email: unknown, password: unknown, options: { anySource?: boolean } = {}) => {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
   const dobPassword = getStudentPortalPassword(password);
   if (!normalizedEmail || !dobPassword) return null;
 
   return prisma.enrollment.findFirst({
     where: {
-      publicTrackingTokenHash: { not: null },
+      ...(options.anySource ? {} : { publicTrackingTokenHash: { not: null } }),
       studentEmail: { equals: normalizedEmail, mode: 'insensitive' },
       dob: dobPassword,
     },
+    ...(options.anySource ? { orderBy: { createdAt: 'desc' as const } } : {}),
     include: {
       program: { select: { id: true, name: true, code: true, universityId: true } },
       session: { select: { id: true, name: true } },
@@ -719,7 +722,8 @@ const isPaymentProofSubmitted = (documents: unknown) =>
 
 const sendPublicStudentApplicationStatus = (enrollment: any, res: Response) => {
   const canSubmitPayment = ['pending_finance_review', 'finance_review', 'pending_payment'].includes(enrollment.status)
-    && Number(enrollment.totalFee) > 0;
+    && Number(enrollment.totalFee) > 0
+    && Boolean(enrollment.publicTrackingTokenHash);
   const history = parseJsonArray(enrollment.statusHistory).map((item: any) => ({
     status: item.status,
     timestamp: item.timestamp,
@@ -772,7 +776,7 @@ const sendPublicStudentApplicationStatus = (enrollment: any, res: Response) => {
 };
 
 export const getPublicStudentApplicationStatusByCredentials = asyncHandler(async (req: Request, res: Response) => {
-  const enrollment = await getCredentialEnrollment(req.body.email, req.body.password);
+  const enrollment = await getCredentialEnrollment(req.body.email, req.body.password, { anySource: true });
   if (!enrollment) {
     res.status(401).json({ success: false, message: 'Application not found. Check your email and date of birth.' });
     return;

@@ -970,6 +970,15 @@ export const rejectSalesEnrollment = asyncHandler(async (req: AuthRequest, res: 
 
 // ─── Sales: Edit & Re-submit Operations-Rejected Enrollment ─────────────────
 
+// Applications Sales may still correct without re-submission: Operations has not verified them yet
+export const SALES_UPDATABLE_STATUSES = ['pending_doc_review', 'document_review', 'payment_pending'];
+
+// Saves corrected student details while the application keeps its place in the review workflow
+export const updateSalesStudentDetails = (req: AuthRequest, res: Response, next: any) => {
+  (req as any).salesUpdateMode = 'details';
+  return updateSalesStudentEnrollment(req, res, next);
+};
+
 export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!await requireSalesDepartmentStaff(req, res)) return;
 
@@ -1012,11 +1021,25 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     }
   }
 
-  // 3. Status check: must be rejected by operations department
-  const isOpsRejected = ['ops_rejected', 'department_rejected'].includes(enrollment.status);
-  if (!isOpsRejected) {
-    res.status(400).json({ success: false, message: 'Only enrollments rejected by the Operations department can be edited and re-submitted' });
-    return;
+  // 3. Status check: re-submission needs an Operations rejection; a details update is only
+  //    allowed before Operations has verified the application, and keeps its status
+  const isDetailsUpdate = (req as any).salesUpdateMode === 'details';
+  if (isDetailsUpdate) {
+    if (!SALES_UPDATABLE_STATUSES.includes(enrollment.status)) {
+      res.status(400).json({
+        success: false,
+        message: ['ops_rejected', 'department_rejected'].includes(enrollment.status)
+          ? 'This application was rejected by Operations. Use Edit & Re-submit to correct it.'
+          : 'Student details can only be updated before Operations completes verification',
+      });
+      return;
+    }
+  } else {
+    const isOpsRejected = ['ops_rejected', 'department_rejected'].includes(enrollment.status);
+    if (!isOpsRejected) {
+      res.status(400).json({ success: false, message: 'Only enrollments rejected by the Operations department can be edited and re-submitted' });
+      return;
+    }
   }
 
   // 4. Validate fields
@@ -1094,12 +1117,14 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
   const now = new Date();
   const history = Array.isArray(enrollment.statusHistory) ? [...enrollment.statusHistory] : [];
   history.push({
-    status: 'document_review',
+    status: isDetailsUpdate ? enrollment.status : 'document_review',
     actorId: req.user.id,
     actorName: req.user.name,
     actorRole: req.user.role,
     timestamp: now.toISOString(),
-    note: 'Application corrected and re-submitted by Sales department to Operations for verification'
+    note: isDetailsUpdate
+      ? 'Student details updated by Sales department'
+      : 'Application corrected and re-submitted by Sales department to Operations for verification'
   });
 
   // 5. Update in interactive transaction
@@ -1129,7 +1154,7 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
           alternativePhone: alternativePhone !== undefined ? (alternativePhone || null) : undefined,
           maritalStatus: maritalStatus !== undefined ? (maritalStatus || null) : undefined,
           currentlyWorking: currentlyWorking !== undefined ? (currentlyWorking || null) : undefined,
-          status: 'pending',
+          status: isDetailsUpdate ? undefined : 'pending',
         }
       });
     }
@@ -1177,8 +1202,8 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
         educationalDetails: educationalDetails ? (typeof educationalDetails === 'string' ? JSON.parse(educationalDetails) : educationalDetails) : enrollment.educationalDetails,
         paymentMethod: paymentMethod || enrollment.paymentMethod,
         totalFee: totalFee !== undefined ? (totalFee ? Number(totalFee) : null) : enrollment.totalFee,
-        status: 'document_review', // Return to Operations review queue
-        departmentRemarks: null, // Clear the rejection remarks on resubmission
+        status: isDetailsUpdate ? enrollment.status : 'document_review', // Re-submission returns to Operations review queue
+        departmentRemarks: isDetailsUpdate ? enrollment.departmentRemarks : null, // Clear the rejection remarks on resubmission
         statusHistory: history,
       },
       include: {
@@ -1191,6 +1216,11 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
       }
     });
   });
+
+  if (isDetailsUpdate) {
+    res.status(200).json({ success: true, message: 'Student details updated successfully', data: updatedEnrollment });
+    return;
+  }
 
   // 6. Notify Operations Users of the re-submission
   try {
