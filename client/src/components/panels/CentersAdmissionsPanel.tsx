@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { FinanceCenterVerificationPanel } from '@/components/panels/FinanceCenterVerificationPanel';
+import { resolveFileUrl, isImageFileUrl } from '@/lib/fileUrl';
 
 interface Enrollment {
   id: string;
@@ -62,7 +63,19 @@ interface Enrollment {
   } | null;
   status: string;
   createdAt: string;
+  updatedAt?: string;
+  departmentReviewedAt?: string;
+  financeReviewedAt?: string;
+  universityReviewedAt?: string;
+  salesUser?: { id: string; name: string; email?: string } | null;
+  departmentReviewer?: { id: string; name: string } | null;
+  financeReviewer?: { id: string; name: string } | null;
+  universityReviewer?: { id: string; name: string } | null;
+  assignedOpsUser?: { id: string; name: string } | null;
+  assignedFinanceUser?: { id: string; name: string } | null;
 }
+
+const formatDateTime = (value?: string | null) => (value ? new Date(value).toLocaleString() : 'N/A');
 
 const STATUS_COLOR: Record<string, string> = {
   payment_pending: 'bg-muted text-muted-foreground',
@@ -82,6 +95,10 @@ export function CentersAdmissionsPanel() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
+  // Documents uploaded before files were stored in the database may point at files missing from this server
+  const [missingDocumentUrls, setMissingDocumentUrls] = useState<Set<string>>(new Set());
+  const markDocumentMissing = (url: string) =>
+    setMissingDocumentUrls(current => (current.has(url) ? current : new Set(current).add(url)));
   const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
   const isFinanceDepartment = ['finance_admin', 'finance_sub_admin'].includes(user?.role || '') || departmentType === 'finance';
 
@@ -226,6 +243,16 @@ export function CentersAdmissionsPanel() {
                         <Eye className="w-4 h-4 mr-2" /> View Profile
                       </Button>
                     )}
+                    {isFinanceDepartment && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 self-end"
+                        onClick={() => setSelectedEnrollment(e)}
+                      >
+                        <Eye className="w-4 h-4 mr-2" /> View More
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -242,7 +269,7 @@ export function CentersAdmissionsPanel() {
                 <div className="flex items-center gap-3">
                   {selectedEnrollment.studentPhoto && (
                     <img
-                      src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                      src={resolveFileUrl(selectedEnrollment.studentPhoto)}
                       alt={selectedEnrollment.studentName}
                       className="w-14 h-14 rounded-full object-cover border"
                     />
@@ -318,6 +345,29 @@ export function CentersAdmissionsPanel() {
                 </section>
 
                 <section>
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><Calendar className="w-4 h-4 text-primary" /> Review &amp; Assignment</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border bg-muted/10 p-4 text-sm">
+                    {[
+                      ['Sales Executive', selectedEnrollment.salesUser ? `${selectedEnrollment.salesUser.name}${selectedEnrollment.salesUser.email ? ` (${selectedEnrollment.salesUser.email})` : ''}` : undefined],
+                      ['Assigned Operations User', selectedEnrollment.assignedOpsUser?.name],
+                      ['Assigned Finance User', selectedEnrollment.assignedFinanceUser?.name],
+                      ['Operations Reviewed By', selectedEnrollment.departmentReviewer?.name],
+                      ['Operations Reviewed At', formatDateTime(selectedEnrollment.departmentReviewedAt)],
+                      ['Finance Reviewed By', selectedEnrollment.financeReviewer?.name],
+                      ['Finance Reviewed At', formatDateTime(selectedEnrollment.financeReviewedAt)],
+                      ['University Reviewed By', selectedEnrollment.universityReviewer?.name],
+                      ['University Reviewed At', formatDateTime(selectedEnrollment.universityReviewedAt)],
+                      ['Last Updated', formatDateTime(selectedEnrollment.updatedAt)],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="font-medium break-words">{value || 'N/A'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
                   <h3 className="font-semibold text-sm mb-2 flex items-center gap-2"><GraduationCap className="w-4 h-4 text-primary" /> Educational History</h3>
                   {selectedEnrollment.educationalDetails?.length ? (
                     <div className="space-y-2">
@@ -339,13 +389,34 @@ export function CentersAdmissionsPanel() {
                     <div className="space-y-2">
                       {selectedEnrollment.documents.map((document, index) => (
                         <div key={`${document.url}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/10 p-3 text-sm">
-                          <div>
+                          {isImageFileUrl(document.url) && !missingDocumentUrls.has(document.url) && (
+                            <a href={resolveFileUrl(document.url)} target="_blank" rel="noreferrer" className="shrink-0">
+                              <img
+                                src={resolveFileUrl(document.url)}
+                                alt={document.reqName || document.name}
+                                className="h-16 w-16 rounded-md border object-cover bg-muted"
+                                onError={() => markDocumentMissing(document.url)}
+                              />
+                            </a>
+                          )}
+                          {missingDocumentUrls.has(document.url) && (
+                            <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-md border border-dashed border-destructive/40 bg-destructive/5 text-center text-[10px] font-medium text-destructive">
+                              <FileText className="mb-1 h-4 w-4" />
+                              File missing
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
                             <p className="font-medium">{document.reqName || document.name}</p>
                             {document.uploadedAt && <p className="text-xs text-muted-foreground">Uploaded {new Date(document.uploadedAt).toLocaleString()}</p>}
                             {document.remarks && <p className="text-xs text-muted-foreground">{document.remarks}</p>}
+                            {missingDocumentUrls.has(document.url) && (
+                              <p className="text-xs text-destructive">
+                                This file is not available on the server. Ask the study center to re-upload it.
+                              </p>
+                            )}
                           </div>
                           <a
-                            href={document.url.startsWith('/') ? document.url : `/uploads/${document.url}`}
+                            href={resolveFileUrl(document.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-primary hover:underline"

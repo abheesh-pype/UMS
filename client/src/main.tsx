@@ -5,8 +5,10 @@ import App from './App.tsx'
 import { AuthProvider } from '@/hooks/useAuth'
 import { OperationButtonGuard } from '@/components/OperationButtonGuard'
 import { installFetchOperationTracking } from '@/lib/operationTracker'
+import { installDataUrlLinkHandler } from '@/lib/fileUrl'
 
 installFetchOperationTracking()
+installDataUrlLinkHandler()
 
 createRoot(document.getElementById('root')!).render(
   <AuthProvider>

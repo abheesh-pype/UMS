@@ -11,6 +11,7 @@ import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 export function StudentsPanel({ operationsMode = false, financeMode = false }: { operationsMode?: boolean; financeMode?: boolean }) {
   const { user } = useAuth();
@@ -655,7 +656,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
                         Add Uni Enrollment No
                       </Button>
                     )}
-                    {user?.role === 'center_admin' && !['hold', 'dropout'].includes(selectedStudent.status) && (
+                    {/* {user?.role === 'center_admin' && !['hold', 'dropout'].includes(selectedStudent.status) && (
                       <Button 
                         size="sm" 
                         variant="destructive"
@@ -663,7 +664,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
                       >
                         Request Hold / Dropout
                       </Button>
-                    )}
+                    )} */}
                   </div>
                 </div>
               </DialogHeader>
@@ -855,7 +856,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
                                 <span className="truncate font-medium">{doc.name}</span>
                               </div>
                               <a
-                                href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                                href={resolveFileUrl(doc.url)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-xs text-primary hover:underline font-semibold flex-shrink-0"
@@ -881,7 +882,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={requestStatusOpen} onOpenChange={setRequestStatusOpen}>
+      {/* <Dialog open={requestStatusOpen} onOpenChange={setRequestStatusOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Request Status Change</DialogTitle>
@@ -922,7 +923,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
     </div>
   );
 }

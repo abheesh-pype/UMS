@@ -82,7 +82,7 @@ export function ModernOpsDashboard({ initialTab, onNavigate }: { initialTab?: st
       case 'pending_verification': return <OpsCenterVerificationPanel />;
       case 'program_allocations': return <OpsProgramAllocationPanel />;
       case 'enrollment_review': return <DeptEnrollmentReviewPanel />;
-      case 'status_requests': return <StatusRequestsPanel type="operations" />;
+      // case 'status_requests': return <StatusRequestsPanel type="operations" />;
       case 'sessions': return <AdmissionSessionsPanel />;
       case 'marks': return <InternalMarksPanel />;
       case 'center_admissions': return <CentersAdmissionsPanel />;
@@ -124,7 +124,7 @@ export function getOpsNavItems(isSubDeptManager: boolean) {
     { id: 'students', label: 'Students' },
     { id: 'enrollment_review', label: 'Enrollment Review' },
     { id: 'sessions', label: 'Admission Session' },
-    { id: 'status_requests', label: 'Student Status Requests' },
+    // { id: 'status_requests', label: 'Student Status Requests' },
     { id: 'marks', label: 'Internal Marks' },
 
     { id: '__programs_section', label: 'Programs', isSection: true },

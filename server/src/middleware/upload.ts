@@ -57,12 +57,45 @@ const paymentProofFileFilter = (
   cb(new Error('Invalid payment proof type. Upload a JPEG, PNG, GIF, WebP, or PDF file.'));
 };
 
+// Files kept in memory are stored in the database as data URLs, so cap them well below the disk upload limit
+const DB_FILE_SIZE_LIMIT = parseInt(process.env.MAX_DB_FILE_SIZE || '10485760'); // 10MB default
+
 export const uploadPaymentProof = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600'),
+    fileSize: DB_FILE_SIZE_LIMIT,
   },
   fileFilter: paymentProofFileFilter,
+});
+
+const documentFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  const allowedTypes = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]);
+  if (allowedTypes.has(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
+  cb(new Error('Invalid document type. Upload a JPEG, PNG, GIF, WebP, PDF, DOC, or DOCX file.'));
+};
+
+// Enrollment documents (certificates, photos, ID proofs) stored in the database
+export const uploadDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: DB_FILE_SIZE_LIMIT,
+  },
+  fileFilter: documentFileFilter,
 });
 
 const videoFileFilter = (

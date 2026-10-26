@@ -128,7 +128,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'program_fees': return <ProgramFeeStructurePanel />;
       case 'wallet_topups': return <WalletTopUpsPanel />;
       case 'enrollments_finance': return <FinanceEnrollmentsPanel />;
-      case 'status_requests': return <StatusRequestsPanel type="finance" />;
+      // case 'status_requests': return <StatusRequestsPanel type="finance" />;
       case 'center_admissions': return <CentersAdmissionsPanel />;
       case 'income_expenditure': return <IncomeExpenditurePanel />;
       case 'profit_loss': return <ProfitLossPanel />;
@@ -191,7 +191,7 @@ export function getFinanceNavItems() {
     { id: '__study_center_finance_section', label: 'Study Centre Finance', isSection: true },
     { id: 'study_centers', label: 'Study Centre' },
     { id: 'center_admissions', label: 'Centre Admission' },
-    { id: 'status_requests', label: 'Status Request' },
+    // { id: 'status_requests', label: 'Status Request' },
     { id: 'commissions', label: 'Commission' },
 
     { id: '__accounting_reports_section', label: 'Accounting & Financial Reports', isSection: true },

@@ -44,7 +44,7 @@ export const submitTopUp = asyncHandler(async (req: AuthRequest, res: Response) 
   };
 
   if (req.file) {
-    data.proofDocument = `/uploads/${req.file.filename}`;
+    data.proofDocument = getPaymentProofDataUrl(req.file);
   }
 
   const topUp = await prisma.walletTopUp.create({ data });
@@ -629,7 +629,13 @@ export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Resp
       payment: { select: { amount: true, debitedAt: true } },
       program: {
         include: { university: { select: { name: true, code: true } } }
-      }
+      },
+      salesUser: { select: { id: true, name: true, email: true } },
+      departmentReviewer: { select: { id: true, name: true } },
+      financeReviewer: { select: { id: true, name: true } },
+      universityReviewer: { select: { id: true, name: true } },
+      assignedOpsUser: { select: { id: true, name: true } },
+      assignedFinanceUser: { select: { id: true, name: true } }
     },
     orderBy: { createdAt: 'desc' }
   });

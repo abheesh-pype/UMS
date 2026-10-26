@@ -15,7 +15,8 @@
     "seed": "tsx src/scripts/seed.ts",
     "reset-single-tenant": "tsx src/scripts/reset-single-tenant.ts",
     "create-departments": "tsx src/scripts/auto-create-departments.ts",
-    "clean-reseed": "tsx src/scripts/clean-and-reseed.ts"
+    "clean-reseed": "tsx src/scripts/clean-and-reseed.ts",
+    "migrate-uploads": "tsx src/scripts/migrate-uploads-to-db.ts"
   },
   "keywords": [
     "erp",

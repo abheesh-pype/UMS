@@ -17,7 +17,7 @@ import {
   submitPublicStudentPaymentProofByCredentials,
   submitPublicStudentPaymentProof,
 } from '../controllers/publicController.js';
-import { upload, uploadPaymentProof } from '../middleware/upload.js';
+import { upload, uploadDocument, uploadPaymentProof } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -29,7 +29,7 @@ router.post('/submit-payment/:token', upload.array('paymentProof', 1), submitPay
 router.get('/student-enrollment/programs', getPublicStudentEnrollmentPrograms);
 router.get('/student-enrollment/sessions', getPublicStudentEnrollmentSessions);
 router.post('/student-enrollment/check-email', checkPublicStudentEnrollmentEmail);
-router.post('/student-enrollment/upload', upload.single('file'), uploadPublicEnrollmentFile);
+router.post('/student-enrollment/upload', uploadDocument.single('file'), uploadPublicEnrollmentFile);
 router.post('/student-enrollment', createPublicStudentEnrollment);
 router.post('/student-applications/resubmit', resubmitPublicStudentApplicationByCredentials);
 router.post('/student-applications/status', getPublicStudentApplicationStatusByCredentials);

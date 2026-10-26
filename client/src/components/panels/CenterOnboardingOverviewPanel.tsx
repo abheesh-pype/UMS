@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 import {
   BarChart,
   Bar,
@@ -403,7 +404,7 @@ function CenterDetailsContent({ details }: { details: any }) {
   const proof = typeof center.paymentProof === 'string'
     ? { url: center.paymentProof }
     : center.paymentProof;
-  const fileUrl = (url: string) => url.startsWith('data:') || url.startsWith('/') ? url : `/uploads/${url}`;
+  const fileUrl = resolveFileUrl;
   const statusLabel = STATUS_CONFIG[center.status]?.label || center.status.replace(/_/g, ' ');
   const infoRows: [string, string][] = [
     ['Center Code', center.code],

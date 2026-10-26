@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Program {
   id: string;
@@ -763,7 +764,7 @@ export function EditSalesStudentDialog({
                         <span className="font-medium truncate max-w-[280px]">{doc.name || doc.reqName}</span>
                         <div className="flex items-center gap-2">
                           <a
-                            href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                            href={resolveFileUrl(doc.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center text-primary hover:underline font-semibold"

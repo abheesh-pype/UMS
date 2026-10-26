@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface TopUp {
   id: string;
@@ -185,7 +186,7 @@ export function WalletTopUpsPanel() {
                       <span>Amount: <strong className="text-foreground">₹{t.amount.toLocaleString()}</strong></span>
                       {t.referenceNumber && <span>Ref: {t.referenceNumber}</span>}
                       {t.proofDocument && (
-                        <a href={t.proofDocument.startsWith('/') ? t.proofDocument : `/uploads/${t.proofDocument}`} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold">
+                        <a href={resolveFileUrl(t.proofDocument)} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold">
                           View Proof
                         </a>
                       )}

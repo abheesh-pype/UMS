@@ -290,7 +290,7 @@ export const uploadPublicEnrollmentFile = asyncHandler(async (req: Request, res:
   }
   res.json({
     success: true,
-    url: `/uploads/${req.file.filename}`,
+    url: getPaymentProofDataUrl(req.file),
     filename: req.file.originalname,
   });
 });
