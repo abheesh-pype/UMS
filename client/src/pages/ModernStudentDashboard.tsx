@@ -33,7 +33,13 @@ import {
   ChevronRight,
   Play,
   PlayCircle,
-  Search
+  Search,
+  ArrowLeft,
+  Bell,
+  CreditCard,
+  AlertTriangle,
+  CheckCheck,
+  Wallet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -60,6 +66,9 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [materials, setMaterials] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones'>('all');
+  const [notificationSearchQuery, setNotificationSearchQuery] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
   const [scheduledClassesLoading, setScheduledClassesLoading] = useState(false);
@@ -75,6 +84,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       ? initialTab
       : 'portal'
   );
+  const [previousSection, setPreviousSection] = useState<string | null>(null);
   const [selectedExamination, setSelectedExamination] = useState<any>(null);
   const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -307,6 +317,12 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     }
   };
 
+  useEffect(() => {
+    if (activeSection === 'notifications') {
+      fetchNotifications();
+    }
+  }, [activeSection]);
+
   const openNotifications = () => {
     setActiveSection('notifications');
     fetchNotifications();
@@ -317,8 +333,66 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       await api.put('/notifications/read-all');
       setNotifications(previous => previous.map(notification => ({ ...notification, read: true })));
       setUnreadNotifications(0);
+      toast.success('All notifications marked as read');
     } catch (error) {
       toast.error('Failed to mark notifications as read');
+    }
+  };
+
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      setNotifications(previous => previous.map(n => n.id === id ? { ...n, read: true } : n));
+      setUnreadNotifications(previous => Math.max(0, previous - 1));
+    } catch {
+      // silently fallback
+    }
+  };
+
+  const getNotificationCategory = (n: any): 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones' | 'general' => {
+    const link = (n.link || '').toLowerCase();
+    const title = (n.title || '').toLowerCase();
+    if (link.startsWith('fees/') || title.includes('invoice') || title.includes('fee') || title.includes('payment') || title.includes('installment')) return 'fees';
+    if (link.startsWith('examinations/') || title.includes('exam') || title.includes('assessment')) return 'examinations';
+    if (link.startsWith('materials/') || title.includes('lecture') || title.includes('video') || title.includes('e-book') || title.includes('syllabus')) return 'materials';
+    if (link.startsWith('classes/') || title.includes('class') || title.includes('live')) return 'classes';
+    if (link.startsWith('session/') || link.startsWith('calendar/') || title.includes('session') || title.includes('progression') || title.includes('holiday')) return 'milestones';
+    return 'general';
+  };
+
+  const handleNotificationAction = async (n: any, actionType?: string) => {
+    if (!n.read) {
+      markNotificationRead(n.id);
+    }
+
+    const link = n.link || '';
+    if (link.startsWith('examinations/')) {
+      if (actionType === 'register') {
+        openRegistrationForm(n);
+      } else {
+        viewExaminationDetails(n);
+      }
+    } else if (link.startsWith('fees/')) {
+      setActiveSection('payment-info');
+      const invoiceId = link.split('/')[2];
+      if (invoiceId && studentPaymentInfo?.invoices) {
+        const matchInv = studentPaymentInfo.invoices.find((i: any) => i.id === invoiceId);
+        if (matchInv) {
+          setSelectedStudentInvoiceForPrint(matchInv);
+        }
+      }
+    } else if (link.startsWith('materials/video/')) {
+      const matId = link.replace('materials/video/', '');
+      if (matId) {
+        setSelectedVideoMaterialId(matId);
+      }
+      setActiveSection('video-classes');
+    } else if (link.startsWith('materials/ebook/')) {
+      setActiveSection('e-books');
+    } else if (link.startsWith('classes/live/')) {
+      setActiveSection('scheduled-classes');
+    } else if (link.startsWith('session/') || link.startsWith('calendar/')) {
+      setActiveSection('active-session');
     }
   };
 
@@ -921,62 +995,476 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </main>
         ) : activeSection === 'notifications' ? (
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <CardTitle>Notifications</CardTitle>
-                <CardDescription>Updates and announcements for your student account.</CardDescription>
+        <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
+          <Card className="w-full border shadow-md bg-card/90 backdrop-blur-sm overflow-hidden">
+            <CardHeader className="border-b bg-muted/20 pb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                      <Bell className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-2xl font-bold flex items-center gap-2.5">
+                        Notifications & Alerts
+                        {unreadNotifications > 0 ? (
+                          <Badge className="bg-primary text-primary-foreground font-semibold text-xs px-2.5 py-0.5">
+                            {unreadNotifications} Unread
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground font-normal">
+                            All Caught Up
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-sm text-muted-foreground">
+                        Stay informed on upcoming fee installments, exam schedules, course materials, live classes, and university milestones.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={markAllNotificationsRead} 
+                    disabled={unreadNotifications === 0}
+                    className="gap-1.5 shadow-xs text-xs"
+                  >
+                    <CheckCheck className="h-4 w-4 text-emerald-600" />
+                    Mark All Read
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      fetchNotifications();
+                      toast.success('Notifications refreshed');
+                    }}
+                    className="gap-1.5 shadow-xs text-xs"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={markAllNotificationsRead} disabled={unreadNotifications === 0}>
-                  Mark all read
-                </Button>
+
+              {/* Search & Quick Filter Pills */}
+              <div className="pt-4 space-y-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search notifications by title or keyword..."
+                      value={notificationSearchQuery}
+                      onChange={(e) => setNotificationSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-xs sm:text-sm bg-background"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={unreadOnly ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setUnreadOnly(prev => !prev)}
+                      className="h-9 text-xs rounded-lg gap-1.5"
+                    >
+                      <span className={cn('w-2 h-2 rounded-full', unreadOnly ? 'bg-white' : 'bg-primary')} />
+                      Unread Only {unreadNotifications > 0 && `(${unreadNotifications})`}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Category Pills */}
+                {(() => {
+                  const feeCount = notifications.filter(n => getNotificationCategory(n) === 'fees').length;
+                  const examCount = notifications.filter(n => getNotificationCategory(n) === 'examinations').length;
+                  const materialCount = notifications.filter(n => getNotificationCategory(n) === 'materials').length;
+                  const classCount = notifications.filter(n => getNotificationCategory(n) === 'classes').length;
+                  const milestoneCount = notifications.filter(n => getNotificationCategory(n) === 'milestones').length;
+
+                  return (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar text-xs">
+                      <Button
+                        variant={notificationFilter === 'all' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('all')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0"
+                      >
+                        All ({notifications.length})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'fees' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('fees')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Wallet className="w-3.5 h-3.5 text-blue-500" />
+                        Fees & Invoices ({feeCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'examinations' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('examinations')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+                        Examinations ({examCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'materials' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('materials')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Video className="w-3.5 h-3.5 text-emerald-500" />
+                        Curriculum & Videos ({materialCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'classes' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('classes')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-purple-500" />
+                        Live Classes ({classCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'milestones' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('milestones')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <CalendarCheck className="w-3.5 h-3.5 text-rose-500" />
+                        Milestones & Calendar ({milestoneCount})
+                      </Button>
+                    </div>
+                  );
+                })()}
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {notifications.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">No notifications yet.</div>
-              ) : (
-                notifications.map(notification => (
-                  <div key={notification.id} className={`rounded-lg border p-4 ${notification.read ? 'bg-background' : 'bg-primary/5 border-primary/20'}`}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">{notification.title}</p>
-                        <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
+
+            <CardContent className="p-6 space-y-4">
+              {(() => {
+                const filtered = notifications.filter(n => {
+                  if (unreadOnly && n.read) return false;
+                  if (notificationFilter !== 'all') {
+                    const cat = getNotificationCategory(n);
+                    if (cat !== notificationFilter) return false;
+                  }
+                  if (notificationSearchQuery.trim()) {
+                    const q = notificationSearchQuery.toLowerCase();
+                    const titleMatch = (n.title || '').toLowerCase().includes(q);
+                    const msgMatch = (n.message || '').toLowerCase().includes(q);
+                    if (!titleMatch && !msgMatch) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-16 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                        <Bell className="w-6 h-6" />
                       </div>
-                      {!notification.read && <Badge>New</Badge>}
+                      <h4 className="text-base font-semibold text-foreground">
+                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all' 
+                          ? 'No matching notifications found' 
+                          : 'No notifications at this time'}
+                      </h4>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all'
+                          ? 'Try resetting your filter or search query to see all updates.'
+                          : 'All fee receipts, exam announcements, curriculum video releases, and calendar notices will appear here.'}
+                      </p>
+                      {(notificationSearchQuery || unreadOnly || notificationFilter !== 'all') && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setNotificationFilter('all');
+                            setNotificationSearchQuery('');
+                            setUnreadOnly(false);
+                          }}
+                          className="mt-2 text-xs"
+                        >
+                          Clear All Filters
+                        </Button>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      {new Date(notification.createdAt).toLocaleString()}
-                    </p>
-                    {notification.link?.startsWith('examinations/') && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewExaminationDetails(notification)}
-                          disabled={examinationLoadingId === notification.id}
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {filtered.map(notification => {
+                      const category = getNotificationCategory(notification);
+                      const isHighPriority = notification.priority === 'high';
+                      const isOverdue = notification.link?.includes('overdue');
+                      const isUnread = !notification.read;
+
+                      return (
+                        <div
+                          key={notification.id}
+                          className={cn(
+                            'rounded-xl border transition-all duration-200 p-4 sm:p-5 relative group flex flex-col justify-between',
+                            isUnread
+                              ? isHighPriority
+                                ? 'bg-rose-500/5 border-rose-500/40 shadow-xs'
+                                : 'bg-primary/5 border-primary/30 shadow-xs'
+                              : 'bg-card/70 border-border/70 hover:border-border hover:bg-muted/30'
+                          )}
                         >
-                          {examinationLoadingId === notification.id ? 'Loading...' : 'View Details'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => openRegistrationForm(notification)}
-                          disabled={examinationLoadingId === notification.id || registeredExaminationIds.includes(notification.link.replace('examinations/', ''))}
-                        >
-                          {registeredExaminationIds.includes(notification.link.replace('examinations/', '')) ? 'Registered' : examinationLoadingId === notification.id ? 'Loading...' : 'Register'}
-                        </Button>
-                      </div>
-                    )}
+                          <div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0">
+                                {/* Category Icon */}
+                                <div
+                                  className={cn(
+                                    'p-2.5 rounded-xl shrink-0 mt-0.5',
+                                    category === 'fees' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                                    category === 'examinations' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                                    category === 'materials' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                                    category === 'classes' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
+                                    'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                  )}
+                                >
+                                  {category === 'fees' && <CreditCard className="w-5 h-5" />}
+                                  {category === 'examinations' && <GraduationCap className="w-5 h-5" />}
+                                  {category === 'materials' && <Video className="w-5 h-5" />}
+                                  {category === 'classes' && <Calendar className="w-5 h-5" />}
+                                  {category === 'milestones' && <CalendarCheck className="w-5 h-5" />}
+                                  {category === 'general' && <Bell className="w-5 h-5" />}
+                                </div>
+
+                                <div className="min-w-0 space-y-1">
+                                  {/* Badges row */}
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {/* Unread indicator */}
+                                    {isUnread && (
+                                      <Badge className="bg-primary text-primary-foreground font-semibold text-[10px] px-1.5 py-0 h-4 uppercase tracking-wider">
+                                        ● New
+                                      </Badge>
+                                    )}
+
+                                    {/* Priority badge */}
+                                    {isHighPriority && (
+                                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-semibold gap-1">
+                                        <AlertTriangle className="w-2.5 h-2.5" />
+                                        {isOverdue ? 'Overdue Action' : 'Urgent / Deadline Alert'}
+                                      </Badge>
+                                    )}
+
+                                    {/* Category badge */}
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 capitalize text-muted-foreground">
+                                      {category === 'fees' ? 'Financials' :
+                                       category === 'examinations' ? 'Examination' :
+                                       category === 'materials' ? 'Curriculum' :
+                                       category === 'classes' ? 'Live Class' :
+                                       category === 'milestones' ? 'Milestone' : 'Notice'}
+                                    </Badge>
+
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-1 ml-1">
+                                      <Clock className="w-3 h-3 text-muted-foreground/70" />
+                                      {new Date(notification.createdAt).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+
+                                  {/* Title */}
+                                  <h3 className="font-bold text-base text-foreground leading-snug pt-0.5">
+                                    {notification.title}
+                                  </h3>
+
+                                  {/* Message */}
+                                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                                    {notification.message}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Top-right Mark as read toggle */}
+                              {isUnread && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => markNotificationRead(notification.id)}
+                                  className="h-7 text-xs text-muted-foreground hover:text-foreground shrink-0 px-2"
+                                  title="Mark as read"
+                                >
+                                  <CheckCheck className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                                  <span className="hidden sm:inline">Mark read</span>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actionable CTAs (Direct Shortcuts) */}
+                          <div className="mt-4 pt-3 border-t border-border/40 flex flex-wrap items-center justify-between gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* 1. Examination CTAs */}
+                              {notification.link?.startsWith('examinations/') && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification, 'register')}
+                                    disabled={
+                                      examinationLoadingId === notification.id || 
+                                      registeredExaminationIds.includes(notification.link.replace('examinations/', ''))
+                                    }
+                                    className="h-8 text-xs font-semibold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                                  >
+                                    {registeredExaminationIds.includes(notification.link.replace('examinations/', '')) ? (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Registered
+                                      </>
+                                    ) : examinationLoadingId === notification.id ? (
+                                      'Loading...'
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Register Now
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification, 'view')}
+                                    disabled={examinationLoadingId === notification.id}
+                                    className="h-8 text-xs gap-1.5"
+                                  >
+                                    View Exam Details
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* 2. Fees CTAs */}
+                              {category === 'fees' && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification)}
+                                    className={cn(
+                                      'h-8 text-xs font-semibold gap-1.5 shadow-xs',
+                                      isOverdue 
+                                        ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                        : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                                    )}
+                                  >
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    {notification.link?.includes('receipt') ? 'View Fee Receipt' : 'Pay Online / View Invoice'}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (isUnread) markNotificationRead(notification.id);
+                                      setActiveSection('payment-info');
+                                    }}
+                                    className="h-8 text-xs gap-1.5"
+                                  >
+                                    Payment History
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* 3. Curriculum / Video CTAs */}
+                              {notification.link?.startsWith('materials/video') && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-white" />
+                                  Watch Video Lecture
+                                </Button>
+                              )}
+
+                              {/* 4. Curriculum / E-Books CTAs */}
+                              {notification.link?.startsWith('materials/ebook') && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5 text-primary" />
+                                  View E-Books & Syllabus
+                                </Button>
+                              )}
+
+                              {/* 5. Live Classes CTAs */}
+                              {notification.link?.startsWith('classes/live') && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5 bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  Join Live Class
+                                </Button>
+                              )}
+
+                              {/* 6. Milestones / Session CTAs */}
+                              {(notification.link?.startsWith('session/') || notification.link?.startsWith('calendar/')) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5"
+                                >
+                                  <GraduationCap className="w-3.5 h-3.5 text-primary" />
+                                  View Academic Overview
+                                </Button>
+                              )}
+                            </div>
+
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              {isUnread ? (
+                                <span className="text-primary font-medium flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-primary" />
+                                  Requires Attention
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-muted-foreground">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                  Read
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
-              )}
+                );
+              })()}
             </CardContent>
           </Card>
         </main>
       ) : activeSection === 'examination-portal' ? (
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
+        <main className="container mx-auto px-4 py-8 max-w-4xl space-y-4">
+          {previousSection && (
+            <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to {previousSection === 'active-session' ? 'Active Session' : 'Previous Page'}</span>
+              </Button>
+            </div>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Examination Portal</CardTitle>
@@ -1131,9 +1619,9 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </main>
       ) : activeSection === 'active-session' ? (
-        <main className="container mx-auto px-4 py-8 max-w-7xl space-y-6">
+        <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
           {/* Main Card: Academic overview */}
-          <Card className="border-none shadow-xl bg-card/70 backdrop-blur-xl overflow-hidden">
+          <Card className="w-full border-none shadow-xl bg-card/70 backdrop-blur-xl overflow-hidden">
             <CardHeader className="border-b bg-muted/30 pb-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="space-y-1">
@@ -1367,7 +1855,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                       variant="ghost" 
                       size="sm" 
                       className="h-6 text-xs text-emerald-600 hover:text-emerald-700 p-0"
-                      onClick={() => setActiveSection('e-books')}
+                      onClick={() => {
+                        setPreviousSection(activeSection);
+                        setActiveSection('e-books');
+                      }}
                     >
                       View Syllabus <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                     </Button>
@@ -1442,7 +1933,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                       variant="ghost" 
                       size="sm" 
                       className="h-6 text-xs text-violet-600 hover:text-violet-700 p-0"
-                      onClick={() => setActiveSection('video-classes')}
+                      onClick={() => {
+                        setPreviousSection(activeSection);
+                        setActiveSection('video-classes');
+                      }}
                     >
                       Video Classes <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                     </Button>
@@ -1533,7 +2027,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                         variant="ghost" 
                         size="sm" 
                         className="h-6 text-xs text-amber-600 hover:text-amber-700 p-0"
-                        onClick={() => setActiveSection('examination-portal')}
+                        onClick={() => {
+                          setPreviousSection(activeSection);
+                          setActiveSection('examination-portal');
+                        }}
                       >
                         Exam Portal <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                       </Button>
@@ -1555,14 +2052,40 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </main>
       ) : activeSection === 'e-books' ? (
-        <main className="container mx-auto max-w-7xl px-4 py-8">
+        <main className="container mx-auto max-w-7xl px-4 py-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+              className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to {previousSection === 'active-session' || !previousSection ? 'Active Session' : 'Previous Page'}</span>
+            </Button>
+          </div>
+
           <Card className="border-none shadow-xl">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>E-Books</CardTitle>
-                <CardDescription>
-                  {program?.name || 'Program'}{enrolledSession?.name ? ` · ${enrolledSession.name}` : ''}
-                </CardDescription>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                  title="Back to Previous Page"
+                  className="h-8 w-8 rounded-full border hover:bg-muted shrink-0"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    E-Books & Syllabus
+                  </CardTitle>
+                  <CardDescription>
+                    {program?.name || 'Program'}{enrolledSession?.name ? ` · ${enrolledSession.name}` : ''}
+                  </CardDescription>
+                </div>
               </div>
               <Badge variant="outline">Enrolled Session</Badge>
             </CardHeader>
@@ -1704,6 +2227,19 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
         </main>
       ) : activeSection === 'video-classes' ? (
         <main className="container mx-auto max-w-screen-2xl px-4 py-8 space-y-6">
+          {previousSection && (
+            <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to {previousSection === 'active-session' ? 'Active Session' : 'Previous Page'}</span>
+              </Button>
+            </div>
+          )}
           {/* Header Card */}
           <Card className="border shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-4">

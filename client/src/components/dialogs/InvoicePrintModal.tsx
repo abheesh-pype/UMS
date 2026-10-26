@@ -101,7 +101,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 border shadow-2xl print:m-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:overflow-visible">
+      <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[92vw] md:max-w-5xl lg:max-w-6xl xl:max-w-6xl max-h-[94vh] overflow-y-auto p-0 border shadow-2xl print:m-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:overflow-visible">
         {/* Print Stylesheet */}
         <style dangerouslySetInnerHTML={{
           __html: `
@@ -116,13 +116,21 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               position: absolute;
               left: 0;
               top: 0;
-              width: 100%;
-              margin: 0;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
               padding: 20px !important;
               background: white !important;
               color: black !important;
               box-shadow: none !important;
               border: none !important;
+            }
+            #printable-invoice table {
+              min-width: 100% !important;
+              width: 100% !important;
+            }
+            #printable-invoice .overflow-x-auto {
+              overflow: visible !important;
             }
             .no-print {
               display: none !important;
@@ -135,15 +143,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
         `}} />
 
         {/* Modal Action Header (Hidden during print) */}
-        <div className="no-print sticky top-0 z-20 flex items-center justify-between border-b bg-muted/80 backdrop-blur-md px-6 py-3">
-          <div className="flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-sm sm:text-base">
+        <div className="no-print sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-muted/90 backdrop-blur-md px-4 sm:px-6 py-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Receipt className="w-5 h-5 text-primary shrink-0" />
+            <span className="font-semibold text-sm sm:text-base truncate">
               Invoice #{invoice.invoiceNo} · {studentName}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handlePrint} className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" onClick={handlePrint} className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs">
               <Printer className="w-4 h-4" />
               <span>Print / Save PDF</span>
             </Button>
@@ -154,7 +162,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
         </div>
 
         {/* Printable Invoice Document Body */}
-        <div id="printable-invoice" ref={printRef} className="relative bg-white text-slate-900 p-8 sm:p-10 font-sans leading-relaxed">
+        <div id="printable-invoice" ref={printRef} className="relative bg-white text-slate-900 p-4 sm:p-6 md:p-8 lg:p-10 font-sans leading-relaxed">
           {/* Status Watermark */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden opacity-5 z-0">
             <span className="text-[120px] font-black uppercase tracking-widest -rotate-45 transform">
@@ -165,19 +173,19 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
           <div className="relative z-10 space-y-6">
             {/* Header: University Branding & Official Address */}
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b-2 border-slate-800">
-              <div className="flex items-start gap-4">
-                <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-800 shrink-0 font-bold overflow-hidden shadow-sm">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-800 shrink-0 font-bold overflow-hidden shadow-sm">
                   {uniLogo && uniLogo !== '/logo.png' ? (
                     <img src={uniLogo} alt={uniName} className="w-full h-full object-contain p-1" />
                   ) : (
-                    <Building2 className="w-9 h-9 text-slate-700" />
+                    <Building2 className="w-8 h-8 sm:w-9 sm:h-9 text-slate-700" />
                   )}
                 </div>
                 <div>
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
+                  <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
                     {uniName}
                   </h1>
-                  <p className="text-xs text-slate-600 mt-1 max-w-md">
+                  <p className="text-xs text-slate-600 mt-1 max-w-xl">
                     {uniAddress}
                   </p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 mt-1.5 font-medium">
@@ -192,61 +200,61 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </div>
 
               {/* Title & Badge */}
-              <div className="text-right sm:shrink-0">
-                <div className="inline-block px-3 py-1 bg-slate-900 text-white font-extrabold text-sm tracking-wider uppercase rounded">
+              <div className="w-full sm:w-auto text-left sm:text-right sm:shrink-0 flex sm:flex-col justify-between sm:justify-start items-center sm:items-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
+                <div className="inline-block px-3 py-1 bg-slate-900 text-white font-extrabold text-sm tracking-wider uppercase rounded shadow-xs">
                   TAX INVOICE
                 </div>
                 <div className="mt-2 flex justify-end">
                   {getStatusBadge()}
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Official Student Fee Statement</p>
+                <p className="text-xs text-slate-500 mt-1 hidden sm:block">Official Student Fee Statement</p>
               </div>
             </div>
 
             {/* Invoice & Student Meta (2 Column Grid) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50/80 p-5 rounded-lg border border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 bg-slate-50/80 p-4 sm:p-5 rounded-lg border border-slate-200">
               {/* Left Column: Student Details */}
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5 text-slate-900 font-bold uppercase tracking-wider mb-2 pb-1 border-b border-slate-300">
                   <GraduationCap className="w-4 h-4 text-primary" />
                   <span>Student & Admission Details</span>
                 </div>
-                <div>
+                <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                   <span className="text-slate-500">Student Name:</span>{' '}
                   <strong className="text-slate-900 text-sm">{studentName}</strong>
                 </div>
-                <div>
+                <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                   <span className="text-slate-500">Student ID / Enr No:</span>{' '}
                   <strong className="text-slate-900">{studentId}</strong>
                 </div>
-                <div>
+                <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                   <span className="text-slate-500">University Enr No:</span>{' '}
                   <strong className="text-slate-900">{uniEnrollmentNumber}</strong>
                 </div>
-                <div>
+                <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                   <span className="text-slate-500">Program & Course:</span>{' '}
                   <span className="text-slate-900 font-semibold">{programName} ({programCode})</span>
                 </div>
                 {student.specialisation && (
-                  <div>
+                  <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                     <span className="text-slate-500">Specialisation:</span>{' '}
                     <span className="text-slate-800">{student.specialisation}</span>
                   </div>
                 )}
-                <div>
+                <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                   <span className="text-slate-500">Admission Mode:</span>{' '}
                   <span className="text-slate-800 font-medium">{admissionType}</span>
                 </div>
                 {student.phone && (
-                  <div>
+                  <div className="flex flex-wrap justify-between sm:justify-start sm:gap-2">
                     <span className="text-slate-500">Contact / Email:</span>{' '}
-                    <span className="text-slate-800">{student.phone} · {student.email}</span>
+                    <span className="text-slate-800 break-all">{student.phone} · {student.email}</span>
                   </div>
                 )}
               </div>
 
               {/* Right Column: Invoice Meta */}
-              <div className="space-y-1.5 text-xs sm:pl-4 sm:border-l border-slate-300">
+              <div className="space-y-1.5 text-xs md:pl-4 md:border-l border-slate-300">
                 <div className="flex items-center gap-1.5 text-slate-900 font-bold uppercase tracking-wider mb-2 pb-1 border-b border-slate-300">
                   <Calendar className="w-4 h-4 text-primary" />
                   <span>Invoice Information</span>
@@ -285,17 +293,17 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                 Fee Particulars & Line Items
               </h2>
-              <div className="overflow-hidden rounded-lg border border-slate-300">
-                <table className="w-full text-xs">
+              <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-xs">
+                <table className="w-full min-w-[580px] sm:min-w-full text-xs">
                   <thead className="bg-slate-800 text-white uppercase text-[11px] font-semibold tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3 text-left w-12">#</th>
                       <th className="py-2.5 px-3 text-left">Description</th>
-                      <th className="py-2.5 px-3 text-center w-24">Category</th>
+                      <th className="py-2.5 px-3 text-center w-28">Category</th>
                       <th className="py-2.5 px-3 text-center w-16">Qty</th>
-                      <th className="py-2.5 px-3 text-right w-24">Rate (₹)</th>
+                      <th className="py-2.5 px-3 text-right w-28">Rate (₹)</th>
                       <th className="py-2.5 px-3 text-right w-20">GST %</th>
-                      <th className="py-2.5 px-3 text-right w-28">Amount (₹)</th>
+                      <th className="py-2.5 px-3 text-right w-32">Amount (₹)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-slate-800">
@@ -326,9 +334,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
             </div>
 
             {/* Calculations & Summary Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-6 pt-2">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-6 pt-2">
               {/* Payment Instructions / Bank Info */}
-              <div className="sm:max-w-md w-full bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs space-y-2">
+              <div className="w-full md:max-w-md lg:max-w-lg bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-slate-900 uppercase">
                   <CreditCard className="w-4 h-4 text-primary" />
                   <span>Official Payment Instructions</span>
@@ -355,7 +363,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </div>
 
               {/* Totals Table */}
-              <div className="w-full sm:w-80 space-y-2 text-xs">
+              <div className="w-full md:w-80 lg:w-96 space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-slate-200">
                   <span className="text-slate-600">Subtotal (before tax):</span>
                   <span className="font-mono font-semibold text-slate-900">{formatCurrency(invoice.amount)}</span>
@@ -405,13 +413,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
 
             {/* Complete payment history linked to this invoice */}
             <div className="space-y-2 pt-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 uppercase">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Complete Payment History ({payments.length})</span>
-                </div>
-                {payments.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-slate-300">
-                  <table className="w-full text-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 uppercase">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Complete Payment History ({payments.length})</span>
+              </div>
+              {payments.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-300 shadow-xs">
+                  <table className="w-full min-w-[650px] sm:min-w-full text-xs">
                     <thead className="bg-slate-100 text-slate-700 uppercase font-semibold text-[10px]">
                       <tr>
                         <th className="py-2 px-3 text-left">Receipt No</th>
@@ -443,13 +451,13 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                       ))}
                     </tbody>
                   </table>
-                  </div>
-                ) : (
-                  <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
-                    No payment transactions are recorded against this invoice.
-                  </p>
-                )}
-              </div>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-500">
+                  No payment transactions are recorded against this invoice.
+                </p>
+              )}
+            </div>
 
             {/* Footer Terms & Signatory */}
             <div className="pt-8 border-t border-slate-300 grid grid-cols-1 sm:grid-cols-2 gap-6 items-end text-xs text-slate-600">
@@ -464,7 +472,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                 </p>
               </div>
 
-              <div className="text-right sm:text-right space-y-3">
+              <div className="text-left sm:text-right space-y-3">
                 <div className="inline-block border-b-2 border-slate-800 pb-1 w-48 text-center">
                   <div className="h-10 flex items-center justify-center text-slate-400 italic font-serif">
                     Finance Department
