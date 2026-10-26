@@ -237,12 +237,15 @@ export function ProgramFeeStructurePanel() {
   const openCreate = () => {
     setEditing(null);
     const selectedProgram = programs.find(program => program.id === selectedProgramId);
-    const semesterCount = getSemesterCount(selectedProgram, selectedAdmissionSessionId);
+    const isUniversityFee = feeView === 'university';
+    const semesterCount = getSemesterCount(
+      selectedProgram,
+      isUniversityFee ? getUniversityFeeSessionId(selectedProgram, 'all') : selectedAdmissionSessionId
+    );
     const programUniversityId = typeof selectedProgram?.universityId === 'object'
       ? selectedProgram.universityId?.id
       : selectedProgram?.universityId;
     const activeUniId = programUniversityId || selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
-    const isUniversityFee = feeView === 'university';
     setConfiguringUniversityFee(isUniversityFee);
     setForm({ 
       level: isUniversityFee ? 'university' : 'program',
@@ -278,22 +281,37 @@ export function ProgramFeeStructurePanel() {
     const sessId = typeof fee.admissionSessionId === 'object' ? fee.admissionSessionId?.id : fee.admissionSessionId;
     const activeUniId = uniId || selectedUniversityId || (user as any)?.universityId || (universities[0]?.id || '');
     const selectedProgram = programs.find(program => program.id === progId);
-    const fullProgramFee = Number(fee.fullProgramFee || 0);
-    const yearlyFee = fee.yearlyFee ?? (fullProgramFee
-      ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 12))
-      : fee.baseFee || 0);
-    const semesterCount = getSemesterCount(selectedProgram, sessId || '');
-    const semesterFee = fee.semesterFee ?? (fullProgramFee && semesterCount > 0
-      ? fullProgramFee / semesterCount
-      : fee.baseFee || 0);
-    const semesterFees = Array.isArray(fee.semesterFees) && fee.semesterFees.length === semesterCount
-      ? fee.semesterFees.map(amount => String(amount))
-      : Array.from({ length: semesterCount }, () => String(semesterFee || 0));
+    const isUniversityFee = fee.level === 'university';
 
     let parsedBreakdown = fee.feeBreakdown || [];
     if (typeof parsedBreakdown === 'string') {
       try { parsedBreakdown = JSON.parse(parsedBreakdown); } catch (e) { parsedBreakdown = []; }
     }
+    // Older university fees only stored a billing-cycle breakdown of university fee amounts
+    const legacyUniversityAmounts = isUniversityFee && Array.isArray(parsedBreakdown)
+      ? parsedBreakdown.map((block: any) => Number(block.universityFee || 0))
+      : [];
+    const legacyUniversityTotal = legacyUniversityAmounts.reduce((total: number, amount: number) => total + amount, 0);
+
+    const fullProgramFee = Number(fee.fullProgramFee || 0)
+      || (isUniversityFee ? Number(fee.universityFee || 0) || legacyUniversityTotal : 0);
+    const yearlyFee = fee.yearlyFee
+      ?? (isUniversityFee && fee.billingCycle === 'per_year' && legacyUniversityAmounts.length > 0 ? legacyUniversityAmounts[0] : null)
+      ?? (fullProgramFee
+        ? fullProgramFee / Math.max(1, Math.ceil((selectedProgram?.duration || 12) / 12))
+        : fee.baseFee || 0);
+    const semesterCount = getSemesterCount(
+      selectedProgram,
+      isUniversityFee ? getUniversityFeeSessionId(selectedProgram, sessId || 'all') : sessId || ''
+    );
+    const semesterFee = fee.semesterFee ?? (fullProgramFee && semesterCount > 0
+      ? fullProgramFee / semesterCount
+      : fee.baseFee || 0);
+    const semesterFees = Array.isArray(fee.semesterFees) && fee.semesterFees.length === semesterCount
+      ? fee.semesterFees.map(amount => String(amount))
+      : isUniversityFee && fee.billingCycle === 'per_semester' && legacyUniversityAmounts.length === semesterCount
+        ? legacyUniversityAmounts.map(String)
+        : Array.from({ length: semesterCount }, () => String(semesterFee || 0));
     if (Array.isArray(parsedBreakdown) && parsedBreakdown.length > 0) {
        parsedBreakdown = parsedBreakdown.map((b: any) => ({
          year: b.year,
@@ -343,15 +361,15 @@ export function ProgramFeeStructurePanel() {
         toast.error('Please select a study centre');
         return;
       }
-      if (form.level === 'program' && Number(form.fullProgramFee) <= 0) {
+      if (Number(form.fullProgramFee) <= 0) {
         toast.error('Full program fee must be greater than zero');
         return;
       }
-      if (form.level === 'program' && Number(form.yearlyFee) <= 0) {
+      if (Number(form.yearlyFee) <= 0) {
         toast.error('Yearly payment must be greater than zero');
         return;
       }
-      if (form.level === 'program' && form.semesterFees.length > 0 && (
+      if (form.semesterFees.length > 0 && (
         Number(form.semesterFee) <= 0
         || form.semesterFees.some(amount => !Number.isFinite(Number(amount)) || Number(amount) <= 0)
       )) {
@@ -387,6 +405,27 @@ export function ProgramFeeStructurePanel() {
          };
       });
 
+      // University fees use the same one-time / yearly / semester fields as study-centre fees. The
+      // remittance schedule and student fee views still read a per-cycle breakdown, so build it from them.
+      if (form.level === 'university') {
+        const program = programs.find(item => item.id === form.programId);
+        const yearCount = Math.max(1, Math.ceil((Number(program?.duration) || 12) / 12));
+        const cycleAmounts = form.semesterFees.length > 0
+          ? form.semesterFees.map(Number)
+          : Array.from({ length: yearCount }, () => Number(form.yearlyFee));
+        const universityBreakdown = cycleAmounts.map((amount, index) => ({
+          year: index + 1,
+          baseFee: 0,
+          universityFee: amount,
+          examFee: 0,
+          commissionRate: 0,
+          dueDate: '',
+          additionalFees: ''
+        }));
+        cleanBreakdown.splice(0, cleanBreakdown.length, ...universityBreakdown);
+        totalUniversityFee = Number(form.fullProgramFee);
+      }
+
       const finalUniId = form.universityId || selectedUniversityId || undefined;
       const payload = {
         level: form.level,
@@ -400,11 +439,13 @@ export function ProgramFeeStructurePanel() {
             : undefined,
         baseFee: form.level === 'program' ? Number(form.yearlyFee) : totalBaseFee,
         fullProgramFee: Number(form.fullProgramFee || 0),
-        yearlyFee: form.level === 'program' ? Number(form.yearlyFee) : undefined,
-        semesterFee: form.level === 'program' ? Number(form.semesterFee) : undefined,
-        semesterFees: form.level === 'program' ? form.semesterFees.map(Number) : undefined,
+        yearlyFee: Number(form.yearlyFee),
+        semesterFee: Number(form.semesterFee),
+        semesterFees: form.semesterFees.map(Number),
         universityFee: totalUniversityFee,
-        billingCycle: form.billingCycle,
+        billingCycle: form.level === 'university'
+          ? form.semesterFees.length > 0 ? 'per_semester' : 'per_year'
+          : form.billingCycle,
         currency: form.currency,
         effectiveFrom: form.effectiveFrom || undefined,
         additionalFees: addFees,
@@ -492,6 +533,15 @@ export function ProgramFeeStructurePanel() {
     program?.semesterRecords?.filter(semester => semester.academicSessionId === sessionId) || [];
   const getSemesterCount = (program?: Program, sessionId = selectedAdmissionSessionId) =>
     getProgramSemesters(program, sessionId).length;
+  // University fees can apply to "All Sessions"; semesters then come from the program's own session
+  const getUniversityFeeSessionId = (program?: Program, sessionId?: string) => {
+    if (sessionId && sessionId !== 'all') return sessionId;
+    return program?.academicSessionId || program?.semesterRecords?.[0]?.academicSessionId || '';
+  };
+  const getFeeSemesterSessionId = (level: string, programId: string, admissionSessionId: string) =>
+    level === 'program'
+      ? selectedAdmissionSessionId
+      : getUniversityFeeSessionId(programs.find(program => program.id === programId), admissionSessionId);
 
   const centerProgramEntries = useMemo(() => {
     if (!selectedCenter) return [];
@@ -827,7 +877,7 @@ export function ProgramFeeStructurePanel() {
                               {fee.level === 'university' ? 'University Fee' : selectedCenter?.name || 'Study Centre Fee'}
                             </Badge>
                             <Badge variant="outline" className="text-xs">
-                              {fee.level === 'university' ? fee.billingCycle?.replace('_', ' ') : 'Yearly / Semester'}
+                              {fee.level === 'university' && fee.yearlyFee == null ? fee.billingCycle?.replace('_', ' ') : 'Yearly / Semester'}
                             </Badge>
                             {sess && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-none text-xs">{sess}</Badge>}
                             {!sess && <Badge variant="outline" className="text-xs">All Sessions</Badge>}
@@ -846,7 +896,7 @@ export function ProgramFeeStructurePanel() {
                           )}
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {fee.level !== 'university' && (
+                            {(fee.level !== 'university' || fee.yearlyFee != null) && (
                               <>
                                 <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
                                   {fee.currency || 'INR'} {Number(fee.fullProgramFee || 0).toLocaleString()} One-Time
@@ -884,7 +934,7 @@ export function ProgramFeeStructurePanel() {
                                       : <>
                                           <span>Tui: {b.baseFee}</span>
                                           <span>Exam: {b.examFee}</span>
-                                          {b.commissionRate > 0 && <span className="col-span-2 text-indigo-600">Comm: {b.commissionRate}%</span>}
+                                          {/* {b.commissionRate > 0 && <span className="col-span-2 text-indigo-600">Comm: {b.commissionRate}%</span>} */}
                                         </>}
                                     {b.additionalFees && <span className="col-span-2 text-xs text-slate-500">Add: {b.additionalFees}</span>}
                                   </div>
@@ -1086,6 +1136,15 @@ export function ProgramFeeStructurePanel() {
                       ...f,
                       programId: e.target.value,
                       universityId: programUniversityId || f.universityId,
+                      ...(f.level === 'university' ? (() => {
+                        const semesterCount = getSemesterCount(program, getUniversityFeeSessionId(program, f.admissionSessionId));
+                        const fullFee = Number(f.fullProgramFee) || 0;
+                        const evenShare = fullFee > 0 && semesterCount > 0 ? (fullFee / semesterCount).toFixed(2) : '';
+                        return {
+                          semesterFees: Array.from({ length: semesterCount }, () => evenShare),
+                          semesterFee: evenShare,
+                        };
+                      })() : {}),
                     }));
                   }}
                   required
@@ -1113,7 +1172,20 @@ export function ProgramFeeStructurePanel() {
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
                   value={form.admissionSessionId}
-                  onChange={e => setForm(f => ({ ...f, admissionSessionId: e.target.value }))}
+                  onChange={e => setForm(f => {
+                    const program = programs.find(item => item.id === f.programId);
+                    const semesterCount = getSemesterCount(program, getUniversityFeeSessionId(program, e.target.value));
+                    const fullFee = Number(f.fullProgramFee) || 0;
+                    const evenShare = fullFee > 0 && semesterCount > 0 ? (fullFee / semesterCount).toFixed(2) : '';
+                    return {
+                      ...f,
+                      admissionSessionId: e.target.value,
+                      semesterFees: semesterCount === f.semesterFees.length
+                        ? f.semesterFees
+                        : Array.from({ length: semesterCount }, () => evenShare),
+                      semesterFee: semesterCount === f.semesterFees.length ? f.semesterFee : evenShare,
+                    };
+                  })}
                 >
                   <option value="all">All Sessions</option>
                   {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1121,10 +1193,10 @@ export function ProgramFeeStructurePanel() {
               )}
             </div>
 
-            {form.level === 'program' ? (
+            {form.level === 'program' || form.level === 'university' ? (
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <Label>Full Program Fee (One-Time Payment) <span className="text-destructive">*</span></Label>
+                  <Label>{form.level === 'university' ? 'Full Program University Fee (One-Time Payment)' : 'Full Program Fee (One-Time Payment)'} <span className="text-destructive">*</span></Label>
                   <Input
                     type="number"
                     min="0.01"
@@ -1135,7 +1207,10 @@ export function ProgramFeeStructurePanel() {
                       const program = programs.find(item => item.id === form.programId);
                       const durationMonths = Math.max(1, Number(program?.duration) || 12);
                       const yearCount = Math.max(1, Math.ceil(durationMonths / 12));
-                      const programSemesters = getProgramSemesters(program, selectedAdmissionSessionId);
+                      const programSemesters = getProgramSemesters(
+                        program,
+                        getFeeSemesterSessionId(form.level, form.programId, form.admissionSessionId)
+                      );
                       const semesterCount = programSemesters.length;
                       setForm(f => ({
                         ...f,
@@ -1171,15 +1246,16 @@ export function ProgramFeeStructurePanel() {
                         {form.semesterFees.map((amount, index) => {
                           const semester = getProgramSemesters(
                             programs.find(item => item.id === form.programId),
-                            selectedAdmissionSessionId
+                            getFeeSemesterSessionId(form.level, form.programId, form.admissionSessionId)
                           )[index];
+                          const semesterKey = semester?.id || `semester-${index}`;
                           return (
-                            <div key={semester.id} className="space-y-1">
-                              <Label htmlFor={`semester-fee-${semester.id}`} className="text-xs text-muted-foreground">
-                                {semester.semesterName}
+                            <div key={semesterKey} className="space-y-1">
+                              <Label htmlFor={`semester-fee-${semesterKey}`} className="text-xs text-muted-foreground">
+                                {semester?.semesterName || `Semester ${index + 1}`}
                               </Label>
                               <Input
-                                id={`semester-fee-${semester.id}`}
+                                id={`semester-fee-${semesterKey}`}
                                 type="number"
                                 min="0.01"
                                 step="0.01"
@@ -1208,6 +1284,11 @@ export function ProgramFeeStructurePanel() {
                     </p>
                   </>
                 )}
+                {form.level === 'university' && form.semesterFees.length === 0 && form.programId && (
+                  <p className="text-xs text-muted-foreground">
+                    This program has no semesters for the selected session, so the university fee is scheduled yearly.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-1">
@@ -1235,7 +1316,7 @@ export function ProgramFeeStructurePanel() {
               </div>
             </div>
 
-            {form.feeBreakdown && form.feeBreakdown.length > 0 && (
+            {form.level !== 'university' && form.feeBreakdown && form.feeBreakdown.length > 0 && (
               <div className="space-y-4 mt-6">
                 <h3 className="font-semibold text-lg">{form.billingCycle === 'per_semester' ? 'Semester' : 'Yearly'} Fee Breakdown ({form.feeBreakdown.length} {form.billingCycle === 'per_semester' ? 'Semesters' : 'Years'})</h3>
                 {form.feeBreakdown.map((block, idx) => (
@@ -1257,10 +1338,10 @@ export function ProgramFeeStructurePanel() {
                             <Label>Exam Fee</Label>
                             <Input type="number" value={block.examFee} onChange={e => handleBreakdownChange(idx, 'examFee', e.target.value)} />
                           </div>
-                          <div className="space-y-1">
+                          {/* <div className="space-y-1">
                             <Label>Commission Rate (%)</Label>
                             <Input type="number" step="0.01" value={block.commissionRate} onChange={e => handleBreakdownChange(idx, 'commissionRate', e.target.value)} />
-                          </div>
+                          </div> */}
                         </>
                       )}
                       <div className="space-y-1">

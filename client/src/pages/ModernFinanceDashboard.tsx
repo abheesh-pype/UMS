@@ -45,7 +45,7 @@ import { SubDepartmentsPanel } from '@/components/panels/SubDepartmentsPanel';
 import { CentersAdmissionsPanel } from '@/components/panels/CentersAdmissionsPanel';
 import { StatusRequestsPanel } from '@/components/panels/StatusRequestsPanel';
 import { FinanceTotalReportPanel } from '@/components/panels/FinanceTotalReportPanel';
-import { CommissionsPanel } from '@/components/panels/CommissionsPanel';
+// import { CommissionsPanel } from '@/components/panels/CommissionsPanel';
 import { FinanceReregReportWrapper } from '@/components/panels/FinanceReregReportWrapper';
 import { FinanceStudentPaymentLogsPanel } from '@/components/panels/FinanceStudentPaymentLogsPanel';
 import { Badge } from '@/components/ui/badge';
@@ -148,7 +148,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'subdepartments': return <SubDepartmentsPanel />;
       case 'total_report': return <FinanceTotalReportPanel />;
       case 'student_payment_log': return <FinanceStudentPaymentLogsPanel />;
-      case 'commissions': return <CommissionsPanel />;
+      // case 'commissions': return <CommissionsPanel />;
       case 'rereg_report': return <FinanceReregReportWrapper />;
       case 'rereg_report_admission': return <FinanceReregReportWrapper />;
       default: return null;
@@ -192,7 +192,7 @@ export function getFinanceNavItems() {
     { id: 'study_centers', label: 'Study Centre' },
     { id: 'center_admissions', label: 'Centre Admission' },
     // { id: 'status_requests', label: 'Status Request' },
-    { id: 'commissions', label: 'Commission' },
+    // { id: 'commissions', label: 'Commission' },
 
     { id: '__accounting_reports_section', label: 'Accounting & Financial Reports', isSection: true },
     { id: 'expenses', label: 'Expense' },

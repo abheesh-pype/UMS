@@ -2158,3 +2158,24 @@ model AcademicCalendar {
   @@map("academic_calendar")
 }
 
+
+// Manually recorded income and expenses shown in Finance -> Income & Expenditure
+model FinanceTransaction {
+  id              String   @id @default(uuid())
+  organizationId  String
+  type            String // "income" | "expense"
+  category        String
+  amount          Float
+  transactionDate DateTime
+  description     String?
+  paymentMode     String?
+  referenceNo     String?
+  partyName       String?
+  createdBy       String
+  createdByName   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId, type, transactionDate])
+  @@map("finance_transactions")
+}

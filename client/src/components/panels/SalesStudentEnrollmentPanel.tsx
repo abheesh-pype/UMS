@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, UserPlus, Eye, ShieldAlert, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { RefreshCw, UserPlus, Eye, ShieldAlert, Clock, CheckCircle, XCircle, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -38,6 +38,7 @@ export function SalesStudentEnrollmentPanel() {
   const [showForm, setShowForm] = useState(false);
   const [editingEnrollment, setEditingEnrollment] = useState<SalesEnrollment | null>(null);
   const [viewingEnrollment, setViewingEnrollment] = useState<SalesEnrollment | null>(null);
+  const [updatingEnrollment, setUpdatingEnrollment] = useState<SalesEnrollment | null>(null);
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -56,6 +57,8 @@ export function SalesStudentEnrollmentPanel() {
   }, [fetchEnrollments]);
 
   const isOpsRejected = (status: string) => status === 'ops_rejected' || status === 'department_rejected';
+  // Matches the server rule: details can be corrected until Operations completes verification
+  const canUpdateDetails = (status: string) => ['pending_doc_review', 'document_review', 'payment_pending'].includes(status);
 
   const renderStatusBadge = (enrollment: SalesEnrollment) => {
     if (isOpsRejected(enrollment.status)) {
@@ -203,6 +206,20 @@ export function SalesStudentEnrollmentPanel() {
                               Edit &amp; Re-submit
                             </Button>
                           )}
+                          {!isOpsRejected(enrollment.status) && (
+                            <span title={canUpdateDetails(enrollment.status) ? 'Update student details' : 'Details are locked after Operations verification'}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs font-medium"
+                                disabled={!canUpdateDetails(enrollment.status)}
+                                onClick={() => setUpdatingEnrollment(enrollment)}
+                              >
+                                <Pencil className="mr-1 h-3.5 w-3.5" />
+                                Update
+                              </Button>
+                            </span>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -281,6 +298,19 @@ export function SalesStudentEnrollmentPanel() {
                 <Button variant="outline" onClick={() => setViewingEnrollment(null)}>
                   Close
                 </Button>
+                {canUpdateDetails(viewingEnrollment.status) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const toUpdate = viewingEnrollment;
+                      setViewingEnrollment(null);
+                      setUpdatingEnrollment(toUpdate);
+                    }}
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Update
+                  </Button>
+                )}
                 {isOpsRejected(viewingEnrollment.status) && (
                   <Button
                     className="bg-amber-600 text-white hover:bg-amber-700"
@@ -305,6 +335,15 @@ export function SalesStudentEnrollmentPanel() {
         open={!!editingEnrollment}
         onOpenChange={(open) => !open && setEditingEnrollment(null)}
         enrollment={editingEnrollment}
+        onSuccess={fetchEnrollments}
+      />
+
+      {/* Update details without changing the review status */}
+      <EditSalesStudentDialog
+        mode="update"
+        open={!!updatingEnrollment}
+        onOpenChange={(open) => !open && setUpdatingEnrollment(null)}
+        enrollment={updatingEnrollment}
         onSuccess={fetchEnrollments}
       />
     </div>

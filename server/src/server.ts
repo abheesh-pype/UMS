@@ -51,7 +51,7 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
 import debugRoutes from './routes/debugRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
-import commissionRoutes from './routes/commissionRoutes.js';
+// import commissionRoutes from './routes/commissionRoutes.js';
 import onboardingStatusRoutes from './routes/onboardingStatusRoutes.js';
 
 const app: Application = express();
@@ -153,7 +153,7 @@ app.use(`/api/${API_VERSION}/notifications`, notificationRoutes);
 app.use(`/api/${API_VERSION}/public`, publicRoutes);
 app.use(`/api/${API_VERSION}/enrollment`, enrollmentRoutes);
 app.use(`/api/${API_VERSION}/backups`, backupRoutes);
-app.use(`/api/${API_VERSION}/commissions`, commissionRoutes);
+// app.use(`/api/${API_VERSION}/commissions`, commissionRoutes);
 app.use(`/api/${API_VERSION}/onboarding-statuses`, onboardingStatusRoutes);
 app.use(`/api/${API_VERSION}/study-centers/onboarding-statuses`, onboardingStatusRoutes);
 
