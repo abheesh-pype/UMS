@@ -222,6 +222,12 @@ export function ProgramFeeStructurePanel() {
     fetchAllData();
   }, [fetchAllData]);
 
+  // University fee view: with a single university, select it automatically
+  useEffect(() => {
+    if (feeView !== 'university' || selectedUniversityId || universities.length !== 1) return;
+    setSelectedUniversityId(universities[0].id);
+  }, [feeView, selectedUniversityId, universities]);
+
   // Keep the selected center's university as the context for fee creation.
   useEffect(() => {
     if (feeView !== 'center') return;
@@ -734,7 +740,29 @@ export function ProgramFeeStructurePanel() {
         </CardContent>
       </Card>}
 
-      {feeView === 'university' && <Card className="border-slate-200 shadow-sm rounded-xl">
+      {/* Single tenancy: the one university is picked automatically and only its name is shown */}
+      {feeView === 'university' && universities.length <= 1 && <Card className="border-slate-200 shadow-sm rounded-xl">
+        <CardContent className="p-4 flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
+            <Building2 className="w-5 h-5 text-indigo-500" />
+          </div>
+          {loading && universities.length === 0 ? (
+            <div className="h-10 w-48 bg-muted rounded-lg animate-pulse" />
+          ) : universities.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No university is available.</p>
+          ) : (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">University</p>
+              <p className="font-semibold">
+                {universities[0].name}
+                {universities[0].code && <span className="ml-2 text-xs font-normal text-muted-foreground">{universities[0].code}</span>}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>}
+
+      {feeView === 'university' && universities.length > 1 && <Card className="border-slate-200 shadow-sm rounded-xl">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Building2 className="w-5 h-5 text-indigo-500" /> Universities
@@ -896,7 +924,7 @@ export function ProgramFeeStructurePanel() {
                           )}
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {(fee.level !== 'university' || fee.yearlyFee != null) && (
+                            {fee.level !== 'university' && fee.yearlyFee == null && (
                               <>
                                 <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm font-medium px-2 py-0.5">
                                   {fee.currency || 'INR'} {Number(fee.fullProgramFee || 0).toLocaleString()} One-Time
@@ -911,7 +939,7 @@ export function ProgramFeeStructurePanel() {
                                 )}
                               </>
                             )}
-                            {fee.level === 'university' && fee.universityFee !== undefined && fee.universityFee > 0 && (
+                            {fee.level === 'university' && fee.yearlyFee == null && fee.universityFee !== undefined && fee.universityFee > 0 && (
                               <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-sm font-medium px-2 py-0.5">
                                 {fee.currency || 'INR'} {fee.universityFee.toLocaleString()} Uni Fee
                               </Badge>
@@ -923,7 +951,22 @@ export function ProgramFeeStructurePanel() {
                             )}
                           </div>
                           
-                          {fee.feeBreakdown && fee.feeBreakdown.length > 0 && (
+                          {fee.yearlyFee != null && (() => {
+                            const program = programs.find(item => item.id === (typeof fee.programId === 'object' ? fee.programId?.id : fee.programId));
+                            const feeSessionId = typeof fee.admissionSessionId === 'object' ? fee.admissionSessionId?.id : fee.admissionSessionId;
+                            return (
+                              <FeePaymentSchedule
+                                fee={fee}
+                                durationMonths={Number(program?.duration || (typeof fee.programId === 'object' ? fee.programId?.duration : 0) || 12)}
+                                semesters={getProgramSemesters(
+                                  program,
+                                  fee.level === 'university' ? getUniversityFeeSessionId(program, feeSessionId || 'all') : feeSessionId || ''
+                                )}
+                              />
+                            );
+                          })()}
+
+                          {fee.feeBreakdown && fee.feeBreakdown.length > 0 && fee.yearlyFee == null && (
                             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                               {fee.feeBreakdown.map((b: any, idx: number) => (
                                 <div key={idx} className="p-2 bg-slate-50 border rounded-md text-xs">
@@ -1109,6 +1152,14 @@ export function ProgramFeeStructurePanel() {
           <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
             
 
+            {configuringUniversityFee ? (
+              <div className="space-y-1">
+                <Label>University</Label>
+                <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium">
+                  {universities.find(u => u.id === (form.universityId || selectedUniversityId))?.name || universities[0]?.name || '—'}
+                </p>
+              </div>
+            ) : (
             <div className="space-y-1">
               <Label>University <span className="text-destructive">*</span></Label>
               <select
@@ -1120,6 +1171,7 @@ export function ProgramFeeStructurePanel() {
                 {universities.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
+            )}
 
             <div className="space-y-1">
                 <Label>Program <span className="text-destructive">*</span></Label>
@@ -1367,6 +1419,78 @@ export function ProgramFeeStructurePanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// Fee schedule for a fee configuration: one-time settlement, every year, and every semester
+function FeePaymentSchedule({ fee, durationMonths, semesters }: {
+  fee: ProgramFee;
+  durationMonths: number;
+  semesters: { id: string; semesterName: string }[];
+}) {
+  const currency = fee.currency || 'INR';
+  const money = (amount: number) => currency === 'INR'
+    ? `₹${Math.round(amount).toLocaleString('en-IN')}`
+    : `${currency} ${Math.round(amount).toLocaleString()}`;
+  const yearlyFee = Number(fee.yearlyFee || 0);
+  const yearCount = Math.max(1, Math.ceil((durationMonths || 12) / 12));
+  const semesterFees = Array.isArray(fee.semesterFees) && fee.semesterFees.length > 0
+    ? fee.semesterFees.map(Number)
+    : [];
+  const sameEverySemester = semesterFees.length > 0 && semesterFees.every(amount => amount === semesterFees[0]);
+
+  return (
+    <div className="mt-3 space-y-3">
+      {/* One-time settlement */}
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 dark:border-emerald-900 dark:bg-emerald-900/20">
+        <div>
+          <p className="text-sm font-semibold">One-Time Settlement</p>
+          <p className="text-[11px] text-muted-foreground">Full program fee paid at once</p>
+        </div>
+        <p className="text-base font-bold whitespace-nowrap">{money(Number(fee.fullProgramFee || 0))}</p>
+      </div>
+
+      {/* Yearly */}
+      <div className="rounded-xl border p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold">Yearly Payment</p>
+          <p className="text-sm font-semibold whitespace-nowrap">
+            {money(yearlyFee)} <span className="text-xs font-normal text-muted-foreground">per year · {yearCount} {yearCount === 1 ? 'year' : 'years'}</span>
+          </p>
+        </div>
+        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {Array.from({ length: yearCount }, (_, index) => (
+            <div key={index} className="rounded-md border bg-slate-50 px-2 py-1.5 text-xs dark:bg-slate-900">
+              <p className="font-semibold">Year {index + 1}</p>
+              <p className="text-muted-foreground">{money(yearlyFee)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Semesters */}
+      {semesterFees.length > 0 && (
+        <div className="rounded-xl border p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">Semester Payment</p>
+            <p className="text-sm font-semibold whitespace-nowrap">
+              {sameEverySemester
+                ? money(semesterFees[0])
+                : `${money(Math.min(...semesterFees))} – ${money(Math.max(...semesterFees))}`}
+              {' '}<span className="text-xs font-normal text-muted-foreground">per semester · {semesterFees.length} {semesterFees.length === 1 ? 'semester' : 'semesters'}</span>
+            </p>
+          </div>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {semesterFees.map((amount, index) => (
+              <div key={semesters[index]?.id || index} className="rounded-md border bg-slate-50 px-2 py-1.5 text-xs dark:bg-slate-900">
+                <p className="font-semibold">Sem {index + 1}{semesters[index]?.semesterName ? <span className="ml-1 font-normal text-muted-foreground">{semesters[index].semesterName}</span> : null}</p>
+                <p className="text-muted-foreground">{fee.level === 'university' ? 'University fee' : 'Fee'}: {money(amount)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
