@@ -16,10 +16,14 @@ import {
   MapPin,
   User,
   Eye,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -726,6 +730,7 @@ export function UniversityExamIntegrationPanel({ universityId }: { universityId:
   };
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5" /> Exam Portal Integration</CardTitle>
@@ -769,6 +774,105 @@ export function UniversityExamIntegrationPanel({ universityId }: { universityId:
               </Button>
             </div>
           </form>
+        )}
+      </CardContent>
+    </Card>
+    <ExamPortalSyncCard universityId={universityId} />
+    </div>
+  );
+}
+
+type SyncState =
+  | { phase: 'idle' }
+  | { phase: 'sending' }
+  | { phase: 'success'; outcome: string; status: string; assessmentCount: number; assignedCount?: number; unmappedAssessmentIds: string[]; syncedAt: string }
+  | { phase: 'error'; message: string };
+
+function ExamPortalSyncCard({ universityId }: { universityId: string }) {
+  const [config, setConfig] = useState<{ configured: boolean; missing: string[]; invalid: string[] } | null>(null);
+  const [candidateId, setCandidateId] = useState('');
+  const [state, setState] = useState<SyncState>({ phase: 'idle' });
+
+  useEffect(() => {
+    let active = true;
+    api.get(`/operations/universities/${universityId}/exam-portal-sync`)
+      .then(response => { if (active) setConfig(response.data.data); })
+      .catch((error: any) => {
+        if (active) setConfig({ configured: false, missing: [], invalid: [] });
+        if (active) toast.error(error.response?.data?.message || 'Failed to check Exam Portal sync status');
+      });
+    return () => { active = false; };
+  }, [universityId]);
+
+  const sync = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setState({ phase: 'sending' });
+    try {
+      const response = await api.post(`/operations/universities/${universityId}/exam-portal-sync/students`, { candidateId: candidateId.trim() });
+      setState({ phase: 'success', ...response.data.data });
+    } catch (error: any) {
+      setState({ phase: 'error', message: error.response?.data?.message || 'The sync could not be completed' });
+    }
+  };
+
+  const problems = config ? [...config.missing, ...config.invalid] : [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><RefreshCw className="h-5 w-5" /> Provision a student to the Exam Portal</CardTitle>
+        <CardDescription>
+          Sends one student record and their current assessment assignments from the server. Date of birth and passwords are never sent, and no credentials are entered in this browser.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="max-w-2xl space-y-4">
+        {config === null ? (
+          <p className="text-sm text-muted-foreground">Checking connection...</p>
+        ) : (
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge variant={config.configured ? 'default' : 'secondary'}>{config.configured ? 'Configured' : 'Not configured'}</Badge>
+            {!config.configured && problems.length > 0 && (
+              <span className="text-muted-foreground">Server settings needed: {problems.join(', ')}</span>
+            )}
+          </p>
+        )}
+        <form onSubmit={sync} className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="exam-portal-candidate-id">Candidate ID</Label>
+            <Input
+              id="exam-portal-candidate-id"
+              placeholder="Student enrollment / Candidate ID"
+              value={candidateId}
+              onChange={event => setCandidateId(event.target.value)}
+              maxLength={64}
+              required
+            />
+          </div>
+          <Button type="submit" disabled={!config?.configured || state.phase === 'sending' || !candidateId.trim()}>
+            {state.phase === 'sending' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {state.phase === 'sending' ? 'Sending to Exam Portal...' : 'Send to Exam Portal'}
+          </Button>
+        </form>
+        {state.phase === 'success' && (
+          <p role="status" className="flex items-start gap-2 text-sm text-green-700">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Exam Portal confirmed: student {state.outcome} as {state.status}
+              {state.status === 'active' && ` with ${state.assignedCount ?? state.assessmentCount} of ${state.assessmentCount} assessment${state.assessmentCount === 1 ? '' : 's'} assigned`}
+              {' '}({new Date(state.syncedAt).toLocaleString()}).
+              {state.unmappedAssessmentIds.length > 0 && (
+                <span className="mt-1 block text-amber-700">
+                  {state.unmappedAssessmentIds.length} assessment{state.unmappedAssessmentIds.length === 1 ? ' has' : 's have'} no matching assessment in the Exam Portal yet (same examination and name required, or map it there).
+                </span>
+              )}
+            </span>
+          </p>
+        )}
+        {state.phase === 'error' && (
+          <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            {state.message}
+          </p>
         )}
       </CardContent>
     </Card>

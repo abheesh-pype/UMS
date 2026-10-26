@@ -19,6 +19,7 @@ import { startAllCronJobs } from './services/cronService.js';
 dotenv.config();
 
 // Import routes
+import integrationRoutes from './routes/integrationRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import organizationRoutes from './routes/organizationRoutes.js';
 import licenseRoutes from './routes/licenseRoutes.js';
@@ -121,6 +122,7 @@ app.use('/api', limiter);
 const API_VERSION = process.env.API_VERSION || 'v1';
 
 // Mount routes
+app.use('/api/integrations', integrationRoutes);
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
 app.use(`/api/${API_VERSION}/organizations`, organizationRoutes);
 app.use(`/api/${API_VERSION}/licenses`, licenseRoutes);
