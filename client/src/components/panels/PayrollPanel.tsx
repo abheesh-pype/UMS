@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import html2pdf from 'html2pdf.js';
 import { PayslipDocument } from './hr/PayslipDocument';
 
@@ -39,6 +40,11 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function PayrollPanel({ personalView = false }: { personalView?: boolean }) {
+  const { user } = useAuth();
+  // Confirming payroll and submitting it to Finance is HR's step; Finance approves and pays the batches
+  const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
+  const canConfirmAndSubmit = ['hr_admin', 'org_admin', 'superadmin'].includes(user?.role || '')
+    || (user?.role === 'employee' && departmentType === 'hr');
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
@@ -262,13 +268,17 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold">Payroll Management</h2>
-          <p className="text-muted-foreground text-sm">Generate, edit, confirm and submit payroll to Finance</p>
+          <p className="text-muted-foreground text-sm">
+            {canConfirmAndSubmit
+              ? 'Generate, edit, confirm and submit payroll to Finance'
+              : 'Payroll records prepared by HR. Approve and pay submitted payroll from Payroll Batches.'}
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={fetchPayrolls}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
-          {confirmedPayrolls.length > 0 && (
+          {canConfirmAndSubmit && confirmedPayrolls.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
               <Send className="w-4 h-4 mr-1" /> Submit to Finance ({confirmedPayrolls.length})
             </Button>
@@ -303,11 +313,11 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
               ) : (
                 <div className="space-y-3">
                   {filtered.map(p => {
-                    const empName = p.employeeId?.name || p.employeeId?.userId?.name || 'Employee';
+                    const empName = p.user?.name || p.employeeId?.name || p.employeeId?.userId?.name || 'Employee';
                     const isSelected = selectedIds.includes(p.id);
                     return (
                       <div key={p.id} className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/30'}`}>
-                        {p.status === 'confirmed' && (
+                        {canConfirmAndSubmit && p.status === 'confirmed' && (
                           <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(p.id)} className="w-4 h-4 shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
@@ -331,7 +341,7 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
                               <Edit className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {(p.status === 'draft' || p.status === 'processed') && (
+                          {canConfirmAndSubmit && (p.status === 'draft' || p.status === 'processed') && (
                             <Button size="sm" variant="outline" className="text-green-600" onClick={() => handleConfirm(p.id)}>
                               <CheckCircle className="w-3.5 h-3.5 mr-1" /> Confirm
                             </Button>
@@ -424,7 +434,7 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Edit Payroll — {editPayroll?.employeeId?.name || 'Employee'} ({editPayroll?.month})
+              Edit Payroll — {editPayroll?.user?.name || editPayroll?.employeeId?.name || 'Employee'} ({editPayroll?.month})
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-5 pt-2">

@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 
 interface PayrollBatch {
@@ -38,6 +39,11 @@ interface ConfirmedPayroll {
 
 export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatchCreation?: boolean }) {
   const isFinance = allowBatchCreation;
+  const { user } = useAuth();
+  // Creating a batch submits confirmed payroll to Finance, which is HR's step, so Finance only approves and pays
+  const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
+  const canSubmitToFinance = ['hr_admin', 'org_admin', 'superadmin'].includes(user?.role || '')
+    || (user?.role === 'employee' && departmentType === 'hr');
   const [batches, setBatches] = useState<PayrollBatch[]>([]);
   const [availablePayrolls, setAvailablePayrolls] = useState<ConfirmedPayroll[]>([]);
   const [selectedPayrollIds, setSelectedPayrollIds] = useState<string[]>([]);
@@ -189,7 +195,7 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
           <p className="text-muted-foreground">Review and process payroll batches from HR</p>
         </div>
         <div className="flex gap-2">
-          {allowBatchCreation && (
+          {allowBatchCreation && canSubmitToFinance && (
             <Button onClick={() => setCreateDialogOpen(true)}>
               Create Payroll Batch
             </Button>
