@@ -1045,7 +1045,8 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
             invoiceId: invoice.id,
             amount: admissionInvoice.amount,
             method: 'Study Centre Admission Payment',
-            referenceNo: paymentProofUrl,
+            // Data URL proofs are megabytes of base64 and stay on the center record, not in the reference field
+            referenceNo: String(paymentProofUrl).startsWith('data:') ? null : paymentProofUrl,
             receiptNo: admissionInvoice.receiptNo,
             receiptDate: admissionInvoice.receivedAt,
             receivedBy: req.user.id,
@@ -1371,7 +1372,7 @@ export const getUniversityFeePayments = asyncHandler(async (req: AuthRequest, re
 
 export const payUniversityFee = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { referenceNo, paidAt } = req.body;
-  const screenshot = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const screenshot = req.file ? getPaymentProofDataUrl(req.file) : undefined;
 
   const payment = await prisma.universityFeePayment.findUnique({
     where: { id: req.params.id }

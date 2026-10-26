@@ -183,7 +183,7 @@ router.get('/sales-users', authorize('finance_admin'), getFinanceSalesUsers);
 
 // University Fee Payments
 router.get('/university-fees', authorize('finance_admin'), getUniversityFeePayments);
-router.post('/university-fees/:id/pay', authorize('finance_admin'), upload.single('screenshot'), payUniversityFee);
+router.post('/university-fees/:id/pay', authorize('finance_admin'), uploadPaymentProof.single('screenshot'), payUniversityFee);
 
 // Salary Config Approval
 router.get('/salary-configs', authorize('finance_admin'), getFinanceSalaryConfigs);

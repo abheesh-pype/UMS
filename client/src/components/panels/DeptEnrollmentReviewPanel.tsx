@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Enrollment {
   id: string;
@@ -503,7 +504,7 @@ export function DeptEnrollmentReviewPanel() {
                   <div className="flex items-center gap-3">
                     {selectedEnrollment.studentPhoto ? (
                       <img
-                        src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                        src={resolveFileUrl(selectedEnrollment.studentPhoto)}
                         alt={selectedEnrollment.studentName}
                         className="w-12 h-12 rounded-full object-cover border-2 border-primary/20 shadow-sm"
                       />
@@ -705,7 +706,7 @@ export function DeptEnrollmentReviewPanel() {
                             <span className="truncate font-medium">{doc.name}</span>
                           </div>
                           <a
-                            href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                            href={resolveFileUrl(doc.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-primary hover:underline font-semibold flex-shrink-0"

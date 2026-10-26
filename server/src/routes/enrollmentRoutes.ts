@@ -32,7 +32,8 @@ import {
   rejectUniversityEnrollment,
 } from '../controllers/universityEnrollmentController.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload, uploadPaymentProof } from '../middleware/upload.js';
+import { uploadDocument, uploadPaymentProof } from '../middleware/upload.js';
+import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.use(protect);
 
 // Study Center wallet routes
 router.get('/wallet', authorize('center_admin'), getWallet);
-router.post('/wallet/topup', authorize('center_admin'), upload.single('proofDocument'), submitTopUp);
+router.post('/wallet/topup', authorize('center_admin'), uploadPaymentProof.single('proofDocument'), submitTopUp);
 router.get('/wallet/topups', authorize('center_admin'), getTopUpHistory);
 router.get('/wallet/transactions', authorize('center_admin'), getWalletTransactions);
 
@@ -59,13 +60,11 @@ router.post('/submit-payment', authorize('center_admin'), uploadPaymentProof.sin
 router.post('/payment-proof-upload', uploadPaymentProof.single('file'), uploadEnrollmentPaymentProof);
 
 // Dedicated file upload for enrollment documents
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/upload', uploadDocument.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
-  const uploadPath = process.env.UPLOAD_PATH || './uploads';
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({ success: true, url: fileUrl, filename: req.file.originalname });
+  res.json({ success: true, url: getPaymentProofDataUrl(req.file), filename: req.file.originalname });
 });
 
 // Global enrollment list (for admins/staff)

@@ -86,8 +86,9 @@ app.use(
 app.use('/uploads', express.static(path.resolve(process.env.UPLOAD_PATH || './uploads')));
 
 // Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Proofs and documents travel inside JSON bodies as base64 data URLs
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Compression
 app.use(compression());

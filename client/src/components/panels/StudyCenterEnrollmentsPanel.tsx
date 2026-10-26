@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Enrollment {
   id: string;
@@ -474,7 +475,7 @@ export function StudyCenterEnrollmentsPanel() {
                             <span className="truncate font-medium">{doc.name}</span>
                           </div>
                           <a
-                            href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                            href={resolveFileUrl(doc.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-primary hover:underline font-semibold flex-shrink-0"
@@ -696,7 +697,7 @@ export function StudyCenterEnrollmentsPanel() {
                     <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-muted/40 text-xs border border-border">
                       <span className="font-medium">{doc.name}</span>
                       <div className="flex gap-2 items-center">
-                        <a href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold">View</a>
+                        <a href={resolveFileUrl(doc.url)} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold">View</a>
                         <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemoveDocument(idx)}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>

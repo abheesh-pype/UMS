@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Student {
   id: string;
@@ -280,7 +281,7 @@ export function FinanceUniversityFeePanel() {
                                         {p.referenceNo && <span>Ref: {p.referenceNo}</span>}
                                         {p.screenshot && (
                                           <a
-                                            href={`${(import.meta.env.VITE_API_URL || '').replace('/api/v1', '')}${p.screenshot}`}
+                                            href={resolveFileUrl(p.screenshot)}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
@@ -371,7 +372,7 @@ export function FinanceUniversityFeePanel() {
                               <td className="p-3 text-right">
                                 {p.screenshot ? (
                                   <a
-                                    href={`${(import.meta.env.VITE_API_URL || '').replace('/api/v1', '')}${p.screenshot}`}
+                                    href={resolveFileUrl(p.screenshot)}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"

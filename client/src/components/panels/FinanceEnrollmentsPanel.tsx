@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Enrollment {
   id: string;
@@ -518,7 +519,7 @@ export function FinanceEnrollmentsPanel() {
                   <div className="flex items-center gap-3">
                     {selectedEnrollment.studentPhoto ? (
                       <img
-                        src={selectedEnrollment.studentPhoto.startsWith('/') ? selectedEnrollment.studentPhoto : `/uploads/${selectedEnrollment.studentPhoto}`}
+                        src={resolveFileUrl(selectedEnrollment.studentPhoto)}
                         alt={selectedEnrollment.studentName}
                         className="w-12 h-12 rounded-full object-cover border-2 border-primary/20 shadow-sm"
                       />
@@ -685,9 +686,7 @@ export function FinanceEnrollmentsPanel() {
                       </div>
                       {paymentProof && (
                         <a
-                          href={paymentProof.url.startsWith('data:')
-                            ? paymentProof.url
-                            : paymentProof.url.startsWith('/') ? paymentProof.url : `/uploads/${paymentProof.url}`}
+                          href={resolveFileUrl(paymentProof.url)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-sm font-semibold text-primary hover:underline"
@@ -718,7 +717,7 @@ export function FinanceEnrollmentsPanel() {
                             <span className="truncate font-medium text-xs">{doc.name}</span>
                           </div>
                           <a
-                            href={doc.url.startsWith('/') ? doc.url : `/uploads/${doc.url}`}
+                            href={resolveFileUrl(doc.url)}
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs text-primary hover:underline font-semibold flex-shrink-0"
