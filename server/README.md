@@ -81,6 +81,76 @@ integration settings:
 npx prisma migrate deploy
 ```
 
+### Exam Portal → UMS student receiver
+
+The standalone Exam Portal pushes candidate records (admin-triggered, OAuth 2.0 client
+credentials) to UMS at `POST /api/integrations/v1/students`. Records are stored in
+`exam_portal_candidates`, keyed on `tenant_id` + `external_student_id`; they are not linked
+to UMS `Student` rows. Apply the migration (`npx prisma migrate deploy`).
+
+UMS server variables (secret manager / `.env`; the receiver answers `503` until all are set):
+
+| Variable | Notes |
+| --- | --- |
+| `UMS_TENANT_ID` | Agreed institution ID; requests with another `tenant_id` get `403` |
+| `INTEGRATION_TOKEN_ISSUER` | Expected `iss` of the access token |
+| `INTEGRATION_TOKEN_JWKS_URL` | Issuer's JWKS (HTTPS in production); RS*/ES* signatures only |
+| `INTEGRATION_TOKEN_AUDIENCE` | Expected `aud`, e.g. `ums-api` |
+| `INTEGRATION_REQUIRED_SCOPE` | Required scope, e.g. `students:write` (`scope` or `scp` claim) |
+
+The Exam Portal side uses its own `UMS_TENANT_ID`, `EXAM_PORTAL_TOKEN_URL`,
+`EXAM_PORTAL_CLIENT_ID`, `EXAM_PORTAL_CLIENT_SECRET`, `EXAM_PORTAL_STUDENT_UPSERT_URL`
+(= this endpoint, HTTPS) and optional `EXAM_PORTAL_SCOPE` / `EXAM_PORTAL_AUDIENCE`. The
+token's issuer, audience and scope must match the UMS values above; the client must be
+registered at that authorization server.
+
+Behavior: bearer token verified (signature, issuer, audience, expiry, scope) → `401`/`403`;
+JWKS unreachable → `503`; malformed body → `400`; success → `201` (created) or `200`
+(updated or repeated `Idempotency-Key`) with `{"ok": true, "external_student_id": "..."}`.
+`ums_assessment_id` may be a number or string. Inactive candidates are stored with no
+assignments. DOB and passwords are never accepted or stored. Tests: `npm run test:exam-portal`.
+
+Not provided: student SSO. The Exam Portal still logs students in with Candidate ID + DOB;
+institutional OIDC (`iss` + `sub` mapping) must be implemented there.
+
+### UMS → Exam Portal student sync (outbound, manual)
+
+Verified end to end against the Exam Portal's receiver (`POST /api/integrations/v1/students`, see
+`Examination-Portal/docs/INTEGRATIONS.md`) using a local identity provider; not yet against a production IdP.
+Admins (university admin for their own university, org admin, superadmin) open **Exam Portal Integration**
+and enter a Candidate ID. The server loads the student (must belong to the caller's organization and that
+university), builds the payload, obtains a short-lived OAuth 2.0 client-credentials token, and `POST`s the
+record. Nothing runs in the background; there is no automatic sync.
+
+| Variable | Notes |
+| --- | --- |
+| `UMS_TENANT_ID` | Must equal a `tenant_id` in the Exam Portal's `INTEGRATION_TENANTS` |
+| `EXAM_PORTAL_TOKEN_URL` | Token endpoint: the Exam Portal's built-in `<portal>/api/integrations/oauth/token`, or an external authorization server (HTTPS; HTTP only for localhost outside production) |
+| `EXAM_PORTAL_CLIENT_ID` / `EXAM_PORTAL_CLIENT_SECRET` | Issued once by `scripts/create-integration-client.mjs` in the Exam Portal (or by your IdP); keep in the server secret manager |
+| `EXAM_PORTAL_STUDENT_UPSERT_URL` | `https://<exam-portal>/api/integrations/v1/students` |
+| `EXAM_PORTAL_SCOPE`, `EXAM_PORTAL_AUDIENCE` | `students:write students:launch` and the portal audience (default `exam-portal-api`); with the built-in issuer, `students:launch` is needed for student launch |
+| `EXAM_PORTAL_LAUNCH_TICKET_URL` | Optional; defaults to the upsert URL with `/students` replaced by `/launch-tickets` |
+
+Field mapping: `external_student_id` = `candidate_id` = UMS `Student.enrollmentNo` (the Exam Portal assigns its own
+six-digit Candidate ID and returns it); `category` = program name; `sub_category` = specialisation; `status` = `active`
+only if the UMS student is `active`, otherwise `inactive` with no assignments; `assigned_assessments` = registered,
+non-draft, not-yet-ended examinations (`ums_assessment_id` = examination UUID, `examination` = semester name). DOB,
+passwords, phone, address and answers are never sent. The Exam Portal matches each assessment to one of its own by
+exact (examination, name); unmatched ones are shown as a warning and can be mapped there.
+
+Behavior: success is shown only for HTTP 200/201 with `{"ok": true}`. A `401` triggers one token refresh and one retry;
+timeouts (10 s), `4xx`/`5xx` and malformed responses are reported and not retried. Repeat syncs send the same
+`Idempotency-Key` (SHA-256 of the payload); concurrent requests for one student share a single call.
+Tests: `npm run test:exam-portal`.
+
+**Student launch:** when `EXAM_PORTAL_*` is configured, a student's **Launch exam** (after the existing registration/schedule checks) re-syncs that
+student's current assignments and then requests a single-use, 60-second sign-in link from the Exam Portal; the link must be HTTPS and on the portal's
+own origin. Without this configuration the previous per-university endpoint + API key flow is used unchanged. No DOB, password or SMTP is involved.
+
+> **Two directions exist.** This section is UMS → Exam Portal (UMS pushes students, the portal's built-in issuer authenticates UMS).
+> "Exam Portal → UMS student receiver" above is the reverse path used by the Exam Portal's own admin sync
+> (`/api/integrations/exam-portal` there). They are independent: different endpoints, different credentials.
+
 ## Direct Student Applications
 
 The public landing page's **Enroll now** buttons open the direct student

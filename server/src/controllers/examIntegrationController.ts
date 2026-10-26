@@ -4,6 +4,9 @@ import { Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import {
+  buildStudentPayload, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, requestLaunchTicket, SyncError, syncStudent,
+} from '../services/examPortalSync.js';
 
 const encryptionKey = () => {
   const secret = process.env.INTEGRATION_ENCRYPTION_KEY || process.env.JWT_SECRET;
@@ -108,6 +111,36 @@ export const saveExamPortalIntegration = asyncHandler(async (req: AuthRequest, r
   res.json({ success: true, data: { endpoint, hasApiKey: true } });
 });
 
+export const getExamPortalSyncStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const university = await getAuthorizedUniversity(req, res);
+  if (!university) return;
+  const { missing, invalid } = getSyncConfigIssues();
+  // Names of settings only; values and secrets are never returned.
+  res.json({ success: true, data: { configured: !missing.length && !invalid.length, missing, invalid } });
+});
+
+export const syncExamPortalStudent = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const university = await getAuthorizedUniversity(req, res);
+  if (!university) return;
+  const config = loadSyncConfig();
+  if (!config) {
+    const { missing, invalid } = getSyncConfigIssues();
+    res.status(503).json({ success: false, message: 'Exam Portal sync is not configured on the server', data: { missing, invalid } });
+    return;
+  }
+  try {
+    const candidateId = typeof req.body?.candidateId === 'string' ? req.body.candidateId : '';
+    const { student, assessments } = await loadStudentForSync(prisma, req.user, university.id, candidateId);
+    const result = await syncStudent(config, buildStudentPayload(config.tenantId, student, assessments));
+    console.info('[exam-portal-sync] ok', { by: req.user.id, student: student.enrollmentNo, outcome: result.outcome, assessments: result.assessmentCount });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-sync] failed', { by: req.user.id, code: error.code });
+    res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
 const isExamLaunchReady = (examination: any, now: Date) => {
   const schedule = Array.isArray(examination.schedule) ? examination.schedule : [];
   if (schedule.length > 0) {
@@ -193,6 +226,28 @@ export const launchStudentExam = asyncHandler(async (req: AuthRequest, res: Resp
   }
   if (!isExamLaunchReady(examination, new Date())) {
     res.status(403).json({ success: false, message: 'This examination is not currently open for writing' });
+    return;
+  }
+
+  // Preferred path: OAuth-based Exam Portal integration. Re-sync the student's current assignments, then get a
+  // single-use sign-in link. Falls back to the legacy per-university endpoint when it is not configured.
+  const syncConfig = loadSyncConfig();
+  if (syncConfig) {
+    try {
+      const { student: subject, assessments } = await loadStudentForSync(
+        prisma,
+        { organizationId: req.user.organizationId, role: 'student' },
+        examination.program.universityId,
+        student.enrollmentNo,
+      );
+      await syncStudent(syncConfig, buildStudentPayload(syncConfig.tenantId, subject, assessments));
+      const launchUrl = await requestLaunchTicket(syncConfig, subject.enrollmentNo);
+      res.json({ success: true, data: { launchUrl } });
+    } catch (error) {
+      if (!(error instanceof SyncError)) throw error;
+      console.warn('[exam-portal-launch] failed', { code: error.code });
+      res.status(error.statusCode === 504 ? 504 : 502).json({ success: false, message: 'Could not open the examination portal right now. Please try again shortly.' });
+    }
     return;
   }
 

@@ -87,7 +87,7 @@ import {
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadPaymentProof, uploadVideo } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
-import { getExamPortalIntegration, saveExamPortalIntegration } from '../controllers/examIntegrationController.js';
+import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent } from '../controllers/examIntegrationController.js';
 import {
   getAcademicCalendarEvents,
   createAcademicCalendarEvent,
@@ -101,6 +101,8 @@ router.use(protect);
 
 router.get('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalIntegration);
 router.put('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), saveExamPortalIntegration);
+router.get('/universities/:universityId/exam-portal-sync', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalSyncStatus);
+router.post('/universities/:universityId/exam-portal-sync/students', authorize('university_admin', 'org_admin', 'superadmin'), syncExamPortalStudent);
 router.get('/universities/:universityId/students', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityStudents);
 router.get('/universities/:universityId/metrics', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityMetrics);
 

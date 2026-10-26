@@ -393,6 +393,26 @@ model UniversityExamIntegration {
   @@map("university_exam_integrations")
 }
 
+// Candidates provisioned by the Exam Portal via POST /api/integrations/v1/students.
+model ExamPortalCandidate {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  externalStudentId  String
+  candidateId        String
+  name               String
+  email              String?
+  category           String   @default("")
+  subCategory        String   @default("")
+  status             String
+  assignedAssessments Json    @default("[]")
+  lastIdempotencyKey String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, externalStudentId])
+  @@map("exam_portal_candidates")
+}
+
 model Program {
   id                      String                @id @default(uuid())
   universityId            String
