@@ -610,10 +610,14 @@ export const createProgramSemester = asyncHandler(async (req: AuthRequest, res: 
 export const updateProgramSemester = asyncHandler(async (req: AuthRequest, res: Response) => {
   const existing = await prisma.semester.findFirst({ where: { id: req.params.semesterId, programId: req.params.programId, organizationId: req.user.organizationId } });
   if (!existing) { res.status(404).json({ success: false, message: 'Semester not found' }); return; }
-  const { semesterName, semesterNumber, startDate, endDate, status } = req.body;
+  const { semesterName, semesterNumber, academicSessionId, startDate, endDate, status } = req.body;
   const semester = await prisma.semester.update({ where: { id: existing.id }, data: {
-    semesterName: semesterName.trim(), semesterNumber: Number(semesterNumber),
-    startDate: normalizeSemesterDate(startDate, 'Start Date'), endDate: normalizeSemesterDate(endDate, 'End Date'), status,
+    semesterName: semesterName.trim(),
+    semesterNumber: Number(semesterNumber),
+    ...(academicSessionId ? { academicSessionId } : {}),
+    startDate: normalizeSemesterDate(startDate, 'Start Date'),
+    endDate: normalizeSemesterDate(endDate, 'End Date'),
+    status,
   } });
   res.json({ success: true, data: semester });
 });
@@ -668,6 +672,17 @@ export const createProgramModule = asyncHandler(async (req: AuthRequest, res: Re
     return;
   }
 
+  const duplicate = await prisma.module.findFirst({
+    where: {
+      programId: program.id,
+      moduleCode: moduleCode.trim(),
+    }
+  });
+  if (duplicate) {
+    res.status(400).json({ success: false, message: `Module code "${moduleCode.trim()}" already exists for this program` });
+    return;
+  }
+
   if (semesterId) {
     const semester = await prisma.semester.findFirst({ where: { id: semesterId, programId: program.id, organizationId: req.user.organizationId } });
     if (!semester) {
@@ -691,7 +706,7 @@ export const createProgramModule = asyncHandler(async (req: AuthRequest, res: Re
 });
 
 export const updateProgramModule = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { moduleCode, moduleName, moduleType, semesterId } = req.body;
+  const { moduleCode, moduleName, moduleType, semesterId, academicSessionId } = req.body;
   if (!moduleCode?.trim() || !moduleName?.trim() || !moduleType?.trim()) {
     res.status(400).json({ success: false, message: 'Module code, name, and type are required' });
     return;
@@ -706,6 +721,18 @@ export const updateProgramModule = asyncHandler(async (req: AuthRequest, res: Re
   });
   if (!existingModule) {
     res.status(404).json({ success: false, message: 'Module not found' });
+    return;
+  }
+
+  const duplicate = await prisma.module.findFirst({
+    where: {
+      programId: req.params.programId,
+      moduleCode: moduleCode.trim(),
+      id: { not: existingModule.id }
+    }
+  });
+  if (duplicate) {
+    res.status(400).json({ success: false, message: `Module code "${moduleCode.trim()}" already exists for this program` });
     return;
   }
 
@@ -724,6 +751,7 @@ export const updateProgramModule = asyncHandler(async (req: AuthRequest, res: Re
       moduleName: moduleName.trim(),
       moduleType: moduleType.trim(),
       semesterId: semesterId || null,
+      ...(academicSessionId !== undefined ? { academicSessionId: academicSessionId || null } : {}),
     }
   });
   res.json({ success: true, data: module });
