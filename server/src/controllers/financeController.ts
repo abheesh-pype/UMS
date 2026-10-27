@@ -1472,7 +1472,9 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
     include: {
       program: { select: { id: true, name: true, university: { select: { name: true, coordinatorName: true } } } },
       session: { select: { id: true, name: true } },
-      studyCenter: { select: { id: true, name: true, branchName: true, coordinatorName: true } },
+      studyCenter: { select: { id: true, name: true, branchName: true, coordinatorName: true, referredBy: true } },
+      student: { select: { enrollmentNo: true, uniEnrollmentNumber: true } },
+      salesUser: { select: { name: true } },
       payment: true,
       commissionIn: {
         include: {
@@ -1482,6 +1484,48 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Fees actually collected per enrollment: invoice payments (university fee invoices mirror
+  // remittances, so they are excluded) plus fee receipts not linked to an invoice payment
+  const enrollmentIds = enrollments.map(e => e.id);
+  const [enrollmentInvoices, unlinkedReceipts, centreReferrers] = enrollmentIds.length > 0
+    ? await Promise.all([
+        prisma.invoice.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            enrollmentId: { in: enrollmentIds },
+            invoiceType: { not: 'university_fee' },
+            status: { not: 'cancelled' },
+          },
+          select: { enrollmentId: true, total: true, paidAmount: true },
+        }),
+        prisma.studentFeeReceipt.findMany({
+          where: { organizationId: req.user.organizationId, enrollmentId: { in: enrollmentIds }, invoicePayment: null },
+          select: { enrollmentId: true, amount: true },
+        }),
+        prisma.user.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { in: [...new Set(enrollments.map(e => e.studyCenter?.referredBy).filter(Boolean))] as string[] },
+          },
+          select: { id: true, name: true },
+        }),
+      ])
+    : [[], [], []];
+  const feesByEnrollment: Record<string, { billed: number; collected: number }> = {};
+  for (const invoice of enrollmentInvoices) {
+    if (!invoice.enrollmentId) continue;
+    const entry = feesByEnrollment[invoice.enrollmentId] || { billed: 0, collected: 0 };
+    entry.billed += Number(invoice.total) || 0;
+    entry.collected += Number(invoice.paidAmount) || 0;
+    feesByEnrollment[invoice.enrollmentId] = entry;
+  }
+  for (const receipt of unlinkedReceipts) {
+    const entry = feesByEnrollment[receipt.enrollmentId] || { billed: 0, collected: 0 };
+    entry.collected += Number(receipt.amount) || 0;
+    feesByEnrollment[receipt.enrollmentId] = entry;
+  }
+  const referrerNames = new Map(centreReferrers.map(user => [user.id, user.name]));
 
   // Fetch university fee payments for enrolled students
   const studentIds = [...new Set(enrollments.map(e => e.studentId).filter(Boolean))] as string[];
@@ -1578,17 +1622,35 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
       if (!payment && enrollment.paymentType === 'direct_to_university') {
         centerPaymentAmount = 0;
         centerPaymentStatus = 'Paid';
+      } else if (!payment) {
+        // No wallet debit: use the fees collected against the enrollment's invoices and receipts
+        const fees = feesByEnrollment[enrollment.id];
+        const billed = fees?.billed || Number(enrollment.totalFee) || 0;
+        const collected = fees?.collected || 0;
+        if (collected > 0) {
+          centerPaymentAmount = collected;
+          centerPaymentStatus = billed > 0 && collected < billed ? 'Partially Paid' : 'Paid';
+        }
       }
+
+      const isDirectApplication = Boolean((enrollment as any).publicTrackingTokenHash);
+      const centreReferrerName = enrollment.studyCenter?.referredBy
+        ? referrerNames.get(enrollment.studyCenter.referredBy) || null
+        : null;
 
       return {
         id: enrollment.id,
         studentName: enrollment.studentName,
-        enrollmentNumber: enrollment.enrollmentNumber,
-        uniEnrollmentNumber: enrollment.uniEnrollmentNumber,
+        // Admission number is assigned to the student when the application is created
+        enrollmentNumber: enrollment.enrollmentNumber || (enrollment as any).student?.enrollmentNo || null,
+        uniEnrollmentNumber: enrollment.uniEnrollmentNumber || (enrollment as any).student?.uniEnrollmentNumber || null,
         admissionDate: enrollment.admissionDate || enrollment.createdAt,
         admissionSession: enrollment.session?.name || '',
-        centerName: enrollment.studyCenter?.name || '',
+        centerName: enrollment.studyCenter?.name
+          || ((enrollment as any).salesUser ? 'Sales Direct' : isDirectApplication ? 'Direct (Online Application)' : 'Direct'),
+        isStudyCentre: Boolean(enrollment.studyCenter),
         subCenterName: enrollment.studyCenter?.branchName || '',
+        isSubCenter: Boolean(enrollment.studyCenter?.branchName?.trim()),
         program: enrollment.program?.name || '',
         university: (feeStruct?.university?.name || (enrollment.program as any)?.university?.name) || '',
         centerPaymentAmount,
@@ -1598,7 +1660,10 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
       universityPaidAmount: uniPayments.length > 0 ? paidUniAmount : 0,
       universityPaymentStatus: uniStatus,
       universityPaymentScreenshots: uniPayments.map(p => p.screenshot).filter(Boolean),
-      coordinatorName: enrollment.studyCenter?.coordinatorName || feeStruct?.university?.coordinatorName || (enrollment.program as any)?.university?.coordinatorName || coordinatorFee?.coordinator || null,
+      // Recorded coordinator first, otherwise who brought the admission in: the Sales executive
+      // for Sales applications, or the person who onboarded the study centre
+      coordinatorName: enrollment.studyCenter?.coordinatorName || feeStruct?.university?.coordinatorName || (enrollment.program as any)?.university?.coordinatorName || coordinatorFee?.coordinator
+        || (enrollment as any).salesUser?.name || centreReferrerName || null,
       coordinatorPaymentAmount: coordinatorFee?.amount || null,
       coordinatorPaymentStatus: coordinatorFee
         ? (uniStatus === 'Paid' ? 'paid' : 'Due')
