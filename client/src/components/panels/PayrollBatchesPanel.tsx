@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, CreditCard, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, CreditCard, RefreshCw, Eye, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,28 @@ interface PayrollBatch {
   rejectionReason?: string;
   remarks?: string;
   createdAt: string;
+  transferredByName?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+  completedAt?: string | null;
+  payrolls?: BatchPayroll[];
+}
+
+// Employee payroll records grouped in a batch
+interface BatchPayroll {
+  id: string;
+  month: string;
+  basicSalary: number;
+  grossSalary: number;
+  netSalary: number;
+  status: string;
+  user?: {
+    name: string;
+    email: string;
+    designation?: string | null;
+    department?: { name: string } | null;
+    employeeProfileDetail?: { employeeCode?: string | null; bankName?: string | null; bankAccountNo?: string | null; ifscCode?: string | null } | null;
+  } | null;
 }
 
 interface ConfirmedPayroll {
@@ -56,6 +78,9 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
   const [selectedBatch, setSelectedBatch] = useState<PayrollBatch | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  // Batch opened as a single group view (employees, total payable and payment actions)
+  const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
+  const [startingPayment, setStartingPayment] = useState(false);
   const [paymentData, setPaymentData] = useState({
     paymentDate: new Date().toISOString().split('T')[0],
     paymentMethod: 'bank_transfer',
@@ -149,12 +174,15 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
   };
 
   const handleStartPayment = async (id: string) => {
+    setStartingPayment(true);
     try {
       await api.put(`/payroll/batches/${id}/payment-in-progress`);
       toast.success('Payment marked as in progress');
       fetchBatches();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to update status');
+    } finally {
+      setStartingPayment(false);
     }
   };
 
@@ -182,6 +210,9 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
     };
     return map[status] || 'bg-gray-100 text-gray-800';
   };
+
+  const detailBatch = batches.find(b => b.id === detailBatchId) || null;
+  const formatAmount = (value?: number | null) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
   const filteredBatches = activeTab === 'all'
     ? batches
@@ -247,7 +278,7 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
                         key={bid}
                         className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                       >
-                        <div className="flex-1">
+                        <div className="flex-1 cursor-pointer" onClick={() => setDetailBatchId(bid)}>
                           <div className="flex items-center gap-3 mb-1">
                             <span className="font-semibold">Month: {batch.month}</span>
                             <Badge className={getStatusColor(batch.status)}>
@@ -260,7 +291,7 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
                               Total: ₹{batch.totalAmount?.toLocaleString()}
                             </span>
                             {batch.transferredBy && (
-                              <span>Transferred by: {batch.transferredBy.name}</span>
+                              <span>Transferred by: {batch.transferredByName || batch.transferredBy.name}</span>
                             )}
                           </div>
                           {batch.rejectionReason && (
@@ -273,8 +304,17 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
                               Remarks: {batch.remarks}
                             </p>
                           )}
+                          {!!batch.payrolls?.length && (
+                            <p className="text-xs text-muted-foreground mt-1 truncate">
+                              {batch.payrolls.map(p => p.user?.name || 'Employee').join(', ')}
+                            </p>
+                          )}
                         </div>
                         <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setDetailBatchId(bid)}>
+                            <Eye className="w-3 h-3 mr-1" />
+                            View
+                          </Button>
                           {isFinance && batch.status === 'pending_finance_approval' && (
                             <>
                               <Button
@@ -381,6 +421,96 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
         </DialogContent>
       </Dialog>
 
+      {/* Batch group view */}
+      <Dialog open={!!detailBatch} onOpenChange={open => !open && setDetailBatchId(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {detailBatch && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3 pr-6">
+                  <DialogTitle>Payroll Batch · {detailBatch.month}</DialogTitle>
+                  <Badge className={getStatusColor(detailBatch.status)}>{detailBatch.status.replace(/_/g, ' ')}</Badge>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Employees</p>
+                    <p className="text-xl font-bold">{detailBatch.employeeCount}</p>
+                  </div>
+                  <div className="rounded-lg border p-3 sm:col-span-2 bg-primary/5">
+                    <p className="text-xs text-muted-foreground">Total Payable</p>
+                    <p className="text-xl font-bold tabular-nums">{formatAmount(detailBatch.totalAmount)}</p>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                  {detailBatch.transferredByName && <span>Submitted by HR: {detailBatch.transferredByName}</span>}
+                  {detailBatch.approvedByName && <span>Approved by: {detailBatch.approvedByName}</span>}
+                  {detailBatch.approvedAt && <span>Approved on: {new Date(detailBatch.approvedAt).toLocaleString()}</span>}
+                  {detailBatch.completedAt && <span>Paid on: {new Date(detailBatch.completedAt).toLocaleString()}</span>}
+                </div>
+                {detailBatch.remarks && <p className="text-sm text-muted-foreground">Remarks: {detailBatch.remarks}</p>}
+
+                <div className="rounded-lg border divide-y">
+                  {(detailBatch.payrolls || []).length === 0 ? (
+                    <p className="p-4 text-sm text-center text-muted-foreground">No employee records found for this batch.</p>
+                  ) : (detailBatch.payrolls || []).map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-3 p-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">{p.user?.name || 'Employee'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[p.user?.employeeProfileDetail?.employeeCode, p.user?.department?.name, p.user?.designation, p.month].filter(Boolean).join(' · ')}
+                        </p>
+                        {p.user?.employeeProfileDetail?.bankAccountNo && (
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {[p.user.employeeProfileDetail.bankName, p.user.employeeProfileDetail.bankAccountNo, p.user.employeeProfileDetail.ifscCode].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-semibold tabular-nums">{formatAmount(p.netSalary)}</p>
+                        <Badge variant="outline" className="text-[10px]">{p.status === 'paid' ? 'paid' : 'unpaid'}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {isFinance && ['approved_by_finance', 'payment_in_progress'].includes(detailBatch.status) && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border bg-muted/30 p-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        {detailBatch.status === 'approved_by_finance'
+                          ? 'Start payment for this group'
+                          : 'Payment in progress. Complete it to mark every employee in this batch paid'}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums">{formatAmount(detailBatch.totalAmount)}</p>
+                    </div>
+                    {detailBatch.status === 'approved_by_finance' ? (
+                      <Button onClick={() => handleStartPayment(detailBatch.id || '')} disabled={startingPayment}>
+                        <CreditCard className="w-4 h-4 mr-2" />
+                        {startingPayment ? 'Starting...' : `Start Payment · ${formatAmount(detailBatch.totalAmount)}`}
+                      </Button>
+                    ) : (
+                      <Button onClick={() => { setSelectedBatch(detailBatch); setPaymentDialogOpen(true); }}>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Complete Payment
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {detailBatch.status === 'completed' && (
+                  <p className="rounded-lg border p-3 text-sm text-success bg-success/10">
+                    Paid. All {detailBatch.employeeCount} employees in this batch are marked paid.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Reject Dialog */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
@@ -411,6 +541,11 @@ export function PayrollBatchesPanel({ allowBatchCreation = false }: { allowBatch
             <DialogTitle>Complete Batch Payment</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {selectedBatch && (
+              <p className="text-sm text-muted-foreground">
+                Marks all {selectedBatch.employeeCount} employees in this batch as paid · Total {formatAmount(selectedBatch.totalAmount)}
+              </p>
+            )}
             <div>
               <Label>Payment Date</Label>
               <Input
