@@ -133,7 +133,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [programDialogOpen, setProgramDialogOpen] = useState(false);
   const [programForm, setProgramForm] = useState({ name: '', courseName: '', duration: '', status: 'active', description: '' });
   const [programSearch, setProgramSearch] = useState('');
-  const [programSessionFilter, setProgramSessionFilter] = useState<string>('active');
+  const [programSessionFilter, setProgramSessionFilter] = useState<string>('all');
   const [programFormSessionId, setProgramFormSessionId] = useState('');
   const [programTemplateId, setProgramTemplateId] = useState('');
   const [programCopySemesters, setProgramCopySemesters] = useState(true);
@@ -151,7 +151,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [moduleLoading, setModuleLoading] = useState(false);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
-  const [moduleForm, setModuleForm] = useState({ moduleCode: '', moduleName: '', moduleType: '' });
+  const [moduleForm, setModuleForm] = useState({
+    academicSessionId: '',
+    programId: '',
+    semesterId: '',
+    moduleCode: '',
+    moduleName: '',
+    moduleType: '',
+  });
   const [ebookModule, setEbookModule] = useState<any | null>(null);
   const [ebookMaterials, setEbookMaterials] = useState<any[]>([]);
   const [ebookFile, setEbookFile] = useState<File | null>(null);
@@ -262,7 +269,15 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
   const [semesterDialogOpen, setSemesterDialogOpen] = useState(false);
   const [editingSemesterId, setEditingSemesterId] = useState<string | null>(null);
-  const [semesterForm, setSemesterForm] = useState({ semesterName: '', semesterNumber: '', startDate: '', endDate: '', status: 'active' });
+  const [semesterForm, setSemesterForm] = useState({
+    programId: '',
+    academicSessionId: '',
+    semesterName: '',
+    semesterNumber: '',
+    startDate: '',
+    endDate: '',
+    status: 'active',
+  });
   const [semesterSessionFilter, setSemesterSessionFilter] = useState('all');
   const [semesterProgramFilter, setSemesterProgramFilter] = useState('all');
   const [moduleSessionFilter, setModuleSessionFilter] = useState('all');
@@ -1279,7 +1294,16 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       setSessions((response.data.data || []).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()));
       const loadedSessions = response.data.data || [];
       const activeSession = loadedSessions.find((session: any) => session.status === 'active');
-      setSelectedSessionId(current => current || activeSession?.id || loadedSessions[0]?.id || null);
+      const defaultSessionId = activeSession?.id || loadedSessions[0]?.id || null;
+      if (initialTab !== 'academic-programs') {
+        setSelectedSessionId(current => current || defaultSessionId);
+        if (defaultSessionId) {
+          setProgramSessionFilter(current => (current === 'active' || !current ? defaultSessionId : current));
+        }
+      } else {
+        setSelectedSessionId(null);
+        setProgramSessionFilter('all');
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to load academic sessions');
     } finally {
@@ -1317,7 +1341,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     const section = initialTab === 'academic-semesters' ? 'semesters' : initialTab === 'academic-modules' ? 'modules' : initialTab === 'academic-programs' ? 'programs' : 'programs';
     setActiveSection(section);
     if (initialTab === 'academic-programs') {
-      setProgramSessionFilter('active');
+      setProgramSessionFilter('all');
+      setSelectedSessionId(null);
     }
   }, [initialTab]);
 
@@ -1601,27 +1626,39 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   useEffect(() => {
     if (!['academic-semesters', 'academic-modules'].includes(initialTab || '') || programs.length === 0) return;
-    const loadAcademicRecords = async () => {
-      try {
-        const records = await Promise.all(programs.map(async program => {
-          const response = await api.get(`/operations/programs/${program.id}/semesters`);
-          return (response.data.data || []).map((semester: any) => ({ ...semester, programId: program.id, programName: program.name, academicSessionId: program.academicSessionId }));
-        }));
-        const allSemesters = records.flat();
-        setSemesters(allSemesters);
-        if (initialTab === 'academic-modules') {
-          const moduleRecords = await Promise.all(programs.map(async program => {
-            const response = await api.get(`/operations/programs/${program.id}/modules`);
-            return (response.data.data || []).map((module: any) => ({ ...module, programId: program.id, programName: program.name, academicSessionId: program.academicSessionId, semesterName: allSemesters.find(semester => semester.id === module.semesterId)?.semesterName || 'Unknown semester' }));
-          }));
-          setModules(moduleRecords.flat());
-        }
-      } catch (error: any) {
-        toast.error(error.response?.data?.message || 'Failed to load academic records');
-      }
-    };
-    loadAcademicRecords();
+    loadAllSemestersAndModules();
   }, [initialTab, programs]);
+
+  const loadAllSemestersAndModules = async () => {
+    try {
+      const records = await Promise.all(programs.map(async program => {
+        const response = await api.get(`/operations/programs/${program.id}/semesters`);
+        return (response.data.data || []).map((semester: any) => ({
+          ...semester,
+          programId: program.id,
+          programName: program.name,
+          academicSessionId: semester.academicSessionId || program.academicSessionId,
+        }));
+      }));
+      const allSemesters = records.flat();
+      setSemesters(allSemesters);
+      if (initialTab === 'academic-modules') {
+        const moduleRecords = await Promise.all(programs.map(async program => {
+          const response = await api.get(`/operations/programs/${program.id}/modules`);
+          return (response.data.data || []).map((module: any) => ({
+            ...module,
+            programId: program.id,
+            programName: program.name,
+            academicSessionId: module.academicSessionId || program.academicSessionId,
+            semesterName: allSemesters.find(semester => semester.id === module.semesterId)?.semesterName || 'Unknown semester',
+          }));
+        }));
+        setModules(moduleRecords.flat());
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load academic records');
+    }
+  };
 
   const fetchModules = async (programId: string, semesterId = selectedSemesterId) => {
     setModuleLoading(true);
@@ -1905,6 +1942,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const handleSessionChange = (sessionId: string) => {
     setSelectedSessionId(sessionId);
+    setProgramSessionFilter(sessionId);
     setSelectedProgramId(null);
     setSelectedSemesterId(null);
     setSemesters([]);
@@ -1932,71 +1970,187 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setSemesterDialogOpen(open);
     if (!open) {
       setEditingSemesterId(null);
-      setSemesterForm({ semesterName: '', semesterNumber: '', startDate: '', endDate: '', status: 'active' });
+      setSemesterForm({
+        programId: '',
+        academicSessionId: '',
+        semesterName: '',
+        semesterNumber: '',
+        startDate: '',
+        endDate: '',
+        status: 'active',
+      });
     }
   };
 
-  const openCreateSemester = () => {
+  const openCreateSemester = (defaultProgId?: string) => {
     setEditingSemesterId(null);
-    setSemesterForm({ semesterName: '', semesterNumber: '', startDate: '', endDate: '', status: 'active' });
+    const initialSession = (semesterSessionFilter && semesterSessionFilter !== 'all')
+      ? semesterSessionFilter
+      : (selectedSessionId || sessions.find(s => s.status === 'active')?.id || sessions[0]?.id || '');
+    const initialProgram = defaultProgId || selectedProgramId || (semesterProgramFilter !== 'all' ? semesterProgramFilter : (programs[0]?.id || ''));
+    const prog = programs.find(p => p.id === initialProgram);
+    const sessionForProg = prog?.academicSessionId || initialSession;
+
+    setSemesterForm({
+      programId: initialProgram,
+      academicSessionId: sessionForProg,
+      semesterName: '',
+      semesterNumber: '',
+      startDate: '',
+      endDate: '',
+      status: 'active',
+    });
     setSemesterDialogOpen(true);
   };
 
   const handleEditSemester = (semester: any) => {
     setEditingSemesterId(semester.id);
-    setSemesterForm({ semesterName: semester.semesterName, semesterNumber: String(semester.semesterNumber), startDate: new Date(semester.startDate).toISOString().slice(0, 10), endDate: new Date(semester.endDate).toISOString().slice(0, 10), status: semester.status });
+    setSemesterForm({
+      programId: semester.programId || selectedProgramId || '',
+      academicSessionId: semester.academicSessionId || selectedSessionId || '',
+      semesterName: semester.semesterName,
+      semesterNumber: String(semester.semesterNumber),
+      startDate: semester.startDate ? new Date(semester.startDate).toISOString().slice(0, 10) : '',
+      endDate: semester.endDate ? new Date(semester.endDate).toISOString().slice(0, 10) : '',
+      status: semester.status || 'active',
+    });
     setSemesterDialogOpen(true);
   };
 
   const handleDeleteSemester = async (semester: any) => {
-    if (!selectedProgramId || !window.confirm(`Delete semester "${semester.semesterName}"?`)) return;
-    try { await api.delete(`/operations/programs/${selectedProgramId}/semesters/${semester.id}`); toast.success('Semester deleted'); fetchSemesters(selectedProgramId); }
-    catch (error: any) { toast.error(error.response?.data?.message || 'Failed to delete semester'); }
+    const progId = semester.programId || selectedProgramId;
+    if (!progId || !window.confirm(`Delete semester "${semester.semesterName}"?`)) return;
+    try {
+      await api.delete(`/operations/programs/${progId}/semesters/${semester.id}`);
+      toast.success('Semester deleted');
+      if (initialTab === 'academic-semesters' || initialTab === 'academic-modules') {
+        loadAllSemestersAndModules();
+      } else {
+        fetchSemesters(progId);
+      }
+      fetchPrograms();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete semester');
+    }
   };
 
   const handleSemesterSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedProgramId || !selectedSessionId) return;
+    const targetProgramId = semesterForm.programId || selectedProgramId;
+    const targetSessionId = semesterForm.academicSessionId || selectedSessionId;
+
+    if (!targetProgramId) {
+      toast.error('Please select a program');
+      return;
+    }
+    if (!targetSessionId) {
+      toast.error('Please select an academic session');
+      return;
+    }
+    if (!semesterForm.semesterName.trim()) {
+      toast.error('Semester name is required');
+      return;
+    }
+    if (!semesterForm.semesterNumber) {
+      toast.error('Semester number is required');
+      return;
+    }
+    if (!semesterForm.startDate || !semesterForm.endDate) {
+      toast.error('Start date and End date are required');
+      return;
+    }
+
     try {
-      const payload = { ...semesterForm, semesterNumber: Number(semesterForm.semesterNumber), academicSessionId: selectedSessionId };
-      if (editingSemesterId) { await api.put(`/operations/programs/${selectedProgramId}/semesters/${editingSemesterId}`, payload); toast.success('Semester updated'); }
-      else { await api.post(`/operations/programs/${selectedProgramId}/semesters`, payload); toast.success('Semester created'); }
+      const payload = {
+        semesterName: semesterForm.semesterName.trim(),
+        semesterNumber: Number(semesterForm.semesterNumber),
+        academicSessionId: targetSessionId,
+        startDate: semesterForm.startDate,
+        endDate: semesterForm.endDate,
+        status: semesterForm.status,
+      };
+
+      if (editingSemesterId) {
+        await api.put(`/operations/programs/${targetProgramId}/semesters/${editingSemesterId}`, payload);
+        toast.success('Semester updated successfully');
+      } else {
+        await api.post(`/operations/programs/${targetProgramId}/semesters`, payload);
+        toast.success('Semester created successfully');
+      }
+
       closeSemesterDialog(false);
-      fetchSemesters(selectedProgramId);
-    } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to save semester'); }
+
+      if (initialTab === 'academic-semesters' || initialTab === 'academic-modules') {
+        loadAllSemestersAndModules();
+      } else if (targetProgramId) {
+        fetchSemesters(targetProgramId);
+      }
+      fetchPrograms();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save semester');
+    }
   };
 
   const closeModuleDialog = (open: boolean) => {
     setModuleDialogOpen(open);
     if (!open) {
       setEditingModuleId(null);
-      setModuleForm({ moduleCode: '', moduleName: '', moduleType: '' });
+      setModuleForm({
+        academicSessionId: '',
+        programId: '',
+        semesterId: '',
+        moduleCode: '',
+        moduleName: '',
+        moduleType: '',
+      });
     }
   };
 
-  const openCreateModule = () => {
-    if (!selectedSemesterId) return;
+  const openCreateModule = (defaultProgId?: string, defaultSemesterId?: string) => {
+    const targetProgId = defaultProgId || (moduleProgramFilter !== 'all' ? moduleProgramFilter : selectedProgramId) || '';
+    const prog = programs.find(p => p.id === targetProgId);
+    const sessionForProg = prog?.academicSessionId || (moduleSessionFilter !== 'all' ? moduleSessionFilter : selectedSessionId) || '';
+    const targetSemId = defaultSemesterId || (moduleSemesterFilter !== 'all' ? moduleSemesterFilter : selectedSemesterId) || '';
+
     setEditingModuleId(null);
-    setModuleForm({ moduleCode: '', moduleName: '', moduleType: '' });
+    setModuleForm({
+      academicSessionId: sessionForProg,
+      programId: targetProgId,
+      semesterId: targetSemId,
+      moduleCode: '',
+      moduleName: '',
+      moduleType: 'Core',
+    });
     setModuleDialogOpen(true);
   };
 
   const handleEditModule = (module: any) => {
     setEditingModuleId(module.id);
+    const modProgId = module.programId || selectedProgramId || '';
+    const prog = programs.find(p => p.id === modProgId);
     setModuleForm({
+      academicSessionId: module.academicSessionId || prog?.academicSessionId || selectedSessionId || '',
+      programId: modProgId,
+      semesterId: module.semesterId || selectedSemesterId || '',
       moduleCode: module.moduleCode || '',
       moduleName: module.moduleName || '',
-      moduleType: module.moduleType || '',
+      moduleType: module.moduleType || 'Core',
     });
     setModuleDialogOpen(true);
   };
 
   const handleDeleteModule = async (module: any) => {
-    if (!selectedProgramId || !window.confirm(`Delete module "${module.moduleName}"?`)) return;
+    const progId = module.programId || selectedProgramId;
+    if (!progId || !window.confirm(`Delete module "${module.moduleName}"?`)) return;
     try {
-      await api.delete(`/operations/programs/${selectedProgramId}/modules/${module.id}`);
+      await api.delete(`/operations/programs/${progId}/modules/${module.id}`);
       toast.success('Module deleted');
-      fetchModules(selectedProgramId);
+      if (initialTab === 'academic-modules' || initialTab === 'academic-semesters') {
+        loadAllSemestersAndModules();
+      } else {
+        fetchModules(progId);
+      }
+      fetchPrograms();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to delete module');
     }
@@ -2004,24 +2158,58 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const handleModuleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedProgramId || !selectedSessionId) return;
+    const targetProgramId = moduleForm.programId || selectedProgramId;
+    const targetSessionId = moduleForm.academicSessionId || selectedSessionId;
+    const targetSemesterId = moduleForm.semesterId || selectedSemesterId;
+
+    if (!targetProgramId) {
+      toast.error('Please select a program');
+      return;
+    }
+    if (!targetSemesterId) {
+      toast.error('Please select a semester');
+      return;
+    }
+    if (!moduleForm.moduleCode.trim()) {
+      toast.error('Module code is required');
+      return;
+    }
+    if (!moduleForm.moduleName.trim()) {
+      toast.error('Module name is required');
+      return;
+    }
+    if (!moduleForm.moduleType) {
+      toast.error('Module type is required');
+      return;
+    }
+
     try {
       const payload = {
-        ...moduleForm,
-        academicSessionId: selectedSessionId,
-        semesterId: selectedSemesterId,
+        moduleCode: moduleForm.moduleCode.trim(),
+        moduleName: moduleForm.moduleName.trim(),
+        moduleType: moduleForm.moduleType,
+        academicSessionId: targetSessionId || null,
+        semesterId: targetSemesterId || null,
       };
+
       if (editingModuleId) {
-        await api.put(`/operations/programs/${selectedProgramId}/modules/${editingModuleId}`, payload);
-        toast.success('Module updated');
+        await api.put(`/operations/programs/${targetProgramId}/modules/${editingModuleId}`, payload);
+        toast.success('Module updated successfully');
       } else {
-        await api.post(`/operations/programs/${selectedProgramId}/modules`, payload);
-        toast.success('Module created');
+        await api.post(`/operations/programs/${targetProgramId}/modules`, payload);
+        toast.success('Module created successfully');
       }
+
       closeModuleDialog(false);
-      fetchModules(selectedProgramId);
+
+      if (initialTab === 'academic-modules' || initialTab === 'academic-semesters') {
+        loadAllSemestersAndModules();
+      } else if (targetProgramId) {
+        fetchModules(targetProgramId);
+      }
+      fetchPrograms();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create module');
+      toast.error(error.response?.data?.message || 'Failed to save module');
     }
   };
 
@@ -3199,7 +3387,10 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedSessionId(null)}
+                onClick={() => {
+                  setSelectedSessionId(null);
+                  setProgramSessionFilter('all');
+                }}
               >
                 All Sessions
               </Button>
@@ -3226,17 +3417,38 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             </div>
           ) : (
             <div ref={sessionScrollerRef} className="flex gap-3 overflow-x-auto pb-3 scroll-smooth snap-x snap-mandatory">
-                {sessions.map(session => (
-                  <div role="button" tabIndex={0} key={session.id} data-session-active={session.status === 'active'} onClick={() => handleSessionChange(session.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleSessionChange(session.id); }} className={`relative min-w-[190px] flex-none snap-start rounded-lg border p-4 min-h-24 text-left cursor-pointer ${selectedSessionId === session.id ? 'border-primary ring-1 ring-primary' : ''} ${session.status === 'active' ? 'bg-primary/5' : 'bg-card'}`}>
-                  {session.status === 'active' && <div className="absolute top-3 right-3 rounded-full bg-primary p-1 text-primary-foreground"><Check className="w-3 h-3" /></div>}
-                  <p className="font-semibold">{new Date(session.startDate).getFullYear()} - {new Date(session.endDate).getFullYear()}</p>
-                  <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground"><span className={`h-2 w-2 rounded-full ${session.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />{session.status === 'active' ? <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge> : 'Not Active'}</div>
-                  <div className="flex gap-1 mt-3 border-t pt-2">
-                    <Button type="button" variant="ghost" size="sm" className="flex-1" onClick={() => handleEdit(session)}><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
-                    <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDelete(session.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                  </div>
-                </div>
-              ))}
+                {sessions.map(session => {
+                  const sessionProgramCount = programs.filter(p => p.academicSessionId === session.id).length;
+                  const isSelected = selectedSessionId === session.id;
+
+                  return (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      key={session.id}
+                      data-session-active={session.status === 'active'}
+                      onClick={() => handleSessionChange(session.id)}
+                      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleSessionChange(session.id); }}
+                      className={`relative min-w-[200px] flex-none snap-start rounded-lg border p-4 min-h-24 text-left cursor-pointer transition-all ${isSelected ? 'border-primary ring-2 ring-primary bg-primary/10 shadow-sm' : 'hover:border-primary/50'} ${session.status === 'active' && !isSelected ? 'bg-primary/5' : ''}`}
+                    >
+                      {session.status === 'active' && <div className="absolute top-3 right-3 rounded-full bg-primary p-1 text-primary-foreground"><Check className="w-3 h-3" /></div>}
+                      <p className="font-semibold text-base">{new Date(session.startDate).getFullYear()} - {new Date(session.endDate).getFullYear()}</p>
+                      <div className="flex items-center justify-between gap-1.5 mt-2">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className={`h-2 w-2 rounded-full ${session.status === 'active' ? 'bg-green-500' : 'bg-muted-foreground/40'}`} />
+                          {session.status === 'active' ? <Badge variant="outline" className="text-green-600 border-green-300">Active</Badge> : 'Not Active'}
+                        </div>
+                        <Badge variant="secondary" className="text-[11px] font-normal">
+                          {sessionProgramCount} {sessionProgramCount === 1 ? 'Program' : 'Programs'}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-1 mt-3 border-t pt-2">
+                        <Button type="button" variant="ghost" size="sm" className="flex-1" onClick={event => { event.stopPropagation(); handleEdit(session); }}><Edit className="w-3.5 h-3.5 mr-1" />Edit</Button>
+                        <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={event => { event.stopPropagation(); handleDelete(session.id); }}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           )}
         </CardContent>
@@ -3274,7 +3486,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     ? `All Programs (${filteredPrograms.length})`
                     : programSessionFilter === 'active'
                     ? `Active Session Programs (${filteredPrograms.length})`
-                    : `Programs under Academic Session: ${displaySession(programSessionFilter)} (${filteredPrograms.length})`}
+                    : (() => {
+                        const s = sessions.find(item => item.id === programSessionFilter);
+                        return s?.status === 'active'
+                          ? `Active Session Programs - ${displaySession(programSessionFilter)} (${filteredPrograms.length})`
+                          : `Programs under Academic Session: ${displaySession(programSessionFilter)} (${filteredPrograms.length})`;
+                      })()}
                 </CardTitle>
                 {programSessionFilter === 'active' ? (
                   <Badge variant="outline" className="text-green-600 border-green-300">
@@ -3288,7 +3505,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   const currSession = sessions.find(s => s.id === programSessionFilter);
                   return currSession ? (
                     <Badge variant="outline" className={currSession.status === 'active' ? 'text-green-600 border-green-300' : ''}>
-                      {currSession.status === 'active' ? 'Active' : 'Inactive'}
+                      {currSession.status === 'active' ? 'Active Session' : 'Inactive Session'}
                     </Badge>
                   ) : null;
                 })()}
@@ -3298,7 +3515,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   ? 'Manage academic programs across all sessions'
                   : programSessionFilter === 'active'
                   ? 'Manage academic programs belonging to active academic sessions'
-                  : `Manage, create, or import academic programs for ${displaySession(programSessionFilter)}`}
+                  : `Manage, create, or import academic programs for academic session ${displaySession(programSessionFilter)}`}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -3345,9 +3562,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setProgramSessionFilter('active');
                       const firstActive = sessions.find(s => s.status === 'active');
-                      setSelectedSessionId(firstActive ? firstActive.id : null);
+                      if (firstActive) {
+                        setProgramSessionFilter(firstActive.id);
+                        setSelectedSessionId(firstActive.id);
+                      } else {
+                        setProgramSessionFilter('active');
+                        setSelectedSessionId(null);
+                      }
                     }}
                     title="View only active session programs"
                   >
@@ -3378,8 +3600,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     <SelectValue placeholder="Filter by Session" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active Sessions (Default)</SelectItem>
                     <SelectItem value="all">All Sessions</SelectItem>
+                    <SelectItem value="active">Active Sessions</SelectItem>
                     {sessions.map(s => (
                       <SelectItem key={s.id} value={s.id}>
                         {displaySession(s.id)} {s.status === 'active' ? '(Active)' : ''}
@@ -3432,7 +3654,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 {!programSearch && (
                   <div className="flex flex-wrap justify-center gap-2 pt-2">
                     {programSessionFilter !== 'all' && (
-                      <Button variant="outline" size="sm" onClick={() => setProgramSessionFilter('all')}>
+                      <Button variant="outline" size="sm" onClick={() => { setProgramSessionFilter('all'); setSelectedSessionId(null); }}>
                         <BookOpen className="w-4 h-4 mr-1.5" />
                         View All Programs
                       </Button>
@@ -3454,18 +3676,34 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   const progSession = sessions.find(s => s.id === program.academicSessionId);
                   const semesterCount = program._count?.semesterRecords ?? (Array.isArray(program.semesters) ? program.semesters.length : undefined);
                   const moduleCount = program._count?.modules;
+                  const isProgramActive = !program.status || program.status.toLowerCase() === 'active';
 
                   return (
                     <div key={program.id} className="rounded-lg border p-4 flex flex-col justify-between gap-3 hover:border-primary/50 transition-colors bg-card">
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div className="space-y-1">
-                            <h3 className="font-semibold leading-tight">{program.name}</h3>
+                            <div className="flex items-center gap-2">
+                              {isProgramActive && (
+                                <span className="relative flex h-2 w-2 shrink-0" title="Active Program">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                                </span>
+                              )}
+                              <h3 className="font-semibold leading-tight">{program.name}</h3>
+                            </div>
                             <p className="text-sm text-muted-foreground">{program.courseName || 'Course name not provided'}</p>
                           </div>
-                          <Badge variant={program.status === 'active' ? 'default' : 'outline'}>
-                            {program.status === 'active' ? 'Active' : 'Not Active'}
-                          </Badge>
+                          {isProgramActive ? (
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20 shrink-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground text-[11px] shrink-0">
+                              Not Active
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-1">
@@ -3535,11 +3773,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
       {initialTab === 'academic-semesters' && (
         <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <CardTitle>All Semesters ({semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).length})</CardTitle>
                 <p className="text-sm text-muted-foreground">Filter semesters by academic session and program</p>
               </div>
+              <Button type="button" onClick={() => openCreateSemester()}>
+                <Plus className="w-4 h-4 mr-2" />Add Semester
+              </Button>
             </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -3582,38 +3823,198 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">{semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter)).map(semester => {
-              const isSessionActive = sessions.find(s => s.id === semester.academicSessionId)?.status === 'active';
+            {(() => {
+              const filteredList = semesters.filter(semester => (semesterSessionFilter === 'all' || semester.academicSessionId === semesterSessionFilter) && (semesterProgramFilter === 'all' || semester.programId === semesterProgramFilter));
+              if (filteredList.length === 0) {
+                return (
+                  <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Calendar className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-base">No semesters found</h3>
+                      <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                        No semesters found for the selected session and program. You can add a new semester using the button above.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <Button size="sm" onClick={() => openCreateSemester()}>
+                        <Plus className="w-4 h-4 mr-2" />Add Semester
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
               return (
-                <div key={semester.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center border rounded-lg p-4">
-                  <div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div>
-                  <div className="text-sm">{semester.programName}</div>
-                  <div className="text-sm">
-                    <div>{displaySession(semester.academicSessionId)}</div>
-                    {isSessionActive && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                        Active Session
-                      </span>
-                    )}
-                  </div>
-                  <Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button>
-                    <Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button>
-                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button>
-                  </div>
+                <div className="space-y-2">
+                  {filteredList.map(semester => {
+                    const isSessionActive = sessions.find(s => s.id === semester.academicSessionId)?.status === 'active';
+                    return (
+                      <div key={semester.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center border rounded-lg p-4">
+                        <div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div>
+                        <div className="text-sm">{semester.programName}</div>
+                        <div className="text-sm">
+                          <div>{displaySession(semester.academicSessionId)}</div>
+                          {isSessionActive && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active Session
+                            </span>
+                          )}
+                        </div>
+                        <Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button>
+                          <Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button>
+                          <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
-            })}</div>
+            })()}
           </CardContent>
         </Card>
       )}
 
       {initialTab === 'academic-modules' && (
         <Card>
-          <CardHeader><CardTitle>All Modules ({modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).length})</CardTitle><p className="text-sm text-muted-foreground">Filter modules by academic session, program, and semester</p></CardHeader>
-          <CardContent><div className="flex flex-wrap gap-3 mb-4"><Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}><SelectTrigger className="w-56"><SelectValue placeholder="All Sessions" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{sessions.map(session => <SelectItem key={session.id} value={session.id}><div className="flex items-center gap-2"><span>{displaySession(session.id)}</span>{session.status === 'active' && <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded-full border border-green-500/20"><span className="h-1.5 w-1.5 rounded-full bg-green-500" />Active</span>}</div></SelectItem>)}</SelectContent></Select><Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Programs</SelectItem>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select><Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Semesters</SelectItem>{semesters.map(semester => <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>)}</SelectContent></Select></div><div className="overflow-x-auto"><div className="min-w-[900px] space-y-2"><div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground"><span>Code</span><span>Module</span><span>Type</span><span>Session</span><span>Program</span><span>Semester</span><span>Actions</span></div>{modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).map(module => <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm"><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span><span><Badge variant="outline">{module.moduleType}</Badge></span><span>{displaySession(module.academicSessionId)}</span><span>{module.programName}</span><span>{module.semesterName}</span><div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button><Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}>Add Video</Button></div></div>)}</div></div></CardContent>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle>
+                All Modules ({modules.filter(module => (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) && (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) && (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)).length})
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">Filter modules by academic session, program, and semester</p>
+            </div>
+            <Button type="button" onClick={() => openCreateModule()}>
+              <Plus className="w-4 h-4 mr-2" />Add Modules
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Select value={moduleSessionFilter} onValueChange={setModuleSessionFilter}>
+                  <SelectTrigger className="w-60">
+                    <SelectValue placeholder="All Sessions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sessions</SelectItem>
+                    {sessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{displaySession(session.id)}</span>
+                          {session.status === 'active' && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-full border border-green-500/20">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {moduleSessionFilter !== 'all' && (() => {
+                  const selectedSession = sessions.find(s => s.id === moduleSessionFilter);
+                  return selectedSession?.status === 'active' ? (
+                    <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/20 text-xs">
+                      Active
+                    </Badge>
+                  ) : null;
+                })()}
+              </div>
+
+              <Select value={moduleProgramFilter} onValueChange={setModuleProgramFilter}>
+                <SelectTrigger className="w-56"><SelectValue placeholder="All Programs" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Programs</SelectItem>
+                  {programs
+                    .filter(program => moduleSessionFilter === 'all' || !program.academicSessionId || program.academicSessionId === moduleSessionFilter)
+                    .map(program => (
+                      <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={moduleSemesterFilter} onValueChange={setModuleSemesterFilter}>
+                <SelectTrigger className="w-56"><SelectValue placeholder="All Semesters" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Semesters</SelectItem>
+                  {semesters
+                    .filter(semester => (moduleProgramFilter === 'all' || semester.programId === moduleProgramFilter) && (moduleSessionFilter === 'all' || semester.academicSessionId === moduleSessionFilter))
+                    .map(semester => (
+                      <SelectItem key={semester.id} value={semester.id}>{semester.semesterName}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(() => {
+              const filteredModules = modules.filter(module =>
+                (moduleSessionFilter === 'all' || module.academicSessionId === moduleSessionFilter) &&
+                (moduleProgramFilter === 'all' || module.programId === moduleProgramFilter) &&
+                (moduleSemesterFilter === 'all' || module.semesterId === moduleSemesterFilter)
+              );
+
+              if (filteredModules.length === 0) {
+                return (
+                  <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <BookOpen className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-base">No modules found</h3>
+                      <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                        No modules found for the selected session, program, and semester. You can add a new module using the button above.
+                      </p>
+                    </div>
+                    <div className="pt-2">
+                      <Button size="sm" onClick={() => openCreateModule()}>
+                        <Plus className="w-4 h-4 mr-2" />Add Modules
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto">
+                  <div className="min-w-[900px] space-y-2">
+                    <div className="grid grid-cols-7 gap-3 px-4 text-xs font-semibold text-muted-foreground">
+                      <span>Code</span>
+                      <span>Module</span>
+                      <span>Type</span>
+                      <span>Session</span>
+                      <span>Program</span>
+                      <span>Semester</span>
+                      <span>Actions</span>
+                    </div>
+                    {filteredModules.map(module => (
+                      <div key={module.id} className="grid grid-cols-7 gap-3 items-center border rounded-lg p-4 text-sm">
+                        <span className="font-medium">{module.moduleCode}</span>
+                        <span>{module.moduleName}</span>
+                        <span><Badge variant="outline">{module.moduleType}</Badge></span>
+                        <span>{displaySession(module.academicSessionId)}</span>
+                        <span>{module.programName}</span>
+                        <span>{module.semesterName}</span>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => openEbookDialog(module)}>Add E-Book</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => openVideoDialog(module)}>Add Video</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => handleEditModule(module)}>
+                            <Edit className="w-3.5 h-3.5 mr-1" />Edit
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteModule(module)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1" />Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </CardContent>
         </Card>
       )}
 
@@ -3630,7 +4031,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <Button type="button" variant="outline" onClick={() => { setSelectedSemesterId(null); setActiveSection('semesters'); }}>
                 Semesters
               </Button>
-              <Button type="button" disabled={!selectedSemesterId} onClick={openCreateModule}>
+              <Button type="button" disabled={!selectedSemesterId} onClick={() => openCreateModule(selectedProgramId || undefined, selectedSemesterId || undefined)}>
                 <Plus className="w-4 h-4 mr-2" />Create Module
               </Button>
             </div>
@@ -4192,19 +4593,143 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       </Dialog>
 
       <Dialog open={semesterDialogOpen} onOpenChange={closeSemesterDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{editingSemesterId ? 'Edit Semester' : 'Create Semester'}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingSemesterId ? 'Edit Semester' : 'Add Semester'}</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleSemesterSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label htmlFor="semesterName">Semester Name</Label><Input id="semesterName" value={semesterForm.semesterName} onChange={event => setSemesterForm({ ...semesterForm, semesterName: event.target.value })} placeholder="e.g. First Semester" required /></div>
-              <div className="space-y-2"><Label htmlFor="semesterNumber">Semester Number</Label><Input id="semesterNumber" type="number" min="1" value={semesterForm.semesterNumber} onChange={event => setSemesterForm({ ...semesterForm, semesterNumber: event.target.value })} required /></div>
-              <div className="space-y-2"><Label htmlFor="semesterProgram">Program</Label><Input id="semesterProgram" value={programs.find(program => program.id === selectedProgramId)?.name || ''} disabled /></div>
-              <div className="space-y-2"><Label htmlFor="semesterSession">Academic Session</Label><Input id="semesterSession" value={selectedSessionId ? (() => { const session = sessions.find(item => item.id === selectedSessionId); return session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : ''; })() : ''} disabled /></div>
-              <div className="space-y-2"><Label htmlFor="semesterStartDate">Start Date</Label><Input id="semesterStartDate" type="date" value={semesterForm.startDate} onChange={event => setSemesterForm({ ...semesterForm, startDate: event.target.value })} required /></div>
-              <div className="space-y-2"><Label htmlFor="semesterEndDate">End Date</Label><Input id="semesterEndDate" type="date" min={semesterForm.startDate || undefined} value={semesterForm.endDate} onChange={event => setSemesterForm({ ...semesterForm, endDate: event.target.value })} required /></div>
-              <div className="space-y-2"><Label>Status</Label><Select value={semesterForm.status} onValueChange={status => setSemesterForm({ ...semesterForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2">
+                <Label htmlFor="semesterSessionSelect">Academic Session *</Label>
+                <Select
+                  value={semesterForm.academicSessionId}
+                  onValueChange={academicSessionId => {
+                    setSemesterForm(prev => {
+                      const prog = programs.find(p => p.id === prev.programId);
+                      const nextProgramId = (prog && (!prog.academicSessionId || prog.academicSessionId === academicSessionId)) ? prev.programId : '';
+                      return {
+                        ...prev,
+                        academicSessionId,
+                        programId: nextProgramId,
+                      };
+                    });
+                  }}
+                  required
+                >
+                  <SelectTrigger id="semesterSessionSelect">
+                    <SelectValue placeholder="Select Academic Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        {displaySession(session.id)} {session.status === 'active' ? '(Active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="semesterProgramSelect">Program *</Label>
+                <Select
+                  value={semesterForm.programId}
+                  onValueChange={programId => {
+                    const selectedProg = programs.find(p => p.id === programId);
+                    setSemesterForm(prev => ({
+                      ...prev,
+                      programId,
+                      academicSessionId: selectedProg?.academicSessionId || prev.academicSessionId,
+                    }));
+                  }}
+                  required
+                >
+                  <SelectTrigger id="semesterProgramSelect">
+                    <SelectValue placeholder="Select Program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs
+                      .filter(p => !semesterForm.academicSessionId || !p.academicSessionId || p.academicSessionId === semesterForm.academicSessionId)
+                      .map(program => (
+                        <SelectItem key={program.id} value={program.id}>
+                          {program.name} {program.courseName ? `(${program.courseName})` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="semesterName">Semester Name *</Label>
+                <Input
+                  id="semesterName"
+                  value={semesterForm.semesterName}
+                  onChange={event => setSemesterForm({ ...semesterForm, semesterName: event.target.value })}
+                  placeholder="e.g. First Semester"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="semesterNumber">Semester Number *</Label>
+                <Input
+                  id="semesterNumber"
+                  type="number"
+                  min="1"
+                  value={semesterForm.semesterNumber}
+                  onChange={event => setSemesterForm({ ...semesterForm, semesterNumber: event.target.value })}
+                  placeholder="e.g. 1"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="semesterStartDate">Start Date *</Label>
+                <Input
+                  id="semesterStartDate"
+                  type="date"
+                  value={semesterForm.startDate}
+                  onChange={event => setSemesterForm({ ...semesterForm, startDate: event.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="semesterEndDate">End Date *</Label>
+                <Input
+                  id="semesterEndDate"
+                  type="date"
+                  min={semesterForm.startDate || undefined}
+                  value={semesterForm.endDate}
+                  onChange={event => setSemesterForm({ ...semesterForm, endDate: event.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="semesterStatus">Status *</Label>
+                <Select
+                  value={semesterForm.status}
+                  onValueChange={status => setSemesterForm({ ...semesterForm, status })}
+                >
+                  <SelectTrigger id="semesterStatus">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex gap-2"><Button type="submit" className="flex-1">{editingSemesterId ? 'Update Semester' : 'Create Semester'}</Button><Button type="button" variant="outline" onClick={() => closeSemesterDialog(false)}>Cancel</Button></div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={() => closeSemesterDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingSemesterId ? 'Update Semester' : 'Create Semester'}
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
@@ -4410,18 +4935,177 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       </Dialog>
 
       <Dialog open={moduleDialogOpen} onOpenChange={closeModuleDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{editingModuleId ? 'Edit Module' : 'Create Module'}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingModuleId ? 'Edit Module' : 'Add Modules'}</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleModuleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label htmlFor="moduleProgram">Program</Label><Input id="moduleProgram" value={programs.find(program => program.id === selectedProgramId)?.name || ''} disabled /></div>
-              <div className="space-y-2"><Label htmlFor="moduleAcademicSession">Academic Session</Label><Input id="moduleAcademicSession" value={selectedSessionId ? (() => { const session = sessions.find(item => item.id === selectedSessionId); return session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : ''; })() : ''} disabled /></div>
-              <div className="space-y-2"><Label htmlFor="moduleSemester">Semester</Label><Input id="moduleSemester" value={semesters.find(semester => semester.id === selectedSemesterId)?.semesterName || ''} disabled /></div>
-              <div className="space-y-2"><Label htmlFor="moduleCode">Module Code</Label><Input id="moduleCode" value={moduleForm.moduleCode} onChange={event => setModuleForm({ ...moduleForm, moduleCode: event.target.value })} placeholder="e.g. CS101A" required /></div>
-              <div className="space-y-2"><Label htmlFor="moduleName">Module Name</Label><Input id="moduleName" value={moduleForm.moduleName} onChange={event => setModuleForm({ ...moduleForm, moduleName: event.target.value })} placeholder="e.g. Data Structures" required /></div>
-              <div className="space-y-2"><Label>Module Type</Label><Select value={moduleForm.moduleType} onValueChange={moduleType => setModuleForm({ ...moduleForm, moduleType })} required><SelectTrigger><SelectValue placeholder="Select module type" /></SelectTrigger><SelectContent><SelectItem value="Core">Core</SelectItem><SelectItem value="Elective">Elective</SelectItem><SelectItem value="Practical">Practical</SelectItem><SelectItem value="Project">Project</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2">
+                <Label htmlFor="moduleSessionSelect">Academic Session *</Label>
+                <Select
+                  value={moduleForm.academicSessionId}
+                  onValueChange={academicSessionId => {
+                    setModuleForm(prev => {
+                      const prog = programs.find(p => p.id === prev.programId);
+                      const nextProgramId = (prog && (!prog.academicSessionId || prog.academicSessionId === academicSessionId)) ? prev.programId : '';
+                      const nextSemesterId = nextProgramId ? prev.semesterId : '';
+                      return {
+                        ...prev,
+                        academicSessionId,
+                        programId: nextProgramId,
+                        semesterId: nextSemesterId,
+                      };
+                    });
+                  }}
+                  required
+                >
+                  <SelectTrigger id="moduleSessionSelect">
+                    <SelectValue placeholder="Select Academic Session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map(session => (
+                      <SelectItem key={session.id} value={session.id}>
+                        {displaySession(session.id)} {session.status === 'active' ? '(Active)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moduleProgramSelect">Programs *</Label>
+                <Select
+                  value={moduleForm.programId}
+                  onValueChange={async programId => {
+                    const selectedProg = programs.find(p => p.id === programId);
+                    setModuleForm(prev => ({
+                      ...prev,
+                      programId,
+                      academicSessionId: selectedProg?.academicSessionId || prev.academicSessionId,
+                      semesterId: '',
+                    }));
+                    try {
+                      const res = await api.get(`/operations/programs/${programId}/semesters`);
+                      const fetchedSemesters = (res.data.data || []).map((sem: any) => ({
+                        ...sem,
+                        programId,
+                        programName: selectedProg?.name || '',
+                        academicSessionId: sem.academicSessionId || selectedProg?.academicSessionId || '',
+                      }));
+                      setSemesters(prev => {
+                        const other = prev.filter(s => s.programId !== programId);
+                        return [...other, ...fetchedSemesters];
+                      });
+                    } catch (e) {
+                      // ignore
+                    }
+                  }}
+                  required
+                >
+                  <SelectTrigger id="moduleProgramSelect">
+                    <SelectValue placeholder="Select Program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs
+                      .filter(p => !moduleForm.academicSessionId || !p.academicSessionId || p.academicSessionId === moduleForm.academicSessionId)
+                      .map(program => (
+                        <SelectItem key={program.id} value={program.id}>
+                          {program.name} {program.courseName ? `(${program.courseName})` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moduleSemesterSelect">Semester *</Label>
+                <Select
+                  value={moduleForm.semesterId}
+                  onValueChange={semesterId => {
+                    const chosenSem = semesters.find(s => s.id === semesterId);
+                    setModuleForm(prev => ({
+                      ...prev,
+                      semesterId,
+                      programId: prev.programId || chosenSem?.programId || '',
+                      academicSessionId: prev.academicSessionId || chosenSem?.academicSessionId || '',
+                    }));
+                  }}
+                  required
+                >
+                  <SelectTrigger id="moduleSemesterSelect">
+                    <SelectValue placeholder="Select Semester" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {semesters
+                      .filter(s => {
+                        if (moduleForm.programId && s.programId && s.programId !== moduleForm.programId) return false;
+                        if (moduleForm.academicSessionId && s.academicSessionId && s.academicSessionId !== moduleForm.academicSessionId) return false;
+                        return true;
+                      })
+                      .map(semester => (
+                        <SelectItem key={semester.id} value={semester.id}>
+                          {semester.semesterName} {semester.semesterNumber ? `(Sem ${semester.semesterNumber})` : ''} {semester.programName ? `- ${semester.programName}` : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moduleCode">Module Code *</Label>
+                <Input
+                  id="moduleCode"
+                  value={moduleForm.moduleCode}
+                  onChange={event => setModuleForm({ ...moduleForm, moduleCode: event.target.value })}
+                  placeholder="e.g. CS101A"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moduleName">Module Name *</Label>
+                <Input
+                  id="moduleName"
+                  value={moduleForm.moduleName}
+                  onChange={event => setModuleForm({ ...moduleForm, moduleName: event.target.value })}
+                  placeholder="e.g. Data Structures"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moduleTypeSelect">Module Type *</Label>
+                <Select
+                  value={
+                    ['Core', 'Elective', 'Practical', 'Project'].find(
+                      t => t.toLowerCase() === (moduleForm.moduleType || '').toLowerCase()
+                    ) || moduleForm.moduleType
+                  }
+                  onValueChange={moduleType => setModuleForm({ ...moduleForm, moduleType })}
+                  required
+                >
+                  <SelectTrigger id="moduleTypeSelect">
+                    <SelectValue placeholder="Select module type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Core">Core</SelectItem>
+                    <SelectItem value="Elective">Elective</SelectItem>
+                    <SelectItem value="Practical">Practical</SelectItem>
+                    <SelectItem value="Project">Project</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex gap-2"><Button type="submit" className="flex-1">{editingModuleId ? 'Update Module' : 'Create Module'}</Button><Button type="button" variant="outline" onClick={() => closeModuleDialog(false)}>Cancel</Button></div>
+
+            <div className="flex gap-2 pt-2">
+              <Button type="submit" className="flex-1">
+                {editingModuleId ? 'Update Module' : 'Create Module'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => closeModuleDialog(false)}>
+                Cancel
+              </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
