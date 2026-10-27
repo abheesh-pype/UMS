@@ -474,7 +474,7 @@ export function PrismaLayout({
         </header>
 
         <section data-app-content className="flex-1 overflow-auto p-4 lg:p-6 bg-background">
-          <div className="max-w-[1600px] mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className={cn("mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500", isStudent ? "w-full max-w-none" : "max-w-[1600px]")}>
             {children}
           </div>
         </section>

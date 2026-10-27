@@ -4,7 +4,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
-const syncStudentExaminationNotifications = async (req: AuthRequest) => {
+const syncStudentNotifications = async (req: AuthRequest) => {
   if (req.user.role !== 'student') return;
 
   const student = await prisma.student.findFirst({
@@ -13,52 +13,270 @@ const syncStudentExaminationNotifications = async (req: AuthRequest) => {
       email: req.user.email,
       status: 'active',
     },
-    select: { id: true, programId: true, sessionId: true },
-  });
-
-  if (!student?.sessionId) return;
-
-  const examinations = await prisma.examination.findMany({
-    where: {
-      organizationId: req.user.organizationId,
-      programId: student.programId,
-      academicSessionId: student.sessionId,
+    include: {
+      program: { select: { id: true, name: true, academicSessionId: true } },
+      invoices: {
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceType: true,
+          total: true,
+          paidAmount: true,
+          balanceAmount: true,
+          status: true,
+          dueDate: true,
+          createdAt: true,
+          paidAt: true,
+          period: true,
+        },
+      },
     },
-    include: { academicSession: { select: { name: true } } },
   });
 
-  if (examinations.length === 0) return;
+  if (!student) return;
 
-  const links = examinations.map(examination => `examinations/${examination.id}`);
-  const existing = await prisma.notification.findMany({
-    where: { userId: req.user.id, link: { in: links } },
-    select: { link: true },
-  });
-  const existingLinks = new Set(existing.map(notification => notification.link));
-  const missing = examinations.filter(examination => !existingLinks.has(`examinations/${examination.id}`));
+  const targetSessionId = student.sessionId || student.program?.academicSessionId;
 
-  if (missing.length > 0) {
-    await prisma.notification.createMany({
-      data: missing.map(examination => ({
+  const candidates: Array<{
+    organizationId: string;
+    userId: string;
+    title: string;
+    message: string;
+    type: 'announcement' | 'system' | 'general';
+    priority: 'high' | 'medium' | 'low';
+    link: string;
+    createdAt?: Date;
+  }> = [];
+
+  const now = new Date();
+
+  // 1. Examinations
+  if (targetSessionId && student.programId) {
+    const examinations = await prisma.examination.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        programId: student.programId,
+        academicSessionId: targetSessionId,
+      },
+      include: { academicSession: { select: { name: true } } },
+    });
+
+    for (const examination of examinations) {
+      candidates.push({
         organizationId: req.user.organizationId,
         userId: req.user.id,
         title: 'New Examination Published',
-        message: `${examination.examinationType} has been created for your ${examination.academicSession.name}.`,
-        type: 'general' as any,
-        priority: 'medium' as any,
+        message: `${examination.examinationType} has been scheduled for ${examination.academicSession?.name || 'your session'}.`,
+        type: 'general',
+        priority: 'high',
         link: `examinations/${examination.id}`,
+      });
+    }
+  }
+
+  // 2. Fees, Invoices & Financial Alerts
+  for (const inv of (student.invoices || [])) {
+    // 2A. New Invoices Generated
+    candidates.push({
+      organizationId: req.user.organizationId,
+      userId: req.user.id,
+      title: `New Invoice Generated: ${inv.invoiceNo}`,
+      message: `${(inv.invoiceType || 'Tuition').toUpperCase()} invoice of ₹${Number(inv.total || 0).toLocaleString()} issued for ${inv.period || 'current term'}.${inv.dueDate ? ` Due date: ${new Date(inv.dueDate).toLocaleDateString()}.` : ''}`,
+      type: 'system',
+      priority: inv.balanceAmount > 0 && inv.dueDate && new Date(inv.dueDate) < now ? 'high' : 'medium',
+      link: `fees/invoice/${inv.id}`,
+      createdAt: inv.createdAt ? new Date(inv.createdAt) : undefined,
+    });
+
+    // 2B. Installment Due Date & Overdue Reminders
+    if (inv.status !== 'paid' && Number(inv.balanceAmount) > 0 && inv.dueDate) {
+      const dueDate = new Date(inv.dueDate);
+      if (dueDate < now) {
+        candidates.push({
+          organizationId: req.user.organizationId,
+          userId: req.user.id,
+          title: `Overdue Fee Reminder: ${inv.invoiceNo}`,
+          message: `Overdue fee reminder to avoid late penalties: Outstanding balance of ₹${Number(inv.balanceAmount).toLocaleString()} was due on ${dueDate.toLocaleDateString()}. Please clear to avoid registration blocks.`,
+          type: 'system',
+          priority: 'high',
+          link: `fees/overdue/${inv.id}`,
+        });
+      } else {
+        candidates.push({
+          organizationId: req.user.organizationId,
+          userId: req.user.id,
+          title: `Upcoming Fee Due Reminder`,
+          message: `Upcoming installment payment of ₹${Number(inv.balanceAmount).toLocaleString()} due on ${dueDate.toLocaleDateString()}.`,
+          type: 'system',
+          priority: 'high',
+          link: `fees/due/${inv.id}`,
+        });
+      }
+    }
+
+    // 2C. Payment Acknowledgement
+    if (inv.status === 'paid' && (inv.paidAt || inv.paidAmount > 0)) {
+      candidates.push({
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        title: `Payment Acknowledged: ${inv.invoiceNo}`,
+        message: `Instant Confirmation: Payment of ₹${Number(inv.total || inv.paidAmount).toLocaleString()} has been received, verified, and recorded by the finance department.`,
+        type: 'system',
+        priority: 'low',
+        link: `fees/receipt/${inv.id}`,
+      });
+    }
+  }
+
+  // 3. Curriculum Materials & Recorded Video Lectures
+  if (student.programId) {
+    const materials = await prisma.programMaterial.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        programId: student.programId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+    });
+
+    for (const mat of materials) {
+      const isVideo = mat.category === 'video_class' || mat.category === 'video';
+      const isEbook = mat.category === 'ebook' || mat.category === 'syllabus';
+      const semLabel = mat.semesterNumber ? `Semester ${mat.semesterNumber}` : 'your curriculum';
+      const matTitle = mat.title || mat.fileName || 'Course Material';
+
+      if (isVideo) {
+        candidates.push({
+          organizationId: req.user.organizationId,
+          userId: req.user.id,
+          title: 'New Video Lecture Uploaded',
+          message: `A new video lecture '${matTitle}' has been uploaded for ${semLabel}.`,
+          type: 'announcement',
+          priority: 'low',
+          link: `materials/video/${mat.id}`,
+          createdAt: mat.createdAt ? new Date(mat.createdAt) : undefined,
+        });
+      } else if (isEbook) {
+        candidates.push({
+          organizationId: req.user.organizationId,
+          userId: req.user.id,
+          title: 'E-Books & Syllabus Updates',
+          message: `New curriculum study material and reference resource '${matTitle}' is available for ${semLabel}.`,
+          type: 'announcement',
+          priority: 'low',
+          link: `materials/ebook/${mat.id}`,
+          createdAt: mat.createdAt ? new Date(mat.createdAt) : undefined,
+        });
+      }
+    }
+  }
+
+  // 4. Academic Session & Calendar Milestones
+  if (targetSessionId) {
+    const session = await prisma.admissionSession.findFirst({
+      where: { id: targetSessionId },
+    });
+
+    if (session && session.startDate) {
+      candidates.push({
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        title: 'Academic Session Commencement',
+        message: `Academic Session '${session.name}' official session start date is ${new Date(session.startDate).toLocaleDateString()}. Orientation and academic activities have commenced.`,
+        type: 'general',
+        priority: 'medium',
+        link: `session/commence/${session.id}`,
+      });
+    }
+
+    candidates.push({
+      organizationId: req.user.organizationId,
+      userId: req.user.id,
+      title: 'Semester Progression / Re-registration',
+      message: `Review your completed modules and prepare for Semester progression re-registration for the upcoming academic cycle.`,
+      type: 'general',
+      priority: 'medium',
+      link: `session/progression/${student.id}`,
+    });
+
+    const calendarEvents = await prisma.academicCalendar.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        OR: [
+          { academicSessionId: targetSessionId },
+          { programId: student.programId },
+        ],
+      },
+      orderBy: { startDate: 'desc' },
+      take: 10,
+    });
+
+    for (const ev of calendarEvents) {
+      const isHoliday = ev.category?.toLowerCase() === 'holiday' || ev.title?.toLowerCase().includes('holiday');
+      candidates.push({
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        title: isHoliday ? `University Holiday & Recess: ${ev.title}` : `Academic Milestone: ${ev.title}`,
+        message: `${ev.description || ev.title} scheduled for ${new Date(ev.startDate).toLocaleDateString()}.`,
+        type: 'general',
+        priority: isHoliday ? 'low' : 'medium',
+        link: `calendar/event/${ev.id}`,
+      });
+    }
+  }
+
+  // 5. Scheduled Live Classes
+  if (student.programId) {
+    const scheduled = await prisma.scheduledClass.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        programId: student.programId,
+      },
+      orderBy: { startsAt: 'desc' },
+      take: 5,
+    });
+
+    for (const sc of scheduled) {
+      candidates.push({
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        title: `Live Scheduled Class: ${sc.title}`,
+        message: `Live lecture on '${sc.title}' scheduled for ${new Date(sc.startsAt).toLocaleString()}.`,
+        type: 'announcement',
+        priority: 'high',
+        link: `classes/live/${sc.id}`,
+      });
+    }
+  }
+
+  // Deduplicate against existing notifications for this student
+  const candidateLinks = candidates.map(c => c.link);
+  const existing = await prisma.notification.findMany({
+    where: { userId: req.user.id, link: { in: candidateLinks } },
+    select: { link: true },
+  });
+  const existingLinks = new Set(existing.map(n => n.link));
+  const missing = candidates.filter(c => !existingLinks.has(c.link));
+
+  if (missing.length > 0) {
+    await prisma.notification.createMany({
+      data: missing.map(m => ({
+        organizationId: m.organizationId,
+        userId: m.userId,
+        title: m.title,
+        message: m.message,
+        type: m.type as any,
+        priority: m.priority as any,
+        link: m.link,
+        read: false,
+        createdAt: m.createdAt || new Date(),
       })),
     });
   }
-
-  await Promise.all(examinations.map(examination => prisma.notification.updateMany({
-    where: { userId: req.user.id, link: `examinations/${examination.id}` },
-    data: { message: `${examination.examinationType} has been created for your ${examination.academicSession.name}.` },
-  })));
 };
 
 export const getMyNotifications = asyncHandler(async (req: AuthRequest, res: Response) => {
-  await syncStudentExaminationNotifications(req);
+  await syncStudentNotifications(req);
   const notifications = await prisma.notification.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' }
