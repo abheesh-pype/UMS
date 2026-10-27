@@ -287,9 +287,11 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
     departmentId,
     subDepartmentId,
     role,
+    designation,
     reportingTo,
     pendingWorkAssigneeId,
     reason,
+    changeType,
   } = req.body;
 
   const employee = await prisma.user.findFirst({
@@ -308,6 +310,7 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
 
   const targetDepartmentId = departmentId || employee.departmentId;
   const targetRole = typeof role === 'string' && role.trim() ? role.trim() : employee.role;
+  const targetDesignation = typeof designation === 'string' ? designation.trim() : employee.designation;
   const targetSubDepartmentId = subDepartmentId === undefined
     ? (targetDepartmentId === employee.departmentId ? employee.subDepartmentId : null)
     : (subDepartmentId || null);
@@ -316,8 +319,12 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
     res.status(400).json({ success: false, message: 'A department and role are required for transfer' });
     return;
   }
-  if (targetDepartmentId === employee.departmentId && targetRole === employee.role) {
-    res.status(400).json({ success: false, message: 'Select a new department or a new role' });
+  if (
+    targetDepartmentId === employee.departmentId
+    && targetRole === employee.role
+    && targetDesignation === employee.designation
+  ) {
+    res.status(400).json({ success: false, message: 'Select a new department, role, or designation' });
     return;
   }
   if (!reportingTo) {
@@ -398,6 +405,22 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
     },
   });
 
+  if (
+    isManager
+    && !handoffUserId
+    && (
+      employee._count.subordinates > 0
+      || employee.managedDepartments.length > 0
+      || employee.managedSubDepartments.length > 0
+    )
+  ) {
+    res.status(400).json({
+      success: false,
+      message: 'Select another manager in the current department to receive the team and management responsibilities',
+    });
+    return;
+  }
+
   if (pendingTaskCount > 0 && !handoffUserId) {
     res.status(400).json({
       success: false,
@@ -454,6 +477,7 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
         departmentId: targetDepartmentId,
         subDepartmentId: targetSubDepartmentId,
         role: targetRole,
+        designation: targetDesignation,
         reportingTo,
       },
       include: {
@@ -475,6 +499,15 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
       : { count: 0 };
 
     if (isManager) {
+      if (handoffUserId && employee._count.subordinates > 0) {
+        await tx.user.updateMany({
+          where: {
+            organizationId: req.user.organizationId,
+            reportingTo: employee.id,
+          },
+          data: { reportingTo: handoffUserId },
+        });
+      }
       if (employee.managedDepartments.length > 0) {
         await tx.department.updateMany({
           where: {
@@ -499,19 +532,21 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
       data: {
         organizationId: req.user.organizationId,
         userId: req.user.id,
-        action: 'transfer',
+        action: ['promotion', 'demotion'].includes(changeType) ? changeType : 'transfer',
         entityType: 'User',
         entityId: employee.id,
         oldValue: {
           departmentId: employee.departmentId,
           subDepartmentId: employee.subDepartmentId,
           role: employee.role,
+          designation: employee.designation,
           reportingTo: employee.reportingTo,
         },
         newValue: {
           departmentId: targetDepartmentId,
           subDepartmentId: targetSubDepartmentId,
           role: targetRole,
+          designation: targetDesignation,
           reportingTo,
           pendingWorkAssigneeId: handoffUserId || null,
           reassignedTaskCount: taskHandoff.count,
@@ -526,7 +561,7 @@ export const transferUser = asyncHandler(async (req: AuthRequest, res: Response)
 
   res.status(200).json({
     success: true,
-    message: `Employee transferred successfully. ${result.reassignedTaskCount} pending task(s) reassigned.`,
+    message: `Employee ${changeType === 'promotion' ? 'promoted' : changeType === 'demotion' ? 'demoted' : 'transferred'} successfully. ${result.reassignedTaskCount} pending task(s) reassigned.`,
     data: {
       ...result.updatedUser,
       transferReason: typeof reason === 'string' ? reason.trim() : '',

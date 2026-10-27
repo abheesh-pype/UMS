@@ -104,6 +104,8 @@ export function HRUsersPanel() {
     newRole: 'employee',
     departmentId: '',
     reportingTo: '',
+    pendingWorkAssigneeId: '',
+    reason: '',
     type: 'promotion' as 'promotion' | 'demotion',
   });
 
@@ -255,20 +257,25 @@ export function HRUsersPanel() {
 
     try {
       const userId = selectedUser.id || selectedUser.id;
-      await api.put(`/users/${userId}/role`, {
+      const response = await api.put(`/users/${userId}/transfer`, {
         changeType: promotionData.type,
         designation: promotionData.newDesignation,
         role: promotionData.newRole,
         departmentId: promotionData.departmentId && promotionData.departmentId !== 'none' ? promotionData.departmentId : null,
         subDepartmentId: promotionData.departmentId === getUserDepartmentId(selectedUser) ? getUserSubDepartmentId(selectedUser) : null,
-        reportingTo: promotionData.reportingTo && promotionData.reportingTo !== 'none' ? promotionData.reportingTo : null,
+        reportingTo: promotionData.reportingTo,
+        pendingWorkAssigneeId: promotionData.pendingWorkAssigneeId || undefined,
+        reason: promotionData.reason,
       });
       
       setPromotionDialogOpen(false);
-      setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', type: 'promotion' });
+      setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', pendingWorkAssigneeId: '', reason: '', type: 'promotion' });
       setSelectedUser(null);
       await fetchUsers();
-      toast.success(`Employee ${promotionData.type === 'promotion' ? 'promoted' : 'demoted'} successfully!`);
+      const reassignedTaskCount = response.data?.data?.reassignedTaskCount ?? 0;
+      toast.success(`Employee ${promotionData.type === 'promotion' ? 'promoted' : 'demoted'} successfully`, {
+        description: `${reassignedTaskCount} pending task${reassignedTaskCount === 1 ? '' : 's'} reassigned.`,
+      });
     } catch (error: any) {
       toast.error(error.response?.data?.message || `Failed to ${promotionData.type} employee. Please try again.`);
     }
@@ -355,6 +362,8 @@ export function HRUsersPanel() {
         ? user.departmentId.id || ''
         : user.departmentId || '',
       reportingTo: reportingToId || '',
+      pendingWorkAssigneeId: '',
+      reason: '',
       type,
     });
     setPromotionDialogOpen(true);
@@ -981,6 +990,7 @@ export function HRUsersPanel() {
                   !transferData.departmentId
                   || !transferData.role
                   || !transferData.reportingTo
+                  || (Boolean(selectedUser && isManager(selectedUser)) && !transferData.pendingWorkAssigneeId)
                 }
               >
                 Transfer Employee
@@ -1014,10 +1024,12 @@ export function HRUsersPanel() {
                   value={promotionData.newDesignation}
                   onValueChange={(value) => {
                     const designation = designations.find(item => item.title === value);
+                    const nextDepartmentId = designation?.departmentId?.id || promotionData.departmentId;
                     setPromotionData({
                       ...promotionData,
                       newDesignation: value,
-                      departmentId: designation?.departmentId?.id || promotionData.departmentId,
+                      departmentId: nextDepartmentId,
+                      reportingTo: nextDepartmentId !== promotionData.departmentId ? '' : promotionData.reportingTo,
                     });
                   }}
                 >
@@ -1052,7 +1064,7 @@ export function HRUsersPanel() {
               <Label htmlFor="promotionDepartment">Department</Label>
               <Select
                 value={promotionData.departmentId}
-                onValueChange={(value) => setPromotionData({ ...promotionData, departmentId: value })}
+                onValueChange={(value) => setPromotionData({ ...promotionData, departmentId: value, reportingTo: '' })}
               >
                 <SelectTrigger id="promotionDepartment">
                   <SelectValue placeholder="Select department" />
@@ -1093,13 +1105,13 @@ export function HRUsersPanel() {
               <Select
                 value={promotionData.reportingTo}
                 onValueChange={(value) => setPromotionData({ ...promotionData, reportingTo: value })}
+                required
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reporting manager (optional)" />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a manager in this department" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No Manager</SelectItem>
-                  {users.filter(u => (u.id || u.id) !== (selectedUser?.id || selectedUser?.id)).map((user) => (
+                  {usersInDepartment(promotionData.departmentId).filter(isManager).map((user) => (
                     <SelectItem key={user.id || user.id} value={(user.id || user.id)!}>
                       {user.name} {user.designation ? `(${user.designation})` : ''}
                     </SelectItem>
@@ -1107,18 +1119,62 @@ export function HRUsersPanel() {
                 </SelectContent>
               </Select>
             </div>
+            {selectedUser && isManager(selectedUser) ? (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+                <Label htmlFor="promotionPendingWorkAssignee">Pending Work & Team Handoff</Label>
+                <Select
+                  value={promotionData.pendingWorkAssigneeId}
+                  onValueChange={(value) => setPromotionData({ ...promotionData, pendingWorkAssigneeId: value })}
+                >
+                  <SelectTrigger id="promotionPendingWorkAssignee" className="w-full bg-background">
+                    <SelectValue placeholder="Select another manager in the current department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {usersInDepartment(getUserDepartmentId(selectedUser)).filter(isManager).map(user => (
+                      <SelectItem key={user.id} value={user.id!}>
+                        {user.name} {user.designation ? `(${user.designation})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Unfinished tasks, direct reports, and managed department ownership will move to this manager.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                Unfinished tasks will be reassigned to the employee&apos;s current reporting manager
+                {selectedUser?.manager?.name ? ` (${selectedUser.manager.name})` : ''}.
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="promotionReason">Reason</Label>
+              <Input
+                id="promotionReason"
+                value={promotionData.reason}
+                onChange={(event) => setPromotionData({ ...promotionData, reason: event.target.value })}
+                placeholder={`Reason for ${promotionData.type} (optional)`}
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
                   setPromotionDialogOpen(false);
-                  setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', type: 'promotion' });
+                  setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', pendingWorkAssigneeId: '', reason: '', type: 'promotion' });
                 }}
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button
+                type="submit"
+                disabled={
+                  !promotionData.departmentId
+                  || !promotionData.reportingTo
+                  || (Boolean(selectedUser && isManager(selectedUser)) && !promotionData.pendingWorkAssigneeId)
+                }
+              >
                 {promotionData.type === 'promotion' ? 'Promote' : 'Demote'} Employee
               </Button>
             </div>
