@@ -46,6 +46,8 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
       },
       branch: { select: { id: true, name: true } },
       designationRef: { select: { id: true, title: true } },
+      manager: { select: { id: true, name: true, designation: true } },
+      _count: { select: { subordinates: true } },
     },
     orderBy: { createdAt: 'desc' }
   });
@@ -265,6 +267,272 @@ export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Respons
   });
 
   res.status(200).json({ success: true, data: updatedUser });
+});
+
+const managerRoles = [
+  'superadmin',
+  'org_admin',
+  'ceo',
+  'university_admin',
+  'hr_admin',
+  'finance_admin',
+  'ops_admin',
+  'ops_sub_admin',
+  'sales_admin',
+  'academic_admin',
+];
+
+export const transferUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    departmentId,
+    subDepartmentId,
+    role,
+    reportingTo,
+    pendingWorkAssigneeId,
+    reason,
+  } = req.body;
+
+  const employee = await prisma.user.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    include: {
+      _count: { select: { subordinates: true } },
+      managedDepartments: { select: { id: true } },
+      managedSubDepartments: { select: { id: true } },
+      subDepartment: { select: { parentDeptId: true } },
+    },
+  });
+  if (!employee) {
+    res.status(404).json({ success: false, message: 'User not found' });
+    return;
+  }
+
+  const targetDepartmentId = departmentId || employee.departmentId;
+  const targetRole = typeof role === 'string' && role.trim() ? role.trim() : employee.role;
+  const targetSubDepartmentId = subDepartmentId === undefined
+    ? (targetDepartmentId === employee.departmentId ? employee.subDepartmentId : null)
+    : (subDepartmentId || null);
+
+  if (!targetDepartmentId || !targetRole) {
+    res.status(400).json({ success: false, message: 'A department and role are required for transfer' });
+    return;
+  }
+  if (targetDepartmentId === employee.departmentId && targetRole === employee.role) {
+    res.status(400).json({ success: false, message: 'Select a new department or a new role' });
+    return;
+  }
+  if (!reportingTo) {
+    res.status(400).json({ success: false, message: 'Select who the employee will report to after transfer' });
+    return;
+  }
+  if (reportingTo === employee.id) {
+    res.status(400).json({ success: false, message: 'An employee cannot report to themselves' });
+    return;
+  }
+
+  const [targetDepartment, targetManager] = await Promise.all([
+    prisma.department.findFirst({
+      where: { id: targetDepartmentId, organizationId: req.user.organizationId },
+      select: { id: true },
+    }),
+    prisma.user.findFirst({
+      where: {
+        id: reportingTo,
+        organizationId: req.user.organizationId,
+        status: 'active' as any,
+        OR: [
+          { departmentId: targetDepartmentId },
+          { subDepartment: { parentDeptId: targetDepartmentId } },
+        ],
+      },
+      include: {
+        _count: { select: { subordinates: true } },
+        managedDepartments: { select: { id: true } },
+        managedSubDepartments: { select: { id: true } },
+      },
+    }),
+  ]);
+  if (!targetDepartment) {
+    res.status(400).json({ success: false, message: 'Selected department was not found in this organization' });
+    return;
+  }
+  const targetIsManager = targetManager && (
+    managerRoles.includes(targetManager.role || '')
+    || targetManager._count.subordinates > 0
+    || targetManager.managedDepartments.length > 0
+    || targetManager.managedSubDepartments.length > 0
+    || /manager|lead|head/i.test(targetManager.designation || '')
+  );
+  if (!targetManager || !targetIsManager) {
+    res.status(400).json({ success: false, message: 'Select an active manager from the new department' });
+    return;
+  }
+
+  if (targetSubDepartmentId) {
+    const targetSubDepartment = await prisma.subDepartment.findFirst({
+      where: {
+        id: targetSubDepartmentId,
+        organizationId: req.user.organizationId,
+        parentDeptId: targetDepartmentId,
+      },
+      select: { id: true },
+    });
+    if (!targetSubDepartment) {
+      res.status(400).json({ success: false, message: 'Selected sub-department does not belong to the new department' });
+      return;
+    }
+  }
+
+  const isManager = managerRoles.includes(employee.role || '')
+    || employee._count.subordinates > 0
+    || employee.managedDepartments.length > 0
+    || employee.managedSubDepartments.length > 0
+    || /manager|lead|head/i.test(employee.designation || '');
+  const handoffUserId = isManager ? pendingWorkAssigneeId : employee.reportingTo;
+  const currentDepartmentId = employee.departmentId || employee.subDepartment?.parentDeptId;
+
+  const pendingTaskCount = await prisma.task.count({
+    where: {
+      organizationId: req.user.organizationId,
+      assignedTo: employee.id,
+      status: { not: 'completed' as any },
+    },
+  });
+
+  if (pendingTaskCount > 0 && !handoffUserId) {
+    res.status(400).json({
+      success: false,
+      message: isManager
+        ? 'Select another manager in the current department to receive pending work'
+        : 'This employee has pending work but no current reporting manager. Assign a pending-work recipient first.',
+    });
+    return;
+  }
+
+  if (handoffUserId && (pendingTaskCount > 0 || isManager)) {
+    const handoffUser = await prisma.user.findFirst({
+      where: {
+        id: { equals: handoffUserId, not: employee.id },
+        organizationId: req.user.organizationId,
+        status: 'active' as any,
+        ...(isManager && currentDepartmentId
+          ? {
+              OR: [
+                { departmentId: currentDepartmentId },
+                { subDepartment: { parentDeptId: currentDepartmentId } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        _count: { select: { subordinates: true } },
+        managedDepartments: { select: { id: true } },
+        managedSubDepartments: { select: { id: true } },
+      },
+    });
+    const recipientIsManager = handoffUser && (
+      managerRoles.includes(handoffUser.role || '')
+      || handoffUser._count.subordinates > 0
+      || handoffUser.managedDepartments.length > 0
+      || handoffUser.managedSubDepartments.length > 0
+      || /manager|lead|head/i.test(handoffUser.designation || '')
+    );
+    if (!handoffUser || (isManager && !recipientIsManager)) {
+      res.status(400).json({
+        success: false,
+        message: isManager
+          ? 'Pending work must be handed to another active manager in the current department'
+          : 'The current reporting manager is not available to receive pending work',
+      });
+      return;
+    }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id: employee.id },
+      data: {
+        departmentId: targetDepartmentId,
+        subDepartmentId: targetSubDepartmentId,
+        role: targetRole,
+        reportingTo,
+      },
+      include: {
+        department: { select: { id: true, name: true } },
+        subDepartment: { select: { id: true, name: true } },
+        manager: { select: { id: true, name: true, designation: true } },
+      },
+    });
+
+    const taskHandoff = handoffUserId
+      ? await tx.task.updateMany({
+          where: {
+            organizationId: req.user.organizationId,
+            assignedTo: employee.id,
+            status: { not: 'completed' as any },
+          },
+          data: { assignedTo: handoffUserId },
+        })
+      : { count: 0 };
+
+    if (isManager) {
+      if (employee.managedDepartments.length > 0) {
+        await tx.department.updateMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { in: employee.managedDepartments.map(department => department.id) },
+          },
+          data: { managerId: handoffUserId || null },
+        });
+      }
+      if (employee.managedSubDepartments.length > 0) {
+        await tx.subDepartment.updateMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { in: employee.managedSubDepartments.map(department => department.id) },
+          },
+          data: { managerId: handoffUserId || null },
+        });
+      }
+    }
+
+    await tx.auditLog.create({
+      data: {
+        organizationId: req.user.organizationId,
+        userId: req.user.id,
+        action: 'transfer',
+        entityType: 'User',
+        entityId: employee.id,
+        oldValue: {
+          departmentId: employee.departmentId,
+          subDepartmentId: employee.subDepartmentId,
+          role: employee.role,
+          reportingTo: employee.reportingTo,
+        },
+        newValue: {
+          departmentId: targetDepartmentId,
+          subDepartmentId: targetSubDepartmentId,
+          role: targetRole,
+          reportingTo,
+          pendingWorkAssigneeId: handoffUserId || null,
+          reassignedTaskCount: taskHandoff.count,
+          reason: typeof reason === 'string' ? reason.trim() : '',
+        },
+        ipAddress: req.ip || '0.0.0.0',
+      },
+    });
+
+    return { updatedUser, reassignedTaskCount: taskHandoff.count };
+  });
+
+  res.status(200).json({
+    success: true,
+    message: `Employee transferred successfully. ${result.reassignedTaskCount} pending task(s) reassigned.`,
+    data: {
+      ...result.updatedUser,
+      transferReason: typeof reason === 'string' ? reason.trim() : '',
+      reassignedTaskCount: result.reassignedTaskCount,
+    },
+  });
 });
 
 export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {

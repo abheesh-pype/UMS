@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 
 interface User {
   id?: string;
@@ -34,8 +35,10 @@ interface User {
   reportingTo?: string | { id: string };
   department?: { name: string; id?: string };
   additionalDepartments?: { id: string; name: string }[];
-  subDepartment?: { name: string };
+  subDepartment?: { name: string; parentDept?: { id: string }; parentDeptId?: string };
   reportingToUser?: { name: string };
+  manager?: { id: string; name: string; designation?: string };
+  _count?: { subordinates?: number };
   status?: string;
 }
 
@@ -90,6 +93,9 @@ export function HRUsersPanel() {
   const [transferData, setTransferData] = useState({
     departmentId: '',
     subDepartmentId: '',
+    role: '',
+    reportingTo: '',
+    pendingWorkAssigneeId: '',
     reason: '',
   });
 
@@ -205,7 +211,7 @@ export function HRUsersPanel() {
       resetForm();
       await fetchUsers();
     } catch (_error) {
-      alert('Failed to save user. Please try again.');
+      toast.error('Failed to save user. Please try again.');
     }
   };
 
@@ -216,18 +222,29 @@ export function HRUsersPanel() {
 
     try {
       const userId = selectedUser.id || selectedUser.id;
-      await api.put(`/users/${userId}`, {
-        departmentId: (transferData.departmentId && transferData.departmentId !== 'none') ? transferData.departmentId : undefined,
-        subDepartmentId: (transferData.subDepartmentId && transferData.subDepartmentId !== 'none') ? transferData.subDepartmentId : undefined,
+      const response = await api.put(`/users/${userId}/transfer`, {
+        departmentId: transferData.departmentId,
+        subDepartmentId: transferData.subDepartmentId && transferData.subDepartmentId !== 'none' ? transferData.subDepartmentId : null,
+        role: transferData.role,
+        reportingTo: transferData.reportingTo,
+        pendingWorkAssigneeId: transferData.pendingWorkAssigneeId || undefined,
+        reason: transferData.reason,
       });
       
       setTransferDialogOpen(false);
-      setTransferData({ departmentId: '', subDepartmentId: '', reason: '' });
+      setTransferData({ departmentId: '', subDepartmentId: '', role: '', reportingTo: '', pendingWorkAssigneeId: '', reason: '' });
       setSelectedUser(null);
       await fetchUsers();
-      alert('Employee transferred successfully!');
-    } catch (_error) {
-      alert('Failed to transfer employee. Please try again.');
+      const reassignedTaskCount = response.data?.data?.reassignedTaskCount ?? 0;
+      toast.success('Employee transferred successfully', {
+        description: `${selectedUser.name} was transferred. ${reassignedTaskCount} pending task${reassignedTaskCount === 1 ? '' : 's'} reassigned.`,
+        duration: 5000,
+      });
+    } catch (error: any) {
+      toast.error('Transfer failed', {
+        description: error.response?.data?.message || 'Failed to transfer employee. Please try again.',
+        duration: 6000,
+      });
     }
   };
 
@@ -251,9 +268,9 @@ export function HRUsersPanel() {
       setPromotionData({ newDesignation: '', newRole: 'employee', departmentId: '', reportingTo: '', type: 'promotion' });
       setSelectedUser(null);
       await fetchUsers();
-      alert(`Employee ${promotionData.type === 'promotion' ? 'promoted' : 'demoted'} successfully!`);
+      toast.success(`Employee ${promotionData.type === 'promotion' ? 'promoted' : 'demoted'} successfully!`);
     } catch (error: any) {
-      alert(error.response?.data?.message || `Failed to ${promotionData.type} employee. Please try again.`);
+      toast.error(error.response?.data?.message || `Failed to ${promotionData.type} employee. Please try again.`);
     }
   };
 
@@ -261,12 +278,12 @@ export function HRUsersPanel() {
     e.preventDefault();
     
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('Passwords do not match!');
+      toast.error('Passwords do not match!');
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      alert('Password must be at least 6 characters long!');
+      toast.error('Password must be at least 6 characters long!');
       return;
     }
 
@@ -279,9 +296,9 @@ export function HRUsersPanel() {
       setSelectedUserId(null);
       setSelectedUser(null);
       await fetchUsers();
-      alert('Password updated successfully!');
+      toast.success('Password updated successfully!');
     } catch (_error) {
-      alert('Failed to update password. Please try again.');
+      toast.error('Failed to update password. Please try again.');
     }
   };
 
@@ -316,8 +333,11 @@ export function HRUsersPanel() {
   const openTransferDialog = (user: User) => {
     setSelectedUser(user);
     setTransferData({
-      departmentId: user.departmentId || '',
-      subDepartmentId: user.subDepartmentId || '',
+      departmentId: getUserDepartmentId(user),
+      subDepartmentId: getUserSubDepartmentId(user),
+      role: user.role,
+      reportingTo: '',
+      pendingWorkAssigneeId: '',
       reason: '',
     });
     setTransferDialogOpen(true);
@@ -350,12 +370,26 @@ export function HRUsersPanel() {
   const getUserDepartmentId = (user: User) =>
     typeof user.departmentId === 'object' && user.departmentId !== null
       ? user.departmentId.id || ''
-      : user.departmentId || '';
+      : user.departmentId || user.subDepartment?.parentDept?.id || user.subDepartment?.parentDeptId || '';
 
   const getUserSubDepartmentId = (user: User) =>
     typeof user.subDepartmentId === 'object' && user.subDepartmentId !== null
       ? user.subDepartmentId.id || ''
       : user.subDepartmentId || '';
+
+  const managerRoles = [
+    'superadmin', 'org_admin', 'ceo', 'university_admin', 'hr_admin',
+    'finance_admin', 'ops_admin', 'ops_sub_admin', 'sales_admin', 'academic_admin',
+  ];
+
+  const isManager = (user: User) =>
+    managerRoles.includes(user.role)
+    || Boolean(user._count?.subordinates)
+    || /manager|lead|head/i.test(user.designation || '');
+
+  const usersInDepartment = (departmentId: string) => users.filter(user =>
+    getUserDepartmentId(user) === departmentId && user.id !== selectedUser?.id
+  );
 
   const resetForm = () => {
     setFormData({
@@ -423,7 +457,7 @@ export function HRUsersPanel() {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
                 <Label htmlFor="name">Full Name</Label>
                 <Input
                   id="name"
@@ -789,29 +823,30 @@ export function HRUsersPanel() {
 
       {/* Transfer Employee Dialog */}
       <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Transfer Employee</DialogTitle>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b px-6 py-5">
+            <DialogTitle className="text-xl">Transfer Employee</DialogTitle>
           </DialogHeader>
           {selectedUser && (
-            <div className="mb-4 p-3 bg-muted rounded-lg">
-              <p className="font-semibold">{selectedUser.name}</p>
-              <p className="text-sm text-muted-foreground">
-                Current: {selectedUser.department?.name || 'No Department'}
+            <div className="mx-6 mt-5 rounded-lg border bg-muted/50 px-4 py-3">
+              <p className="font-semibold leading-6">{selectedUser.name}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Current: {selectedUser.department?.name || 'No Department'} · {selectedUser.role.replace(/_/g, ' ')}
               </p>
             </div>
           )}
-          <form onSubmit={handleTransfer} className="space-y-4">
-            <div>
+          <form onSubmit={handleTransfer} className="space-y-6 px-6 py-5">
+            <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
+            <div className="space-y-2">
               <Label htmlFor="transferDepartment">New Department</Label>
               <Select
                 value={transferData.departmentId}
                 onValueChange={(value) => {
-                  setTransferData({ ...transferData, departmentId: value, subDepartmentId: '' });
+                  setTransferData({ ...transferData, departmentId: value, subDepartmentId: '', reportingTo: '' });
                 }}
                 required
               >
-                <SelectTrigger>
+                <SelectTrigger id="transferDepartment" className="w-full">
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
                 <SelectContent>
@@ -823,14 +858,38 @@ export function HRUsersPanel() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="transferRole">New Role</Label>
+              <Select
+                value={transferData.role}
+                onValueChange={(value) => setTransferData({ ...transferData, role: value })}
+                required
+              >
+                <SelectTrigger id="transferRole" className="w-full">
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="hr_admin">HR Admin</SelectItem>
+                  <SelectItem value="finance_admin">Finance Admin</SelectItem>
+                  <SelectItem value="ops_admin">Operations Admin</SelectItem>
+                  <SelectItem value="ops_sub_admin">Ops Sub Admin</SelectItem>
+                  <SelectItem value="sales_admin">Sales Admin</SelectItem>
+                  <SelectItem value="academic_admin">Academic Admin</SelectItem>
+                  <SelectItem value="bde">BDE</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Change the department, role, or both.</p>
+            </div>
             {transferData.departmentId && subDepartments.length > 0 && (
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="transferSubDepartment">Sub-Department</Label>
                 <Select
                   value={transferData.subDepartmentId}
                   onValueChange={(value) => setTransferData({ ...transferData, subDepartmentId: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="transferSubDepartment" className="w-full">
                     <SelectValue placeholder="Select sub-department (optional)" />
                   </SelectTrigger>
                   <SelectContent>
@@ -844,7 +903,58 @@ export function HRUsersPanel() {
                 </Select>
               </div>
             )}
-            <div>
+            <div className={`space-y-2 ${subDepartments.length === 0 ? 'sm:col-span-2' : ''}`}>
+              <Label htmlFor="transferReportingTo">Reports To After Transfer</Label>
+              <Select
+                value={transferData.reportingTo}
+                onValueChange={(value) => setTransferData({ ...transferData, reportingTo: value })}
+                required
+              >
+                <SelectTrigger id="transferReportingTo" className="w-full">
+                  <SelectValue placeholder="Select a manager in the new department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {usersInDepartment(transferData.departmentId).filter(isManager).map(user => (
+                    <SelectItem key={user.id} value={user.id!}>
+                      {user.name} {user.designation ? `(${user.designation})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {usersInDepartment(transferData.departmentId).filter(isManager).length === 0 && (
+                <p className="text-xs text-destructive">No eligible manager is assigned to this department.</p>
+              )}
+            </div>
+            </div>
+            {selectedUser && isManager(selectedUser) ? (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+                <Label htmlFor="pendingWorkAssignee">Pending Work Handoff</Label>
+                <Select
+                  value={transferData.pendingWorkAssigneeId}
+                  onValueChange={(value) => setTransferData({ ...transferData, pendingWorkAssigneeId: value })}
+                >
+                  <SelectTrigger id="pendingWorkAssignee" className="w-full bg-background">
+                    <SelectValue placeholder="Select another manager in the current department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {usersInDepartment(getUserDepartmentId(selectedUser)).filter(isManager).map(user => (
+                      <SelectItem key={user.id} value={user.id!}>
+                        {user.name} {user.designation ? `(${user.designation})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  All unfinished tasks will move to this manager, who can reassign them later.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                Unfinished tasks will be reassigned to the employee&apos;s current reporting manager
+                {selectedUser?.manager?.name ? ` (${selectedUser.manager.name})` : ''}.
+              </div>
+            )}
+            <div className="space-y-2">
               <Label htmlFor="transferReason">Reason for Transfer</Label>
               <Input
                 id="transferReason"
@@ -853,18 +963,28 @@ export function HRUsersPanel() {
                 placeholder="Optional"
               />
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
                   setTransferDialogOpen(false);
-                  setTransferData({ departmentId: '', subDepartmentId: '', reason: '' });
+                  setTransferData({ departmentId: '', subDepartmentId: '', role: '', reportingTo: '', pendingWorkAssigneeId: '', reason: '' });
                 }}
               >
                 Cancel
               </Button>
-              <Button type="submit">Transfer Employee</Button>
+              <Button
+                type="submit"
+                className="sm:min-w-40"
+                disabled={
+                  !transferData.departmentId
+                  || !transferData.role
+                  || !transferData.reportingTo
+                }
+              >
+                Transfer Employee
+              </Button>
             </div>
           </form>
         </DialogContent>
