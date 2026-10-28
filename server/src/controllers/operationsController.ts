@@ -1510,7 +1510,11 @@ export const getAdmissionSessions = asyncHandler(async (req: AuthRequest, res: R
       },
     } : {}),
   });
-  res.json({ success: true, count: sessions.length, data: sessions });
+  const mappedSessions = sessions.map(session => ({
+    ...session,
+    startYear: session.startDate ? new Date(session.startDate).getFullYear() : (parseInt(session.name, 10) || 0),
+  }));
+  res.json({ success: true, count: mappedSessions.length, data: mappedSessions });
 });
 export const getAdmissionSession = asyncHandler(async (req: AuthRequest, res: Response) => {
   const session = await prisma.admissionSession.findUnique({ where: { id: req.params.id } });
