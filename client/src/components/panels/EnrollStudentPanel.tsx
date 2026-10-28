@@ -59,6 +59,14 @@ interface Session {
   programId?: string | null;
 }
 
+const MIN_INITIAL_PAYMENT = 500;
+const getInitialPaymentError = (value: string) => {
+  if (!value.trim()) return 'Initial payment is required';
+  if (!/^\d+$/.test(value.trim())) return 'Initial payment must be a number';
+  if (Number(value) < MIN_INITIAL_PAYMENT) return `Initial payment must be at least ₹${MIN_INITIAL_PAYMENT}`;
+  return '';
+};
+
 interface EnrollStudentPanelProps {
   mode?: 'center' | 'sales' | 'public';
   onSubmitted?: (result?: any) => void;
@@ -109,6 +117,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
   const [educationList, setEducationList] = useState<EducationDetail[]>([]);
   const [documentList, setDocumentList] = useState<DocumentFile[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'full_payment' | 'yearly' | 'semester'>('yearly');
+  // Amount collected at admission. Required, whole rupees, minimum ₹500.
+  const [initialPayment, setInitialPayment] = useState<string>(String(MIN_INITIAL_PAYMENT));
   
   // Single entry helper state for educational details form
   const [tempEdu, setTempEdu] = useState<EducationDetail>({
@@ -197,6 +207,9 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         ? initialData.paymentMethod
         : 'yearly'
     );
+    if (initialData.initialPayment !== undefined && initialData.initialPayment !== null && initialData.initialPayment !== '') {
+      setInitialPayment(String(initialData.initialPayment));
+    }
   }, [initialData, programs]);
 
   useEffect(() => {
@@ -622,6 +635,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       toast.error(`Missing required fields: ${missing.join(', ')}`);
       return;
     }
+    const initialPaymentError = getInitialPaymentError(initialPayment);
+    if (initialPaymentError) {
+      toast.error(initialPaymentError);
+      return;
+    }
     setConfirmOpen(true);
   };
 
@@ -654,6 +672,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         documents: documentList,
         educationalDetails: educationList,
         paymentMethod: paymentMethod,
+        initialPayment: Number(initialPayment),
         totalFee: getTotalFee(selectedProgram),
         ...(mode === 'public' && inviteToken && !isResubmitting ? { inviteToken } : {}),
         ...(isResubmitting && !resubmitAuthorization?.token
@@ -691,6 +710,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       setSelectedSessionId('');
       setEducationList([]);
       setDocumentList([]);
+      setInitialPayment(String(MIN_INITIAL_PAYMENT));
       setSelectedProgram(null);
       fetchData();
     } catch (e: any) {
@@ -726,6 +746,11 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       }
       if (selectedProgram.specialisations && selectedProgram.specialisations.length > 0 && !form.specialisation.trim()) {
         toast.error('Please select a specialisation combo');
+        return false;
+      }
+      const initialPaymentError = getInitialPaymentError(initialPayment);
+      if (initialPaymentError) {
+        toast.error(initialPaymentError);
         return false;
       }
       // Check customized fields for Step 1
@@ -1007,6 +1032,27 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                         <p className="text-xs text-muted-foreground ml-5">₹{getTotalFee(selectedProgram, 'semester').toLocaleString()} per semester</p>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="p-4 border rounded-xl shadow-sm bg-slate-50 dark:bg-slate-900/50 space-y-2">
+                    <Label htmlFor="initial-payment" className="text-sm font-semibold">
+                      Initial Payment (₹) <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="initial-payment"
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={initialPayment}
+                      onChange={e => setInitialPayment(e.target.value.replace(/\D/g, ''))}
+                      placeholder={String(MIN_INITIAL_PAYMENT)}
+                      className={cn('max-w-xs bg-background', getInitialPaymentError(initialPayment) && 'border-destructive focus-visible:ring-destructive')}
+                    />
+                    {getInitialPaymentError(initialPayment) ? (
+                      <p className="text-xs text-destructive">{getInitialPaymentError(initialPayment)}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Minimum ₹{MIN_INITIAL_PAYMENT}. Numbers only.</p>
+                    )}
                   </div>
 
                   <div className="p-5 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between shadow-sm">

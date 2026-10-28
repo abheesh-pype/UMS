@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { parseInitialPayment } from '../utils/initialPayment.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -199,7 +200,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, documents, educationalDetails, sessionId, specialisation,
     abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto, admissionDate,
-    pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee
+    pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee, initialPayment
   } = req.body;
   const organizationId = req.user.organizationId;
   const studyCenterId = req.user.studyCenterId || req.body.studyCenterId || null;
@@ -214,6 +215,11 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   }
   if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
     res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
+    return;
+  }
+  const parsedInitialPayment = parseInitialPayment(initialPayment);
+  if ('error' in parsedInitialPayment) {
+    res.status(400).json({ success: false, message: parsedInitialPayment.error });
     return;
   }
   if (req.user.role === 'center_admin' && !studyCenterId) {
@@ -429,6 +435,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         educationalDetails: educationalDetails ? (typeof educationalDetails === 'string' ? JSON.parse(educationalDetails) : educationalDetails) : [],
         paymentMethod: paymentMethod || 'installment',
         totalFee: totalFee ? Number(totalFee) : null,
+        initialPayment: parsedInitialPayment.amount,
         organization: { connect: { id: organizationId } },
         program: { connect: { id: programId } },
         studyCenter: studyCenterId ? { connect: { id: studyCenterId } } : undefined,

@@ -1119,6 +1119,7 @@ model Enrollment {
   educationalDetails   Json?               @default("[]")
   paymentMethod        String? // e.g. 'full_payment' or 'installment'
   totalFee             Float? // The fee calculated at the time of enrollment
+  initialPayment       Float? // Amount paid at admission (min ₹500), entered on the admission form
   paymentType          String? // "wallet", "emi", "direct_to_university"
   emiDetails           Json?
   refundStatus         String? // "pending", "processed", "rejected"

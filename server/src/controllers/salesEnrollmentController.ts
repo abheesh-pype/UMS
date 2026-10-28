@@ -5,6 +5,7 @@ import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
+import { parseInitialPayment } from '../utils/initialPayment.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
@@ -118,7 +119,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee, initialPayment,
   } = req.body;
 
   if (!studentName?.trim() || !studentEmail?.trim() || !studentPhone?.trim() || !studentAddress?.trim() || !programId || !sessionId) {
@@ -131,6 +132,11 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
   }
   if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
     res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
+    return;
+  }
+  const parsedInitialPayment = parseInitialPayment(initialPayment);
+  if ('error' in parsedInitialPayment) {
+    res.status(400).json({ success: false, message: parsedInitialPayment.error });
     return;
   }
 
@@ -267,6 +273,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
         educationalDetails: educationalDetails || [],
         paymentMethod: paymentMethod || 'installment',
         totalFee: totalFee ? Number(totalFee) : null,
+        initialPayment: parsedInitialPayment.amount,
         status: 'document_review',
         salesUserId: req.user.id,
         statusHistory: [
@@ -291,7 +298,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
         session: { select: { id: true, name: true } },
       },
     });
-  });
+  }, { timeout: 15000 });
 
   // Notify Operations team of new student enrollment for review
   try {
