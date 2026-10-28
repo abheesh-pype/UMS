@@ -205,14 +205,42 @@ const findFeeStructure = async (organizationId: string, programId: string, unive
     || null;
 };
 
-export const getPublicStudentEnrollmentPrograms = asyncHandler(async (_req: Request, res: Response) => {
+// Student self-enrollment invites created by Sales. Multi-use until they expire; every submission is attributed to the referrer.
+const findStudentInvite = async (token: unknown, organizationId: string) => {
+  if (typeof token !== 'string' || token.length < 8 || token.length > 128) return null;
+  const invite = await prisma.studyCenterInvite.findFirst({
+    where: { token, organizationId, inviteType: 'student', status: 'pending', expiresAt: { gt: new Date() } },
+    include: { referrer: { select: { id: true, name: true, status: true } } },
+  });
+  return invite && invite.referrer?.status === 'active' ? invite : null;
+};
+
+export const getPublicStudentInvite = asyncHandler(async (req: Request, res: Response) => {
   const { organizationId } = await getSingleTenantContext();
+  const invite = await findStudentInvite(req.params.token, organizationId);
+  if (!invite) {
+    res.status(404).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
+  res.json({ success: true, data: { referrerName: invite.referrer.name } });
+});
+
+export const getPublicStudentEnrollmentPrograms = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = await getSingleTenantContext();
+  const inviteToken = typeof req.query.invite === 'string' ? req.query.invite : '';
+  const invite = inviteToken ? await findStudentInvite(inviteToken, organizationId) : null;
+  if (inviteToken && !invite) {
+    res.status(400).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
   const programs = await prisma.program.findMany({
     where: {
       organizationId,
       status: 'active',
       isDeleted: false,
       university: { singletonKey: 'primary', status: 'active' },
+      ...(invite && invite.programIds.length > 0 ? { id: { in: invite.programIds } } : {}),
+      ...(invite && invite.universityIds.length > 0 ? { universityId: { in: invite.universityIds } } : {}),
     },
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
@@ -300,8 +328,13 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, inviteToken,
   } = req.body;
+  const invite = inviteToken ? await findStudentInvite(inviteToken, organizationId) : null;
+  if (inviteToken && !invite) {
+    res.status(400).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
   const normalizedEmail = typeof studentEmail === 'string' ? studentEmail.trim().toLowerCase() : '';
   const studentNameValue = typeof studentName === 'string' ? studentName.trim() : '';
   const studentPhoneValue = typeof studentPhone === 'string' ? studentPhone.trim() : '';
@@ -332,6 +365,12 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   const { program, session } = await getPublicProgramAndSession(organizationId, programId, sessionId);
   if (!program || !session) {
     res.status(400).json({ success: false, message: 'Selected program or admission session is invalid' });
+    return;
+  }
+  if (invite
+    && ((invite.programIds.length > 0 && !invite.programIds.includes(program.id))
+      || (invite.universityIds.length > 0 && !invite.universityIds.includes(program.universityId)))) {
+    res.status(400).json({ success: false, message: 'This invite link does not cover the selected program' });
     return;
   }
   if (Array.isArray(program.specialisations) && program.specialisations.length > 0 && !program.specialisations.includes(specialisation)) {
@@ -454,16 +493,29 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
         paymentMethod: paymentMethod || 'installment',
         totalFee: fee,
         publicTrackingTokenHash,
-        status: 'pending_doc_review',
-        statusHistory: [
-          {
-            status: 'pending_doc_review',
-            actorId: 'student',
-            actorName: studentNameValue,
-            timestamp: now.toISOString(),
-            note: 'Application submitted directly through the university website',
-          },
-        ],
+        // Sales-invited applications follow the Sales pipeline: attributed to the referrer and queued for Operations.
+        status: invite ? 'document_review' : 'pending_doc_review',
+        ...(invite ? { salesUserId: invite.referredBy } : {}),
+        statusHistory: invite
+          ? [
+            {
+              status: 'submitted',
+              actorId: 'student',
+              actorName: studentNameValue,
+              timestamp: now.toISOString(),
+              note: `Student enrolled themselves through the invite link of ${invite.referrer.name}`,
+            },
+            { status: 'document_review', actorId: 'system', timestamp: now.toISOString(), note: 'Forwarded to Operations for document verification' },
+          ]
+          : [
+            {
+              status: 'pending_doc_review',
+              actorId: 'student',
+              actorName: studentNameValue,
+              timestamp: now.toISOString(),
+              note: 'Application submitted directly through the university website',
+            },
+          ],
       },
       select: { id: true, studentName: true, status: true },
     });
@@ -496,6 +548,23 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
     }
   } catch (error) {
     console.error('Failed to notify Operations about a direct student application:', error);
+  }
+  if (invite) {
+    try {
+      await prisma.notification.create({
+        data: {
+          organizationId,
+          userId: invite.referredBy,
+          title: 'New Student Application',
+          message: `${studentNameValue} enrolled for ${program.name} through your invite link.`,
+          type: 'general',
+          priority: 'medium',
+          link: 'student-applications',
+        },
+      });
+    } catch (error) {
+      console.error('Failed to notify the Sales referrer about an invited application:', error);
+    }
   }
 
   res.status(201).json({ success: true, data: { trackingToken: token, enrollmentId: enrollment.id, status: enrollment.status } });

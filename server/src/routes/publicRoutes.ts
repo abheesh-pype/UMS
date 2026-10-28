@@ -2,6 +2,7 @@
 import express from 'express';
 import {
   validateInviteToken,
+  getPublicStudentInvite,
   publicRegister,
   getPaymentStatus,
   submitPaymentProof,
@@ -23,6 +24,7 @@ const router = express.Router();
 
 // No auth required on these routes
 router.get('/invite/:token', validateInviteToken);
+router.get('/student-invite/:token', getPublicStudentInvite);
 router.post('/register', upload.array('documents', 10), publicRegister);
 router.get('/payment-status/:token', getPaymentStatus);
 router.post('/submit-payment/:token', upload.array('paymentProof', 1), submitPaymentProof);

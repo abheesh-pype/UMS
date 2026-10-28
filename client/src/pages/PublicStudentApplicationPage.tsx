@@ -34,6 +34,9 @@ const PUBLIC_APPLICATION_STATUS_CREDENTIALS_KEY = 'publicApplicationStatusCreden
 export default function PublicStudentApplicationPage() {
   const path = window.location.pathname;
   const token = path.startsWith('/application-status/') ? path.slice('/application-status/'.length) : '';
+  const inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
+  const [invite, setInvite] = useState<{ referrerName: string } | null>(null);
+  const [inviteError, setInviteError] = useState('');
   const [credentialsFromSignIn] = useState(() => {
     const storedCredentials = sessionStorage.getItem(PUBLIC_APPLICATION_STATUS_CREDENTIALS_KEY);
     sessionStorage.removeItem(PUBLIC_APPLICATION_STATUS_CREDENTIALS_KEY);
@@ -47,6 +50,12 @@ export default function PublicStudentApplicationPage() {
       return null;
     }
   });
+  useEffect(() => {
+    if (!inviteToken) return;
+    api.get(`/public/student-invite/${encodeURIComponent(inviteToken)}`)
+      .then(res => setInvite(res.data.data))
+      .catch(err => setInviteError(err.response?.data?.message || 'This invite link is invalid or has expired'));
+  }, [inviteToken]);
   const [isStatusView, setIsStatusView] = useState(path === '/application-status' || path.startsWith('/application-status/'));
   const [application, setApplication] = useState<ApplicationStatus | null>(null);
   const [editingRejectedApplication, setEditingRejectedApplication] = useState(false);
@@ -175,7 +184,19 @@ export default function PublicStudentApplicationPage() {
               <Button variant="outline" onClick={() => window.location.assign('/')}>Back to home</Button>
             </div>
           </div>
-          <EnrollStudentPanel mode="public" onSubmitted={handleApplicationSubmitted} />
+          {inviteError && (
+            <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+              {inviteError}. Ask your admissions contact for a new link, or apply directly without an invite.
+            </div>
+          )}
+          {invite && (
+            <p className="mb-4 rounded-lg border bg-muted/40 p-3 text-sm">
+              You were invited by <strong>{invite.referrerName}</strong>. Your application will go to Operations for document review.
+            </p>
+          )}
+          {(!inviteToken || invite) && (
+            <EnrollStudentPanel mode="public" inviteToken={invite ? inviteToken : undefined} onSubmitted={handleApplicationSubmitted} />
+          )}
         </div>
       </main>
     );
