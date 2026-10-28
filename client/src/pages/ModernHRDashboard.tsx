@@ -71,6 +71,7 @@ export function ModernHRDashboard({ initialTab, onNavigate: _onNavigate }: { ini
       case 'attendance': return <AttendancePanel />;
       case 'attendance-calendar': return <AttendanceCalendarPanel />;
       case 'hiring': return <HiringPanel />;
+      case 'candidate_pipeline': return <HiringPanel initialTab="candidates" />;
       case 'hiring_request': return <ManagerHiringPanel />;
       case 'vacancies': return <VacanciesPanel />;
       case 'holidays': return <HolidaysPanel />;
@@ -114,6 +115,7 @@ export function getHRNavItems() {
     { id: 'leaves', label: 'Leave Requests' },
     { id: 'attendance', label: 'Attendance' },
     { id: 'hiring', label: 'Hiring & Recruitment' },
+    { id: 'candidate_pipeline', label: 'Candidate Pipeline' },
     { id: 'hiring_request', label: 'Hiring Request' },
     { id: 'vacancies', label: 'Vacancies' },
     { id: 'holidays', label: 'Holidays' },
