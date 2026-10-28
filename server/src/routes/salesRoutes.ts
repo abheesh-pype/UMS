@@ -63,10 +63,10 @@ router.get('/team-performance', getTeamPerformance);
 // Team members list for reassignment selection
 router.get('/team-members', getTeamMembers);
 router.get('/student-applications', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), getSalesEnrollmentPipeline);
-router.get('/enrollment-programs', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), getSalesEnrollmentPrograms);
-router.get('/enrollment-sessions', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), getSalesEnrollmentSessions);
-router.post('/enrollment-check-email', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), checkSalesEnrollmentEmail);
-router.post('/enroll-student', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), createSalesStudentEnrollment);
+router.get('/enrollment-programs', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), getSalesEnrollmentPrograms);
+router.get('/enrollment-sessions', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), getSalesEnrollmentSessions);
+router.post('/enrollment-check-email', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), checkSalesEnrollmentEmail);
+router.post('/enroll-student', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), createSalesStudentEnrollment);
 router.put('/enroll-student/:id', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), updateSalesStudentEnrollment);
 router.put('/student-applications/:id/resubmit', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), updateSalesStudentEnrollment);
 router.put('/student-applications/:id', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), updateSalesStudentDetails);

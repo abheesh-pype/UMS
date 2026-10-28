@@ -13,7 +13,7 @@ const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
     return false;
   }
 
-  if (req.user.role === 'sales_admin' || req.user.role === 'ceo' || req.user.role === 'org_admin') {
+  if (req.user.role === 'sales_admin' || req.user.role === 'ceo' || req.user.role === 'org_admin' || req.user.role === 'superadmin') {
     return true;
   }
 
@@ -186,6 +186,8 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
 
   const defaultStudentPasswordHash = existingUser ? null : await bcrypt.hash('password123', 10);
   const now = new Date();
+  // Org Admin / Superadmin "Add Student" reuses this direct-university admission flow.
+  const isAdminEntry = req.user.role === 'org_admin' || req.user.role === 'superadmin';
   const enrollment = await prisma.$transaction(async (tx) => {
     let user = existingUser;
     if (!user) {
@@ -274,7 +276,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
             actorName: req.user.name,
             actorRole: req.user.role,
             timestamp: now.toISOString(),
-            note: 'Application entered by Sales department',
+            note: isAdminEntry ? 'Application entered by Admin (Students panel)' : 'Application entered by Sales department',
           },
           {
             status: 'document_review',
@@ -307,7 +309,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
           organizationId: req.user.organizationId,
           userId: admin.id,
           title: '📋 New Student Application for Review',
-          message: `${studentName} has been submitted by Sales (${req.user.name}). Please review the documents.`,
+          message: `${studentName} has been submitted by ${isAdminEntry ? 'Admin' : 'Sales'} (${req.user.name}). Please review the documents.`,
           type: 'general' as any,
           priority: 'medium' as any,
           link: 'enrollment_review',

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, Mail, Phone, GraduationCap, MapPin, Calendar, FileText, CreditCard, Check, Clock, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { resolveFileUrl } from '@/lib/fileUrl';
+import { EnrollStudentPanel } from './EnrollStudentPanel';
 
 export function StudentsPanel({ operationsMode = false, financeMode = false }: { operationsMode?: boolean; financeMode?: boolean }) {
   const { user } = useAuth();
@@ -27,6 +28,9 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
   const [studentSessions, setStudentSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // New students go through the shared admission form: Study Centre admins use the centre flow, admins the direct-university flow.
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const enrollMode: 'center' | 'sales' = user?.role === 'center_admin' ? 'center' : 'sales';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -301,6 +305,19 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
     });
   };
 
+  if (showEnrollForm) {
+    return (
+      <EnrollStudentPanel
+        mode={enrollMode}
+        onSubmitted={() => {
+          setShowEnrollForm(false);
+          fetchStudents();
+        }}
+        onBack={() => setShowEnrollForm(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -311,9 +328,7 @@ export function StudentsPanel({ operationsMode = false, financeMode = false }: {
         {canEdit && (
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             {canCreate && (
-              <DialogTrigger asChild>
-                <Button><Plus className="w-4 h-4 mr-2" />Add Student</Button>
-              </DialogTrigger>
+              <Button onClick={() => setShowEnrollForm(true)}><Plus className="w-4 h-4 mr-2" />Add Student</Button>
             )}
           <DialogContent className="max-w-2xl">
             <DialogHeader>
