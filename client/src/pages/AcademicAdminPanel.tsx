@@ -1491,8 +1491,54 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }
   };
 
-  const generateExamLink = (examination: any) => {
+  const [publishingExamId, setPublishingExamId] = useState<string | null>(null);
+  const [openingPortalWorkspace, setOpeningPortalWorkspace] = useState(false);
+
+  // Single sign-on: opens the Exam Portal (question bank, bulk upload, assessments) already signed in as this user.
+  const openExamPortalWorkspace = async () => {
+    const win = window.open('about:blank', '_blank');
+    if (!win) { toast.error('Allow pop-ups to open the Exam Portal'); return; }
+    setOpeningPortalWorkspace(true);
+    try {
+      const response = await api.post('/operations/exam-portal/staff-launch');
+      win.opener = null;
+      win.location.href = response.data.data.launchUrl;
+    } catch (error: any) {
+      win.close();
+      toast.error(error.response?.data?.message || 'Could not open the Exam Portal');
+    } finally {
+      setOpeningPortalWorkspace(false);
+    }
+  };
+
+  // Creates/updates the examination in the connected Exam Portal. Returns false when it must not continue.
+  const publishToExamPortal = async (examination: any) => {
+    if (!examPortalForm.examDate || !examPortalForm.examTime) {
+      toast.error('Select the exam date and time first');
+      return false;
+    }
+    const startsAt = new Date(`${examPortalForm.examDate}T${examPortalForm.examTime}`);
+    if (Number.isNaN(startsAt.getTime())) { toast.error('Exam date or time is invalid'); return false; }
+    setPublishingExamId(examination.id);
+    try {
+      const response = await api.post(`/operations/examinations/${examination.id}/exam-portal`, { startsAt: startsAt.toISOString() });
+      toast.success(`Exam Portal confirmed: assessment ${response.data.data.outcome}`);
+      return true;
+    } catch (error: any) {
+      if (error.response?.status === 503) {
+        toast.warning('Exam Portal is not connected on the server. The portal was created here only.');
+        return true;
+      }
+      toast.error(error.response?.data?.message || 'The examination could not be created in the Exam Portal');
+      return false;
+    } finally {
+      setPublishingExamId(null);
+    }
+  };
+
+  const generateExamLink = async (examination: any) => {
     if (!examination) return;
+    if (!(await publishToExamPortal(examination))) return;
     const programName = programs.find(program => program.id === examination.programId)?.name || 'PROGRAM';
     const clean = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'EXAM';
     const date = examPortalForm.examDate.replace(/-/g, '');
@@ -3357,7 +3403,17 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       </Card>}
 
       {initialTab === 'academic-examination-manage' && <Card>
-        <CardHeader><CardTitle>Create Exam Portal</CardTitle><p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal.</p></CardHeader>
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>Create Exam Portal</CardTitle>
+              <p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal. Opening it creates the examination in the connected Exam Portal.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={openExamPortalWorkspace} disabled={openingPortalWorkspace}>
+              {openingPortalWorkspace ? 'Opening...' : 'Open Exam Portal (questions & bulk upload)'}
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2"><Label>Academic Session</Label><Select value={examPortalForm.academicSessionId} onValueChange={selectSessionForPortal}><SelectTrigger><SelectValue placeholder="Select academic session first" /></SelectTrigger><SelectContent>{sessions.map(session => <SelectItem key={session.id} value={session.id}>{session.name || `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}`}</SelectItem>)}</SelectContent></Select></div>
@@ -3367,7 +3423,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             <div className="space-y-2"><Label>Exam Session</Label><Select value={examPortalForm.examSession} onValueChange={examSession => setExamPortalForm(current => ({ ...current, examSession }))}><SelectTrigger><SelectValue placeholder="Select exam session" /></SelectTrigger><SelectContent><SelectItem value="Morning">Morning</SelectItem><SelectItem value="Afternoon">Afternoon</SelectItem><SelectItem value="Evening">Evening</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>Exam Time</Label><Input type="time" value={examPortalForm.examTime} onChange={event => setExamPortalForm(current => ({ ...current, examTime: event.target.value }))} /></div>
           </div>
-          <div className="flex justify-end border-t pt-4"><Button disabled={!examPortalForm.examId || !examPortalForm.academicSessionId || !examPortalForm.programId || !examPortalForm.examDate || !examPortalForm.examSession || !examPortalForm.examTime} onClick={() => generateExamLink(examinations.find(examination => examination.id === examPortalForm.examId))}>Open Exam Portal</Button></div>
+          <div className="flex justify-end border-t pt-4"><Button disabled={publishingExamId !== null || !examPortalForm.examId || !examPortalForm.academicSessionId || !examPortalForm.programId || !examPortalForm.examDate || !examPortalForm.examSession || !examPortalForm.examTime} onClick={() => generateExamLink(examinations.find(examination => examination.id === examPortalForm.examId))}>{publishingExamId ? 'Creating in Exam Portal...' : 'Open Exam Portal'}</Button></div>
         </CardContent>
       </Card>}
 
