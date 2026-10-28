@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Copy, Check, RefreshCw, Link, RotateCcw, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Plus, Copy, Check, RefreshCw, Link, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,6 +17,7 @@ interface Invite {
   token: string;
   universityIds: University[];
   programIds: Program[];
+  inviteType?: 'center' | 'student';
   status: 'pending' | 'used' | 'expired';
   expiresAt: string;
   inviteUrl?: string;
@@ -29,14 +30,18 @@ const STATUS_COLOR: Record<string, string> = {
   expired: 'bg-error/10 text-error',
 };
 
+const inviteUrl = (invite: { token: string; inviteType?: string }) =>
+  invite.inviteType === 'student'
+    ? `${window.location.origin}/apply?invite=${invite.token}`
+    : `${window.location.origin}/register?token=${invite.token}`;
+
 export function SalesInvitePanel() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
-  const [selectedUnis, setSelectedUnis] = useState<string[]>([]);
+  const [inviteType, setInviteType] = useState<'center' | 'student'>('center');
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [loadingPrograms, setLoadingPrograms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -80,32 +85,27 @@ export function SalesInvitePanel() {
     }
   };
 
-  const toggleUni = (id: string) =>
-    setSelectedUnis(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-
   const toggleProgram = (id: string) =>
     setSelectedPrograms(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const handleNextStep = async () => {
-    if (selectedUnis.length === 0) { toast.error('Select at least one university'); return; }
-    await fetchPrograms(selectedUnis);
-    setStep(2);
-  };
+  // There is a single university per organization, so it is picked automatically and never chosen by hand.
+  useEffect(() => {
+    if (open && universities.length > 0) fetchPrograms(universities.map(u => u.id));
+  }, [open, universities]);
 
   const handleGenerate = async () => {
     setSubmitting(true);
     try {
       const res = await api.post('/sales/invites', {
-        universityIds: selectedUnis,
+        universityIds: universities.map(u => u.id),
         programIds: selectedPrograms,
+        inviteType,
       });
       toast.success('Invite link generated');
       closeDialog();
       fetchInvites();
-      const newToken = res.data.data?.token;
-      if (newToken) {
-        const url = `${window.location.origin}/register?token=${newToken}`;
-        navigator.clipboard.writeText(url).catch(() => {});
+      if (res.data.data?.token) {
+        navigator.clipboard.writeText(inviteUrl(res.data.data)).catch(() => {});
         toast.info('Link copied to clipboard');
       }
     } catch (e: any) {
@@ -117,16 +117,14 @@ export function SalesInvitePanel() {
 
   const closeDialog = () => {
     setOpen(false);
-    setStep(1);
-    setSelectedUnis([]);
+    setInviteType('center');
     setSelectedPrograms([]);
     setPrograms([]);
   };
 
   const copyLink = (invite: Invite) => {
     // Always build from current origin so it works in any environment
-    const url = `${window.location.origin}/register?token=${invite.token}`;
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(inviteUrl(invite)).then(() => {
       setCopied(invite.id);
       setTimeout(() => setCopied(null), 2000);
     });
@@ -137,10 +135,8 @@ export function SalesInvitePanel() {
     try {
       const res = await api.patch(`/sales/invites/${invite.id}/regenerate`);
       toast.success('New invite link generated');
-      const newToken = res.data.data?.token;
-      if (newToken) {
-        const url = `${window.location.origin}/register?token=${newToken}`;
-        navigator.clipboard.writeText(url).catch(() => {});
+      if (res.data.data?.token) {
+        navigator.clipboard.writeText(inviteUrl(res.data.data)).catch(() => {});
         toast.info('New link copied to clipboard');
       }
       fetchInvites();
@@ -165,7 +161,7 @@ export function SalesInvitePanel() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Invite Links</h2>
-          <p className="text-muted-foreground text-sm mt-1">Generate invite links for prospective study centers.</p>
+          <p className="text-muted-foreground text-sm mt-1">Generate invite links for prospective study centers or for students to enroll themselves.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchInvites} disabled={loading}>
@@ -192,6 +188,7 @@ export function SalesInvitePanel() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <Badge className={cn('text-[10px] uppercase font-bold', STATUS_COLOR[inv.status])}>{inv.status}</Badge>
+                    <Badge variant="outline" className="text-[10px] uppercase">{inv.inviteType === 'student' ? 'Student' : 'Study center'}</Badge>
                     <span className="text-xs text-muted-foreground">Expires: {new Date(inv.expiresAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-sm font-mono text-muted-foreground truncate">{inv.token.substring(0, 24)}...</p>
@@ -229,42 +226,38 @@ export function SalesInvitePanel() {
           <DialogHeader>
             <DialogTitle>
               Generate Invite Link
-              <span className="text-sm font-normal text-muted-foreground ml-2">Step {step} of 2</span>
             </DialogTitle>
           </DialogHeader>
 
-          {step === 1 && (
-            <div className="space-y-3 py-2">
-              <Label>Select Universities</Label>
-              {universities.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No universities available.</p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {universities.map(u => (
-                    <div key={u.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                      <Checkbox id={`uni-${u.id}`} checked={selectedUnis.includes(u.id)} onCheckedChange={() => toggleUni(u.id)} />
-                      <label htmlFor={`uni-${u.id}`} className="text-sm cursor-pointer flex-1">
-                        {u.name} <span className="text-muted-foreground text-xs">({u.code})</span>
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-3 py-2">
-              <Label>Select Programs <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <div className="space-y-3 py-2">
+              <Label>Who is this link for?</Label>
+              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Invite type">
+                {([['center', 'Study center', 'Registers a new center'], ['student', 'Student', 'Student enrolls themselves']] as const).map(([value, title, hint]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={inviteType === value}
+                    onClick={() => setInviteType(value)}
+                    className={cn('rounded-lg border p-3 text-left transition-colors', inviteType === value ? 'border-primary bg-primary/5' : 'hover:bg-muted/50')}
+                  >
+                    <span className="block text-sm font-medium">{title}</span>
+                    <span className="block text-xs text-muted-foreground">{hint}</span>
+                  </button>
+                ))}
+              </div>
+              <Label>Programs <span className="text-muted-foreground font-normal">(optional — leave empty to allow all)</span></Label>
               {loadingPrograms ? (
                 <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-muted rounded animate-pulse" />)}</div>
               ) : programs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active programs found for selected universities. You can still generate the invite.</p>
+                <p className="text-sm text-muted-foreground">No active programs found. You can still generate the invite.</p>
               ) : (
                 <div className="space-y-4 max-h-64 overflow-y-auto pr-1">
                   {Object.entries(programsByUni).map(([uniId, { uniName, programs: uniPrograms }]) => (
                     <div key={uniId}>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{uniName}</p>
+                      {Object.keys(programsByUni).length > 1 && (
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{uniName}</p>
+                      )}
                       <div className="space-y-1">
                         {uniPrograms.map(p => (
                           <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
@@ -282,24 +275,12 @@ export function SalesInvitePanel() {
                 </div>
               )}
             </div>
-          )}
 
           <DialogFooter className="gap-2">
-            {step === 2 && (
-              <Button variant="outline" onClick={() => setStep(1)}>
-                <ChevronLeft className="w-4 h-4 mr-1" />Back
-              </Button>
-            )}
             <Button variant="outline" onClick={closeDialog}>Cancel</Button>
-            {step === 1 ? (
-              <Button onClick={handleNextStep} disabled={selectedUnis.length === 0}>
-                Next <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            ) : (
-              <Button onClick={handleGenerate} disabled={submitting}>
-                {submitting ? 'Generating...' : 'Generate & Copy Link'}
-              </Button>
-            )}
+            <Button onClick={handleGenerate} disabled={submitting}>
+              {submitting ? 'Generating...' : 'Generate & Copy Link'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

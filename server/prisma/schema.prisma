@@ -1591,6 +1591,7 @@ model StudyCenterInvite {
   programIds     String[]
   referredBy     String
   branchId       String?
+  inviteType     String       @default("center") // 'center' | 'student'
   status         String       @default("pending")
   expiresAt      DateTime
   usedAt         DateTime?

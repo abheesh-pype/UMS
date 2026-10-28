@@ -65,9 +65,11 @@ interface EnrollStudentPanelProps {
   onBack?: () => void;
   initialData?: Record<string, any>;
   resubmitAuthorization?: { token?: string; email?: string; password?: string };
+  /** Public mode only: Sales student invite token. Restricts programs and attributes the application to the referrer. */
+  inviteToken?: string;
 }
 
-export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initialData, resubmitAuthorization }: EnrollStudentPanelProps) {
+export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initialData, resubmitAuthorization, inviteToken }: EnrollStudentPanelProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -137,7 +139,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         return;
       }
       if (mode === 'public') {
-        const programsResponse = await api.get('/public/student-enrollment/programs');
+        const programsResponse = await api.get('/public/student-enrollment/programs', { params: inviteToken ? { invite: inviteToken } : undefined });
         setPrograms(programsResponse.data.data || []);
         setWallet(null);
         setCenterConfig(null);
@@ -158,7 +160,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     }
   };
 
-  useEffect(() => { fetchData(); }, [mode]);
+  useEffect(() => { fetchData(); }, [mode, inviteToken]);
 
   const fetchSessions = async (programId: string) => {
     try {
@@ -653,6 +655,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         educationalDetails: educationList,
         paymentMethod: paymentMethod,
         totalFee: getTotalFee(selectedProgram),
+        ...(mode === 'public' && inviteToken && !isResubmitting ? { inviteToken } : {}),
         ...(isResubmitting && !resubmitAuthorization?.token
           ? { email: resubmitAuthorization?.email, password: resubmitAuthorization?.password }
           : {}),
