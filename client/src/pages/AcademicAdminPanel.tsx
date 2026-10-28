@@ -1291,8 +1291,16 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const fetchSessions = async () => {
     try {
       const response = await api.get('/operations/sessions');
-      setSessions((response.data.data || []).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()));
-      const loadedSessions = response.data.data || [];
+      const rawSessions = response.data.data || [];
+      const loadedSessions = rawSessions.map((session: any) => ({
+        ...session,
+        startYear: session.startYear !== undefined && session.startYear !== null
+          ? Number(session.startYear)
+          : session.startDate
+          ? new Date(session.startDate).getFullYear()
+          : (parseInt(session.name, 10) || 0),
+      })).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      setSessions(loadedSessions);
       const activeSession = loadedSessions.find((session: any) => session.status === 'active');
       const defaultSessionId = activeSession?.id || loadedSessions[0]?.id || null;
       if (initialTab !== 'academic-programs') {
@@ -2341,9 +2349,51 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     <Select value={scheduledClassForm.academicSessionId} onValueChange={handleScheduledSessionChange}>
                       <SelectTrigger><SelectValue placeholder="Select session" /></SelectTrigger>
                       <SelectContent>
-                        {sessions.map(session => (
-                          <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>
-                        ))}
+                        {(() => {
+                          const now = new Date();
+                          const currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+                          const parseDateToDay = (dateVal: any): Date | null => {
+                            if (!dateVal) return null;
+                            if (typeof dateVal === 'string') {
+                              const match = dateVal.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                              if (match) {
+                                return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+                              }
+                            }
+                            const d = new Date(dateVal);
+                            if (isNaN(d.getTime())) return null;
+                            return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                          };
+
+                          return sessions
+                            .filter(session => {
+                              const sessionEndDate = parseDateToDay(session.endDate);
+                              const sessionStartDate = parseDateToDay(session.startDate);
+
+                              if (!sessionEndDate) return false;
+
+                              // Exclude sessions whose end date is earlier than the current date
+                              if (sessionEndDate.getTime() < currentDate.getTime()) {
+                                return false;
+                              }
+
+                              // Include ongoing sessions (start date <= current date and end date >= current date)
+                              // and upcoming/future sessions (start date > current date and end date >= current date),
+                              // even if their start date is earlier than the current date.
+                              const isOngoing = sessionStartDate
+                                ? sessionStartDate.getTime() <= currentDate.getTime() && sessionEndDate.getTime() >= currentDate.getTime()
+                                : false;
+                              const isUpcoming = sessionStartDate
+                                ? sessionStartDate.getTime() > currentDate.getTime() && sessionEndDate.getTime() >= currentDate.getTime()
+                                : false;
+
+                              return sessionEndDate.getTime() >= currentDate.getTime() && (isOngoing || isUpcoming || !sessionStartDate);
+                            })
+                            .map(session => (
+                              <SelectItem key={session.id} value={session.id}>{displaySession(session.id)}</SelectItem>
+                            ));
+                        })()}
                       </SelectContent>
                     </Select>
                   </div>

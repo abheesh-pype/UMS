@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   RefreshCw, Download, Search, X, AlertCircle, Clock, CheckCircle2,
-  GraduationCap, Building2, School,
+  GraduationCap, Building2, School, IndianRupee,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -25,10 +25,25 @@ interface ReregRow {
   branchName: string;
   session: string;
   reregClosingDate: string | null;
-  reregPaymentStatus: 'Pending' | 'Paid';
+  reregPaymentStatus: 'Pending' | 'Partially Paid' | 'Paid';
   enrollmentStatus: string;
   daysUntilDeadline: number | null;
+  installmentName?: string;
+  installmentAmount?: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  deadlineSource?: 'fee_structure' | 'session' | 'estimated';
+  completedInstallments?: number;
+  totalInstallments?: number;
 }
+
+const DEADLINE_SOURCE_LABEL: Record<string, string> = {
+  fee_structure: 'Fee structure due date',
+  session: 'Session closing date',
+  estimated: 'Estimated from enrolment date',
+};
+
+const formatInr = (value?: number) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
 // ─── Excel Export Helper ───────────────────────────────────────────────────────
 function exportToExcel(rows: ReregRow[]) {
@@ -36,6 +51,7 @@ function exportToExcel(rows: ReregRow[]) {
     'Enrollment No', 'Student Name', 'Email', 'Phone',
     'Center', 'Branch', 'University', 'Program', 'Session',
     'Re-Reg Closing Date', 'Days Until Deadline', 'Payment Status', 'Enrollment Status',
+    'Installment', 'Installment Amount', 'Paid', 'Balance Due', 'Deadline Source',
   ];
   const data = rows.map(r => [
     r.enrollmentNumber,
@@ -51,6 +67,11 @@ function exportToExcel(rows: ReregRow[]) {
     r.daysUntilDeadline != null ? r.daysUntilDeadline.toString() : 'N/A',
     r.reregPaymentStatus,
     r.enrollmentStatus,
+    r.installmentName || '',
+    r.installmentAmount ?? '',
+    r.amountPaid ?? '',
+    r.balanceDue ?? '',
+    r.deadlineSource ? DEADLINE_SOURCE_LABEL[r.deadlineSource] : '',
   ]);
 
   const csvContent = [headers, ...data]
@@ -141,6 +162,7 @@ export function FinanceReregPendingReportPanel() {
   // Stats
   const overdueCount = rows.filter(r => (r.daysUntilDeadline ?? 1) < 0).length;
   const dueThisWeek = rows.filter(r => r.daysUntilDeadline != null && r.daysUntilDeadline >= 0 && r.daysUntilDeadline <= 7).length;
+  const totalBalanceDue = rows.reduce((sum, r) => sum + (Number(r.balanceDue) || 0), 0);
 
   // Filtered programs based on selected university
   const filteredPrograms = universityId
@@ -166,7 +188,7 @@ export function FinanceReregPendingReportPanel() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Re-Registration Pending Report</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Students enrolled in sessions with upcoming re-registration deadlines who haven't paid yet.
+            Enrolled students whose next semester / year fee (after the admission installment) is not yet paid.
           </p>
         </div>
         <div className="flex gap-2">
@@ -182,7 +204,7 @@ export function FinanceReregPendingReportPanel() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-none shadow-md bg-gradient-to-br from-destructive/10 to-destructive/5">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="p-2.5 rounded-xl bg-destructive/20">
@@ -213,6 +235,17 @@ export function FinanceReregPendingReportPanel() {
             <div>
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Pending</p>
               <p className="text-2xl font-bold mt-0.5">{loading ? '...' : rows.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-md bg-gradient-to-br from-info/10 to-info/5">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="p-2.5 rounded-xl bg-info/20">
+              <IndianRupee className="w-5 h-5 text-info" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Balance Due</p>
+              <p className="text-2xl font-bold mt-0.5">{loading ? '...' : formatInr(totalBalanceDue)}</p>
             </div>
           </CardContent>
         </Card>
@@ -365,6 +398,7 @@ export function FinanceReregPendingReportPanel() {
                       { key: 'university', label: 'University' },
                       { key: 'program', label: 'Program' },
                       { key: 'session', label: 'Session' },
+                      { key: 'amount', label: 'Amount Due' },
                       { key: 'deadline', label: 'Re-Reg Deadline', sortable: true },
                       { key: 'urgency', label: 'Urgency' },
                       { key: 'status', label: 'Status' }
@@ -405,15 +439,35 @@ export function FinanceReregPendingReportPanel() {
                       </td>
                       <td className="px-4 py-3 text-sm">{row.university || '—'}</td>
                       <td className="px-4 py-3 text-sm">{row.program || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{row.session || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {row.session || '—'}
+                        {row.totalInstallments != null && (
+                          <p className="text-[11px]">Re-registrations paid: {row.completedInstallments ?? 0} of {Math.max(0, row.totalInstallments - 1)}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm whitespace-nowrap tabular-nums">
+                        {row.balanceDue != null ? (
+                          <>
+                            <p className="font-semibold">{formatInr(row.balanceDue)}</p>
+                            {!!row.amountPaid && (
+                              <p className="text-[11px] text-muted-foreground">{formatInr(row.amountPaid)} paid of {formatInr(row.installmentAmount)}</p>
+                            )}
+                          </>
+                        ) : '—'}
+                      </td>
                       <td className="px-4 py-3 text-sm whitespace-nowrap">
                         {row.reregClosingDate
                           ? new Date(row.reregClosingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                           : '—'}
+                        {row.deadlineSource && (
+                          <p className="text-[11px] text-muted-foreground">{DEADLINE_SOURCE_LABEL[row.deadlineSource]}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3">{urgencyBadge(row.daysUntilDeadline)}</td>
                       <td className="px-4 py-3">
-                        <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] uppercase">
+                        <Badge className={row.reregPaymentStatus === 'Partially Paid'
+                          ? 'bg-warning/10 text-warning border-warning/20 text-[10px] uppercase'
+                          : 'bg-destructive/10 text-destructive border-destructive/20 text-[10px] uppercase'}>
                           {row.reregPaymentStatus}
                         </Badge>
                       </td>

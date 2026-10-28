@@ -28,6 +28,8 @@ interface ReregCompletedRow {
   paidDate: string;
   amountPaid: number;
   invoiceId: string;
+  dueDate?: string;
+  paidOnTime?: boolean | null;
 }
 
 // ─── Excel Export Helper ───────────────────────────────────────────────────────
@@ -35,7 +37,7 @@ function exportToExcel(rows: ReregCompletedRow[]) {
   const headers = [
     'Enrollment No', 'Student Name', 'Email', 'Phone',
     'Center', 'Branch', 'University', 'Program', 'Session',
-    'Completed Installment', 'Paid Date', 'Amount Paid'
+    'Completed Installment', 'Paid Date', 'Amount Paid', 'Due Date', 'Paid On Time'
   ];
   const data = rows.map(r => [
     r.enrollmentNumber,
@@ -50,6 +52,8 @@ function exportToExcel(rows: ReregCompletedRow[]) {
     r.completedInstallment,
     r.paidDate ? new Date(r.paidDate).toLocaleDateString() : 'N/A',
     r.amountPaid,
+    r.dueDate ? new Date(r.dueDate).toLocaleDateString() : 'N/A',
+    r.paidOnTime == null ? 'N/A' : r.paidOnTime ? 'Yes' : 'Late',
   ]);
 
   const csvContent = [headers, ...data]
@@ -361,6 +365,12 @@ export function FinanceReregCompletedReportPanel() {
                         {row.paidDate
                           ? new Date(row.paidDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                           : '—'}
+                        {row.dueDate && (
+                          <p className={`text-[11px] ${row.paidOnTime === false ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            Due {new Date(row.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {row.paidOnTime === false ? ' · paid late' : row.paidOnTime ? ' · on time' : ''}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-medium">
                         ₹{row.amountPaid?.toLocaleString() || 0}
