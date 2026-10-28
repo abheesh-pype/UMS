@@ -21,12 +21,29 @@ const mapLeaveRequest = (leave: any) => ({
   hrApprovedBy: leave.hrApprover ? { name: leave.hrApprover.name } : null,
 });
 
+// Finance admin manages leave only for non-admin Finance staff who report to them
+const isFinanceLeaveManager = (user: any) =>
+  user?.role === 'finance_admin' && !['hr_admin', 'org_admin', 'superadmin', 'ceo'].includes(user?.role);
+
+const financeReporteeLeaveFilter = (managerId: string) => ({
+  user: {
+    is: {
+      reportingTo: managerId,
+      department: { is: { type: { equals: 'finance', mode: 'insensitive' } } },
+      NOT: { role: { contains: 'admin' } }
+    }
+  }
+});
+
 export const getLeaveRequests = asyncHandler(async (req: AuthRequest, res: Response) => {
   const isGodMode = ['hr_admin', 'org_admin', 'superadmin', 'ceo'].includes(req.user.role);
   const isDeptManager = ['ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin'].includes(req.user.role);
   const whereClause: any = { organizationId: req.user.organizationId };
 
-  if (!isGodMode && req.user.branchId) {
+  if (!isGodMode && isFinanceLeaveManager(req.user)) {
+    // Only Finance staff reporting to this admin (plus the admin's own requests for "My Requests")
+    whereClause.OR = [financeReporteeLeaveFilter(req.user.id), { userId: req.user.id }];
+  } else if (!isGodMode && req.user.branchId) {
     whereClause.user = { is: { branchId: req.user.branchId } };
   } else if (!isGodMode && isDeptManager && req.user.departmentId) {
     whereClause.departmentId = req.user.departmentId;
@@ -239,6 +256,21 @@ export const approveLeave = asyncHandler(async (req: AuthRequest, res: Response)
     });
     if (!branchLeave) {
       res.status(404).json({ success: false, message: 'Leave request not found in your branch' });
+      return;
+    }
+  }
+
+  if (!isHr && isFinanceLeaveManager(req.user)) {
+    const reporteeLeave = await prisma.leaveRequest.findFirst({
+      where: {
+        id: req.params.id,
+        organizationId: req.user.organizationId,
+        ...financeReporteeLeaveFilter(req.user.id),
+      },
+      select: { id: true },
+    });
+    if (!reporteeLeave) {
+      res.status(403).json({ success: false, message: 'You can only approve leave requests of Finance staff who report to you' });
       return;
     }
   }

@@ -351,7 +351,9 @@ export function LeavesPanel({
                 const userDeptId = (user as any)?.departmentId || (user as any)?.department?.id;
                 const isSameDept = leave.departmentId?.id === userDeptId;
                 const isHrAdminRequest = leave.employeeId?.role === 'hr_admin';
-                const canDeptAct = !isHrAdminRequest && isDeptManager && leave.status === 'pending' && (isGodMode || isBranchManager || isSameDept);
+                const canDeptAct = !isHrAdminRequest && isDeptManager && leave.status === 'pending' && (isGodMode || isBranchManager || isSameDept)
+                  // Finance admin approves only their reporting staff, not their own request
+                  && !(role === 'finance_admin' && isOwner);
                 const canHRAct = isHR && (
                   (isHrAdminRequest && approvalsOnly && role === 'org_admin' && leave.status === 'pending') ||
                   (!isHrAdminRequest && leave.status === 'dept_approved')

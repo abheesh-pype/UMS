@@ -104,20 +104,16 @@ export function FinanceTotalReportPanel() {
       'Admission Date': fmtDate(r.admissionDate),
       'Admission Session': r.admissionSession,
       'Center Name': r.centerName,
-      'Sub Center / Branch': r.subCenterName || '',
+      'Sub Center (Branch)': r.isSubCenter ? `Yes - ${r.subCenterName}` : 'No',
       'Program': r.program,
-      'University': r.university,
-      'Center Payment (INR)': r.centerPaymentAmount ?? '',
-      'Center Payment Status': r.centerPaymentStatus,
-      'Payment For': r.centerPaymentFor,
-      'Re-Reg Fees Collected (INR)': r.reRegTotalCollected ?? '',
+      'Payment (INR)': r.centerPaymentAmount ?? '',
+      'Payment Status': r.centerPaymentStatus,
+      'Payment For': r.centerPaymentFor?.replace(/_/g, ' ') || '',
       'Total University Fee (INR)': r.universityPaymentAmount ?? '',
-      'University Paid (INR)': r.universityPaidAmount ?? '',
       'University Payment Status': r.universityPaymentStatus,
       'University Payment Proof': Array.isArray(r.universityPaymentScreenshots) && r.universityPaymentScreenshots.length > 0 ? 'Yes (Check UI)' : 'No',
-      'Coordinator Name': r.coordinatorName || 'Null',
+      'Coordinator Name': r.coordinatorName || '',
       'Coordinator Payment (INR)': r.coordinatorPaymentAmount ?? '',
-      'Coordinator Payment Status': r.coordinatorPaymentStatus,
       // 'Commission From Uni (INR)': r.commissionInAmount ?? '',
       // 'Commission From Uni Date': fmtDate(r.commissionInDate),
       // 'Commission From Uni Status': r.commissionInStatus || '',
@@ -133,7 +129,7 @@ export function FinanceTotalReportPanel() {
     toast.success('Report exported successfully');
   };
 
-  const totalCenterPaid = rows.filter(r => r.centerPaymentStatus === 'Paid').reduce((s, r) => s + (r.centerPaymentAmount || 0), 0);
+  const totalCenterPaid = rows.filter(r => r.centerPaymentStatus === 'Paid' || r.centerPaymentStatus === 'Partially Paid').reduce((s, r) => s + (r.centerPaymentAmount || 0), 0);
   const totalCenterDue = rows.filter(r => r.centerPaymentStatus === 'Due').length;
   const totalUniPaid = rows.reduce((s, r) => s + (r.universityPaidAmount || 0), 0);
   const totalReRegPaid = rows.reduce((s, r) => s + (r.reRegTotalCollected || 0), 0);
@@ -215,15 +211,12 @@ export function FinanceTotalReportPanel() {
             {/* Row 2: Select Dropdowns & Buttons */}
             <div className="flex flex-wrap gap-4 items-center justify-between pt-2 border-t border-muted/50">
               <div className="flex flex-wrap gap-3 items-center flex-1">
-                <div className="w-[200px]">
+                {/* Single tenancy: the report always covers the one university */}
+                <div className="min-w-[200px]">
                   <label className="text-xs font-semibold text-muted-foreground block mb-1">University</label>
-                  <Select value={uiFilters.universityId} onValueChange={v => setUiFilters(f => ({ ...f, universityId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="All Universities" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Universities</SelectItem>
-                      {universities.map((u: any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <p className="h-10 flex items-center rounded-md border bg-muted/40 px-3 text-sm font-medium">
+                    {universities[0]?.name || '—'}
+                  </p>
                 </div>
 
                 <div className="w-[200px]">
@@ -275,11 +268,10 @@ export function FinanceTotalReportPanel() {
                   <tr>
                     {[
                       '#', 'Student', 'Admission No', 'Enroll No', 'Admission Date', 'Admission Session', 'Center Name', 'Sub Center (Branch)',
-                      'Program', 'University',
+                      'Program',
                       'Payment (INR)', 'Payment Status', 'Payment For',
-                      'Re-Reg Fees Collected',
-                      'Total Uni. Fee (INR)', 'Uni. Paid (INR)', 'Uni. Payment Status', 'Uni. Payment Proof',
-                      'Coordinator Name', 'Coord. Payment (INR)', 'Coord. Status',
+                      'Total Uni. Fee (INR)', 'Uni. Payment Status', 'Uni. Payment Proof',
+                      'Coordinator Name', 'Coord. Payment (INR)',
                       // 'Comm. From Uni (INR)', 'Comm. From Uni Date', 'Comm. From Uni Status',
                       // 'Comm. To Center (INR)', 'Comm. To Center Date', 'Comm. To Center Status'
                     ].map(h => (
@@ -300,10 +292,17 @@ export function FinanceTotalReportPanel() {
                         {fmtDate(r.admissionDate)}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{r.admissionSession || '-'}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{r.centerName || '-'}</td>
-                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{r.subCenterName || '-'}</td>
+                      <td className={'px-3 py-2.5 whitespace-nowrap ' + (r.isStudyCentre === false ? 'text-muted-foreground italic' : '')}>{r.centerName || '-'}</td>
+                      <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+                        {r.isSubCenter ? (
+                          <span className="px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            Branch · {r.subCenterName}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{r.program || '-'}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{r.university || '-'}</td>
                       <td className="px-3 py-2.5 font-semibold">
                         {r.centerPaymentAmount != null ? 'INR ' + Number(r.centerPaymentAmount).toLocaleString('en-IN') : '-'}
                       </td>
@@ -315,14 +314,8 @@ export function FinanceTotalReportPanel() {
                       <td className="px-3 py-2.5 text-xs text-muted-foreground capitalize">
                         {r.centerPaymentFor?.replace(/_/g, ' ') || '-'}
                       </td>
-                      <td className="px-3 py-2.5 font-semibold text-purple-700">
-                        {r.reRegTotalCollected != null && r.reRegTotalCollected > 0 ? 'INR ' + Number(r.reRegTotalCollected).toLocaleString('en-IN') : '-'}
-                      </td>
                       <td className="px-3 py-2.5 font-semibold text-muted-foreground">
                         {r.universityPaymentAmount != null ? 'INR ' + Number(r.universityPaymentAmount).toLocaleString('en-IN') : '-'}
-                      </td>
-                      <td className="px-3 py-2.5 font-semibold text-green-700">
-                        {r.universityPaidAmount != null ? 'INR ' + Number(r.universityPaidAmount).toLocaleString('en-IN') : '-'}
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + statusColor(r.universityPaymentStatus)}>
@@ -342,14 +335,9 @@ export function FinanceTotalReportPanel() {
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-xs">{r.coordinatorName || 'Null'}</td>
+                      <td className="px-3 py-2.5 text-xs whitespace-nowrap">{r.coordinatorName || '-'}</td>
                       <td className="px-3 py-2.5 font-semibold">
                         {r.coordinatorPaymentAmount != null ? 'INR ' + Number(r.coordinatorPaymentAmount).toLocaleString('en-IN') : '-'}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + statusColor(r.coordinatorPaymentStatus)}>
-                          {r.coordinatorPaymentStatus}
-                        </span>
                       </td>
                       {/* Commission from University */}
                       {/* <td className="px-3 py-2.5 font-semibold">

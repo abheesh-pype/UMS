@@ -22,8 +22,26 @@ import {
   ExternalLink,
   Maximize,
   Minimize,
-  Printer
+  Printer,
+  GraduationCap,
+  Layers,
+  CalendarCheck,
+  CalendarClock,
+  Sparkles,
+  RefreshCw,
+  CheckCircle2,
+  ChevronRight,
+  Play,
+  PlayCircle,
+  Search,
+  ArrowLeft,
+  Bell,
+  CreditCard,
+  AlertTriangle,
+  CheckCheck,
+  Wallet
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
 
@@ -48,12 +66,17 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [materials, setMaterials] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones'>('all');
+  const [notificationSearchQuery, setNotificationSearchQuery] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
   const [scheduledClassesLoading, setScheduledClassesLoading] = useState(false);
   const [selectedSemester, setSelectedSemester] = useState<string>('1');
   const [selectedVideoClassId, setSelectedVideoClassId] = useState<string | null>(null);
   const [selectedVideoMaterialId, setSelectedVideoMaterialId] = useState<string | null>(null);
+  const [videoFilterSemester, setVideoFilterSemester] = useState<string>('all');
+  const [videoSearchQuery, setVideoSearchQuery] = useState<string>('');
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
   const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'payment-info' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
@@ -61,6 +84,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       ? initialTab
       : 'portal'
   );
+  const [previousSection, setPreviousSection] = useState<string | null>(null);
   const [selectedExamination, setSelectedExamination] = useState<any>(null);
   const [examinationLoadingId, setExaminationLoadingId] = useState<string | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -89,6 +113,9 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [studentPaymentInfo, setStudentPaymentInfo] = useState<any>(null);
   const [paymentInfoLoading, setPaymentInfoLoading] = useState(false);
   const [paymentInfoError, setPaymentInfoError] = useState('');
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+
 
   useEffect(() => {
     setActiveSection(
@@ -187,6 +214,43 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     return () => window.clearInterval(refreshTimer);
   }, [activeSection, fetchStudentExaminations]);
 
+  const fetchVideoMaterials = useCallback(async () => {
+    if (!student?.program?.id) return;
+    try {
+      const res = await api.get(`/operations/programs/${student.program.id}/materials`);
+      setMaterials(res.data.data || []);
+    } catch {
+      // ignore
+    }
+  }, [student?.program?.id]);
+
+  useEffect(() => {
+    if (activeSection === 'video-classes' && materials.length === 0) {
+      fetchVideoMaterials();
+    }
+  }, [activeSection, fetchVideoMaterials, materials.length]);
+
+  const fetchAcademicEvents = useCallback(async () => {
+    setCalendarLoading(true);
+    try {
+      const response = await api.get('/operations/academic-calendar');
+      setCalendarEvents(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to load academic events:', error);
+    } finally {
+      setCalendarLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === 'active-session') {
+      fetchAcademicEvents();
+      if (studentExaminations.length === 0) {
+        fetchStudentExaminations();
+      }
+    }
+  }, [activeSection, fetchAcademicEvents, fetchStudentExaminations, studentExaminations.length]);
+
   const launchExamination = async (examinationId: string) => {
     const launchWindow = window.open('about:blank', '_blank');
     if (!launchWindow) {
@@ -253,6 +317,12 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     }
   };
 
+  useEffect(() => {
+    if (activeSection === 'notifications') {
+      fetchNotifications();
+    }
+  }, [activeSection]);
+
   const openNotifications = () => {
     setActiveSection('notifications');
     fetchNotifications();
@@ -263,8 +333,66 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       await api.put('/notifications/read-all');
       setNotifications(previous => previous.map(notification => ({ ...notification, read: true })));
       setUnreadNotifications(0);
+      toast.success('All notifications marked as read');
     } catch (error) {
       toast.error('Failed to mark notifications as read');
+    }
+  };
+
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      setNotifications(previous => previous.map(n => n.id === id ? { ...n, read: true } : n));
+      setUnreadNotifications(previous => Math.max(0, previous - 1));
+    } catch {
+      // silently fallback
+    }
+  };
+
+  const getNotificationCategory = (n: any): 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones' | 'general' => {
+    const link = (n.link || '').toLowerCase();
+    const title = (n.title || '').toLowerCase();
+    if (link.startsWith('fees/') || title.includes('invoice') || title.includes('fee') || title.includes('payment') || title.includes('installment')) return 'fees';
+    if (link.startsWith('examinations/') || title.includes('exam') || title.includes('assessment')) return 'examinations';
+    if (link.startsWith('materials/') || title.includes('lecture') || title.includes('video') || title.includes('e-book') || title.includes('syllabus')) return 'materials';
+    if (link.startsWith('classes/') || title.includes('class') || title.includes('live')) return 'classes';
+    if (link.startsWith('session/') || link.startsWith('calendar/') || title.includes('session') || title.includes('progression') || title.includes('holiday')) return 'milestones';
+    return 'general';
+  };
+
+  const handleNotificationAction = async (n: any, actionType?: string) => {
+    if (!n.read) {
+      markNotificationRead(n.id);
+    }
+
+    const link = n.link || '';
+    if (link.startsWith('examinations/')) {
+      if (actionType === 'register') {
+        openRegistrationForm(n);
+      } else {
+        viewExaminationDetails(n);
+      }
+    } else if (link.startsWith('fees/')) {
+      setActiveSection('payment-info');
+      const invoiceId = link.split('/')[2];
+      if (invoiceId && studentPaymentInfo?.invoices) {
+        const matchInv = studentPaymentInfo.invoices.find((i: any) => i.id === invoiceId);
+        if (matchInv) {
+          setSelectedStudentInvoiceForPrint(matchInv);
+        }
+      }
+    } else if (link.startsWith('materials/video/')) {
+      const matId = link.replace('materials/video/', '');
+      if (matId) {
+        setSelectedVideoMaterialId(matId);
+      }
+      setActiveSection('video-classes');
+    } else if (link.startsWith('materials/ebook/')) {
+      setActiveSection('e-books');
+    } else if (link.startsWith('classes/live/')) {
+      setActiveSection('scheduled-classes');
+    } else if (link.startsWith('session/') || link.startsWith('calendar/')) {
+      setActiveSection('active-session');
     }
   };
 
@@ -406,31 +534,139 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const program = student.program;
   const enrolledSessionId = student.sessionId || student.activeSession?.id || program?.academicSessionId;
   const enrolledSession = student.activeSession || program?.academicSession;
-  const enrolledSemesters = (program?.semesterRecords || [])
-    .filter((semester: any) => semester.academicSessionId === enrolledSessionId)
-    .sort((a, b) => a.semesterNumber - b.semesterNumber);
+  const sessionSemesters = (program?.semesterRecords || [])
+    .filter((semester: any) => !enrolledSessionId || semester.academicSessionId === enrolledSessionId)
+    .sort((a: any, b: any) => a.semesterNumber - b.semesterNumber);
+  const enrolledSemesters = sessionSemesters.length > 0
+    ? sessionSemesters
+    : (program?.semesterRecords || []).sort((a: any, b: any) => a.semesterNumber - b.semesterNumber);
   const semesterList = enrolledSemesters.map((semester: any) => String(semester.semesterNumber));
-  const activeSemester = semesterList.includes(selectedSemester) ? selectedSemester : semesterList[0];
-  const enrolledModules = (program?.modules || []).filter(
-    (module: any) => module.academicSessionId === enrolledSessionId
+  const activeSemester = semesterList.includes(selectedSemester) ? selectedSemester : (semesterList[0] || '1');
+  const sessionModules = (program?.modules || []).filter(
+    (module: any) => !enrolledSessionId || module.academicSessionId === enrolledSessionId
   );
+  const enrolledModules = sessionModules.length > 0
+    ? sessionModules
+    : (program?.modules || []);
+  const displaySemesters = enrolledSemesters;
+
+  const upcomingCalendarEvents = calendarEvents
+    .filter((event: any) => {
+      if (event.academicSessionId && enrolledSessionId && event.academicSessionId !== enrolledSessionId) {
+        return false;
+      }
+      if (event.programId && program?.id && event.programId !== program.id) {
+        return false;
+      }
+      return true;
+    })
+    .map((event: any) => ({
+      id: event.id,
+      title: event.title,
+      category: event.category || 'Academic',
+      startDate: event.startDate,
+      endDate: event.endDate,
+      time: event.startTime ? `${event.startTime}${event.endTime ? ` - ${event.endTime}` : ''}` : null,
+      description: event.description,
+      source: 'calendar',
+    }));
+
+  const upcomingExamEvents = (studentExaminations || []).map((exam: any) => ({
+    id: exam.id,
+    title: exam.examinationName,
+    category: 'Examination',
+    startDate: exam.startDate,
+    endDate: exam.endDate,
+    time: exam.examinationType || null,
+    description: exam.readyToLaunch ? 'Ready to write' : 'Scheduled Examination',
+    source: 'examination',
+  }));
+
+  const upcomingClassEvents = (scheduledClasses || []).map((sc: any) => ({
+    id: sc.id,
+    title: sc.title,
+    category: 'Live Class',
+    startDate: sc.startsAt,
+    endDate: sc.endsAt,
+    time: new Date(sc.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    description: sc.module?.moduleName || sc.academicSession?.name,
+    source: 'class',
+  }));
+
+  const combinedAcademicEvents = [...upcomingCalendarEvents, ...upcomingExamEvents, ...upcomingClassEvents]
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+
+  const getEventBadgeClass = (category: string) => {
+    const c = (category || '').toLowerCase();
+    if (c.includes('exam')) return 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20';
+    if (c.includes('holiday')) return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+    if (c.includes('class')) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+    if (c.includes('admission')) return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+    return 'bg-primary/10 text-primary border-primary/20';
+  };
+  const studentSessionIds = new Set<string>();
+  if (student?.sessionId) studentSessionIds.add(student.sessionId);
+  if (student?.activeSession?.id) studentSessionIds.add(student.activeSession.id);
+  (student?.enrollments || []).forEach((e: any) => {
+    if (e.sessionId) studentSessionIds.add(e.sessionId);
+    if (e.session?.id) studentSessionIds.add(e.session.id);
+  });
+  if (program?.academicSessionId) studentSessionIds.add(program.academicSessionId);
+  if (program?.academicSession?.id) studentSessionIds.add(program.academicSession.id);
+
+  const studentSessionNames = new Set<string>();
+  if (enrolledSession?.name) studentSessionNames.add(enrolledSession.name.toLowerCase().trim());
+  if (program?.academicSession?.name) studentSessionNames.add(program.academicSession.name.toLowerCase().trim());
+  (student?.enrollments || []).forEach((e: any) => {
+    if (e.session?.name) studentSessionNames.add(e.session.name.toLowerCase().trim());
+  });
+
   const getVideoMetadata = (material: { category: string; description?: string | null }) => {
     if (material.category === 'video_class') {
       try {
         const metadata = JSON.parse(material.description || '{}');
         return {
+          text: metadata.text || '',
           moduleId: metadata.moduleId || '',
+          moduleName: metadata.moduleName || '',
           sessionId: metadata.sessionId || '',
+          sessionName: metadata.sessionName || '',
+          semesterId: metadata.semesterId || '',
+          semesterName: metadata.semesterName || '',
+          programId: metadata.programId || '',
+          programName: metadata.programName || '',
+          youtubeUrl: metadata.youtubeUrl || '',
         };
       } catch {
-        return { moduleId: '', sessionId: '' };
+        return {
+          text: material.description || '',
+          moduleId: '',
+          moduleName: '',
+          sessionId: '',
+          sessionName: '',
+          semesterId: '',
+          semesterName: '',
+          programId: '',
+          programName: '',
+          youtubeUrl: '',
+        };
       }
     }
+    const match = material.description?.match(/^Module: ([\w-]+) - (.*)$/);
     return {
-      moduleId: material.description?.match(/^Module: ([\w-]+) - /)?.[1] || '',
+      text: material.description || '',
+      moduleId: match ? match[1] : (material.description?.match(/^Module: ([\w-]+) - /)?.[1] || ''),
+      moduleName: match ? match[2] : '',
       sessionId: '',
+      sessionName: '',
+      semesterId: '',
+      semesterName: '',
+      programId: '',
+      programName: '',
+      youtubeUrl: '',
     };
   };
+
   const getYouTubeEmbedUrl = (url: string) => {
     try {
       const parsedUrl = new URL(url);
@@ -446,13 +682,93 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       return '';
     }
   };
+
+  const videoApiBase = import.meta.env.VITE_API_URL || '/api/v1';
+
+  // Process and extract all video classes for the enrolled session
+  const allSessionVideos = materials
+    .filter(material => material.category === 'video_class' || material.category === 'video')
+    .map(material => {
+      const metadata = getVideoMetadata(material);
+      const rawUrl = material.fileUrl || metadata.youtubeUrl || '';
+      const videoUrl = rawUrl.startsWith('http')
+        ? rawUrl
+        : `${videoApiBase.replace('/api/v1', '')}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+      const embedUrl = getYouTubeEmbedUrl(videoUrl);
+
+      // Resolve semester display name
+      const matchedSemester = (program?.semesterRecords || []).find(
+        (s: any) => s.id === metadata.semesterId || String(s.semesterNumber) === String(metadata.semesterId)
+      );
+      const semesterDisplayName = metadata.semesterName || matchedSemester?.semesterName || (material.semesterNumber ? `Semester ${material.semesterNumber}` : 'General');
+      const semesterNumberVal = matchedSemester?.semesterNumber || (material.semesterNumber ? Number(material.semesterNumber) : null);
+
+      // Resolve module display name
+      const matchedModule = (program?.modules || []).find((m: any) => m.id === metadata.moduleId);
+      const moduleDisplayName = metadata.moduleName || matchedModule?.moduleName || 'Curriculum Class';
+
+      return {
+        id: material.id,
+        title: material.title || material.fileName || 'Video Lecture',
+        description: metadata.text || material.description || '',
+        sessionId: metadata.sessionId,
+        sessionName: metadata.sessionName || enrolledSession?.name || '',
+        programId: metadata.programId || material.programId,
+        semesterId: metadata.semesterId || matchedSemester?.id || '',
+        semesterName: semesterDisplayName,
+        semesterNumber: semesterNumberVal,
+        moduleId: metadata.moduleId || matchedModule?.id || '',
+        moduleName: moduleDisplayName,
+        videoUrl,
+        embedUrl,
+        fileName: material.fileName,
+        createdAt: material.createdAt,
+        rawMaterial: material,
+      };
+    })
+    .filter(video => {
+      // Must match student's program if set
+      if (video.programId && program?.id && video.programId !== program.id) {
+        return false;
+      }
+      // If video has session attached, check if it matches student's sessions
+      if (video.sessionId && studentSessionIds.size > 0) {
+        if (studentSessionIds.has(video.sessionId)) return true;
+      }
+      if (video.sessionName && studentSessionNames.size > 0) {
+        if (studentSessionNames.has(video.sessionName.toLowerCase().trim())) return true;
+      }
+      // If video has no explicit session restriction, it belongs to the program
+      return true;
+    });
+
+  const activeVideo = allSessionVideos.find(v => v.id === selectedVideoMaterialId)
+    || allSessionVideos[0]
+    || null;
+
+  const semesterFilterOptions = Array.from(
+    new Set(allSessionVideos.map(v => v.semesterName).filter(Boolean))
+  );
+
+  const displayedVideos = allSessionVideos.filter(video => {
+    if (videoFilterSemester !== 'all' && video.semesterName !== videoFilterSemester && String(video.semesterNumber) !== videoFilterSemester) {
+      return false;
+    }
+    if (videoSearchQuery.trim()) {
+      const q = videoSearchQuery.toLowerCase();
+      const matchTitle = video.title.toLowerCase().includes(q);
+      const matchMod = video.moduleName.toLowerCase().includes(q);
+      const matchDesc = video.description.toLowerCase().includes(q);
+      if (!matchTitle && !matchMod && !matchDesc) return false;
+    }
+    return true;
+  });
+
   const getVideosForModule = (module: { id: string }) => materials.filter(material => {
     if (material.category !== 'video_class' && material.category !== 'video') return false;
     const metadata = getVideoMetadata(material);
-    return metadata.moduleId === module.id
-      && (!metadata.sessionId || metadata.sessionId === enrolledSessionId);
+    return metadata.moduleId === module.id;
   });
-  const videoApiBase = import.meta.env.VITE_API_URL || '/api/v1';
   const selectedEbookModule = enrolledModules.find((module: any) => module.id === selectedEbookModuleId);
   const selectedModuleEbooks = materials.filter(
     material => material.category === 'ebook'
@@ -679,62 +995,476 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </main>
         ) : activeSection === 'notifications' ? (
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <CardTitle>Notifications</CardTitle>
-                <CardDescription>Updates and announcements for your student account.</CardDescription>
+        <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
+          <Card className="w-full border shadow-md bg-card/90 backdrop-blur-sm overflow-hidden">
+            <CardHeader className="border-b bg-muted/20 pb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                      <Bell className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-2xl font-bold flex items-center gap-2.5">
+                        Notifications & Alerts
+                        {unreadNotifications > 0 ? (
+                          <Badge className="bg-primary text-primary-foreground font-semibold text-xs px-2.5 py-0.5">
+                            {unreadNotifications} Unread
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground font-normal">
+                            All Caught Up
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-sm text-muted-foreground">
+                        Stay informed on upcoming fee installments, exam schedules, course materials, live classes, and university milestones.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={markAllNotificationsRead} 
+                    disabled={unreadNotifications === 0}
+                    className="gap-1.5 shadow-xs text-xs"
+                  >
+                    <CheckCheck className="h-4 w-4 text-emerald-600" />
+                    Mark All Read
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      fetchNotifications();
+                      toast.success('Notifications refreshed');
+                    }}
+                    className="gap-1.5 shadow-xs text-xs"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={markAllNotificationsRead} disabled={unreadNotifications === 0}>
-                  Mark all read
-                </Button>
+
+              {/* Search & Quick Filter Pills */}
+              <div className="pt-4 space-y-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search notifications by title or keyword..."
+                      value={notificationSearchQuery}
+                      onChange={(e) => setNotificationSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-xs sm:text-sm bg-background"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={unreadOnly ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setUnreadOnly(prev => !prev)}
+                      className="h-9 text-xs rounded-lg gap-1.5"
+                    >
+                      <span className={cn('w-2 h-2 rounded-full', unreadOnly ? 'bg-white' : 'bg-primary')} />
+                      Unread Only {unreadNotifications > 0 && `(${unreadNotifications})`}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Category Pills */}
+                {(() => {
+                  const feeCount = notifications.filter(n => getNotificationCategory(n) === 'fees').length;
+                  const examCount = notifications.filter(n => getNotificationCategory(n) === 'examinations').length;
+                  const materialCount = notifications.filter(n => getNotificationCategory(n) === 'materials').length;
+                  const classCount = notifications.filter(n => getNotificationCategory(n) === 'classes').length;
+                  const milestoneCount = notifications.filter(n => getNotificationCategory(n) === 'milestones').length;
+
+                  return (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar text-xs">
+                      <Button
+                        variant={notificationFilter === 'all' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('all')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0"
+                      >
+                        All ({notifications.length})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'fees' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('fees')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Wallet className="w-3.5 h-3.5 text-blue-500" />
+                        Fees & Invoices ({feeCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'examinations' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('examinations')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+                        Examinations ({examCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'materials' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('materials')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Video className="w-3.5 h-3.5 text-emerald-500" />
+                        Curriculum & Videos ({materialCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'classes' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('classes')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-purple-500" />
+                        Live Classes ({classCount})
+                      </Button>
+                      <Button
+                        variant={notificationFilter === 'milestones' ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setNotificationFilter('milestones')}
+                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
+                      >
+                        <CalendarCheck className="w-3.5 h-3.5 text-rose-500" />
+                        Milestones & Calendar ({milestoneCount})
+                      </Button>
+                    </div>
+                  );
+                })()}
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {notifications.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">No notifications yet.</div>
-              ) : (
-                notifications.map(notification => (
-                  <div key={notification.id} className={`rounded-lg border p-4 ${notification.read ? 'bg-background' : 'bg-primary/5 border-primary/20'}`}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">{notification.title}</p>
-                        <p className="text-sm text-muted-foreground mt-1">{notification.message}</p>
+
+            <CardContent className="p-6 space-y-4">
+              {(() => {
+                const filtered = notifications.filter(n => {
+                  if (unreadOnly && n.read) return false;
+                  if (notificationFilter !== 'all') {
+                    const cat = getNotificationCategory(n);
+                    if (cat !== notificationFilter) return false;
+                  }
+                  if (notificationSearchQuery.trim()) {
+                    const q = notificationSearchQuery.toLowerCase();
+                    const titleMatch = (n.title || '').toLowerCase().includes(q);
+                    const msgMatch = (n.message || '').toLowerCase().includes(q);
+                    if (!titleMatch && !msgMatch) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-16 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                        <Bell className="w-6 h-6" />
                       </div>
-                      {!notification.read && <Badge>New</Badge>}
+                      <h4 className="text-base font-semibold text-foreground">
+                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all' 
+                          ? 'No matching notifications found' 
+                          : 'No notifications at this time'}
+                      </h4>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all'
+                          ? 'Try resetting your filter or search query to see all updates.'
+                          : 'All fee receipts, exam announcements, curriculum video releases, and calendar notices will appear here.'}
+                      </p>
+                      {(notificationSearchQuery || unreadOnly || notificationFilter !== 'all') && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setNotificationFilter('all');
+                            setNotificationSearchQuery('');
+                            setUnreadOnly(false);
+                          }}
+                          className="mt-2 text-xs"
+                        >
+                          Clear All Filters
+                        </Button>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      {new Date(notification.createdAt).toLocaleString()}
-                    </p>
-                    {notification.link?.startsWith('examinations/') && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewExaminationDetails(notification)}
-                          disabled={examinationLoadingId === notification.id}
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    {filtered.map(notification => {
+                      const category = getNotificationCategory(notification);
+                      const isHighPriority = notification.priority === 'high';
+                      const isOverdue = notification.link?.includes('overdue');
+                      const isUnread = !notification.read;
+
+                      return (
+                        <div
+                          key={notification.id}
+                          className={cn(
+                            'rounded-xl border transition-all duration-200 p-4 sm:p-5 relative group flex flex-col justify-between',
+                            isUnread
+                              ? isHighPriority
+                                ? 'bg-rose-500/5 border-rose-500/40 shadow-xs'
+                                : 'bg-primary/5 border-primary/30 shadow-xs'
+                              : 'bg-card/70 border-border/70 hover:border-border hover:bg-muted/30'
+                          )}
                         >
-                          {examinationLoadingId === notification.id ? 'Loading...' : 'View Details'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => openRegistrationForm(notification)}
-                          disabled={examinationLoadingId === notification.id || registeredExaminationIds.includes(notification.link.replace('examinations/', ''))}
-                        >
-                          {registeredExaminationIds.includes(notification.link.replace('examinations/', '')) ? 'Registered' : examinationLoadingId === notification.id ? 'Loading...' : 'Register'}
-                        </Button>
-                      </div>
-                    )}
+                          <div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0">
+                                {/* Category Icon */}
+                                <div
+                                  className={cn(
+                                    'p-2.5 rounded-xl shrink-0 mt-0.5',
+                                    category === 'fees' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                                    category === 'examinations' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                                    category === 'materials' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                                    category === 'classes' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
+                                    'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                  )}
+                                >
+                                  {category === 'fees' && <CreditCard className="w-5 h-5" />}
+                                  {category === 'examinations' && <GraduationCap className="w-5 h-5" />}
+                                  {category === 'materials' && <Video className="w-5 h-5" />}
+                                  {category === 'classes' && <Calendar className="w-5 h-5" />}
+                                  {category === 'milestones' && <CalendarCheck className="w-5 h-5" />}
+                                  {category === 'general' && <Bell className="w-5 h-5" />}
+                                </div>
+
+                                <div className="min-w-0 space-y-1">
+                                  {/* Badges row */}
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {/* Unread indicator */}
+                                    {isUnread && (
+                                      <Badge className="bg-primary text-primary-foreground font-semibold text-[10px] px-1.5 py-0 h-4 uppercase tracking-wider">
+                                        ● New
+                                      </Badge>
+                                    )}
+
+                                    {/* Priority badge */}
+                                    {isHighPriority && (
+                                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-semibold gap-1">
+                                        <AlertTriangle className="w-2.5 h-2.5" />
+                                        {isOverdue ? 'Overdue Action' : 'Urgent / Deadline Alert'}
+                                      </Badge>
+                                    )}
+
+                                    {/* Category badge */}
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 capitalize text-muted-foreground">
+                                      {category === 'fees' ? 'Financials' :
+                                       category === 'examinations' ? 'Examination' :
+                                       category === 'materials' ? 'Curriculum' :
+                                       category === 'classes' ? 'Live Class' :
+                                       category === 'milestones' ? 'Milestone' : 'Notice'}
+                                    </Badge>
+
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-1 ml-1">
+                                      <Clock className="w-3 h-3 text-muted-foreground/70" />
+                                      {new Date(notification.createdAt).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+
+                                  {/* Title */}
+                                  <h3 className="font-bold text-base text-foreground leading-snug pt-0.5">
+                                    {notification.title}
+                                  </h3>
+
+                                  {/* Message */}
+                                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                                    {notification.message}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Top-right Mark as read toggle */}
+                              {isUnread && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => markNotificationRead(notification.id)}
+                                  className="h-7 text-xs text-muted-foreground hover:text-foreground shrink-0 px-2"
+                                  title="Mark as read"
+                                >
+                                  <CheckCheck className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                                  <span className="hidden sm:inline">Mark read</span>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actionable CTAs (Direct Shortcuts) */}
+                          <div className="mt-4 pt-3 border-t border-border/40 flex flex-wrap items-center justify-between gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* 1. Examination CTAs */}
+                              {notification.link?.startsWith('examinations/') && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification, 'register')}
+                                    disabled={
+                                      examinationLoadingId === notification.id || 
+                                      registeredExaminationIds.includes(notification.link.replace('examinations/', ''))
+                                    }
+                                    className="h-8 text-xs font-semibold gap-1.5 bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                                  >
+                                    {registeredExaminationIds.includes(notification.link.replace('examinations/', '')) ? (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Registered
+                                      </>
+                                    ) : examinationLoadingId === notification.id ? (
+                                      'Loading...'
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Register Now
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification, 'view')}
+                                    disabled={examinationLoadingId === notification.id}
+                                    className="h-8 text-xs gap-1.5"
+                                  >
+                                    View Exam Details
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* 2. Fees CTAs */}
+                              {category === 'fees' && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleNotificationAction(notification)}
+                                    className={cn(
+                                      'h-8 text-xs font-semibold gap-1.5 shadow-xs',
+                                      isOverdue 
+                                        ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                                        : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                                    )}
+                                  >
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    {notification.link?.includes('receipt') ? 'View Fee Receipt' : 'Pay Online / View Invoice'}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (isUnread) markNotificationRead(notification.id);
+                                      setActiveSection('payment-info');
+                                    }}
+                                    className="h-8 text-xs gap-1.5"
+                                  >
+                                    Payment History
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* 3. Curriculum / Video CTAs */}
+                              {notification.link?.startsWith('materials/video') && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-white" />
+                                  Watch Video Lecture
+                                </Button>
+                              )}
+
+                              {/* 4. Curriculum / E-Books CTAs */}
+                              {notification.link?.startsWith('materials/ebook') && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5 text-primary" />
+                                  View E-Books & Syllabus
+                                </Button>
+                              )}
+
+                              {/* 5. Live Classes CTAs */}
+                              {notification.link?.startsWith('classes/live') && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5 bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  Join Live Class
+                                </Button>
+                              )}
+
+                              {/* 6. Milestones / Session CTAs */}
+                              {(notification.link?.startsWith('session/') || notification.link?.startsWith('calendar/')) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleNotificationAction(notification)}
+                                  className="h-8 text-xs font-semibold gap-1.5"
+                                >
+                                  <GraduationCap className="w-3.5 h-3.5 text-primary" />
+                                  View Academic Overview
+                                </Button>
+                              )}
+                            </div>
+
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              {isUnread ? (
+                                <span className="text-primary font-medium flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-primary" />
+                                  Requires Attention
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-muted-foreground">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                  Read
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
-              )}
+                );
+              })()}
             </CardContent>
           </Card>
         </main>
       ) : activeSection === 'examination-portal' ? (
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
+        <main className="container mx-auto px-4 py-8 max-w-4xl space-y-4">
+          {previousSection && (
+            <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to {previousSection === 'active-session' ? 'Active Session' : 'Previous Page'}</span>
+              </Button>
+            </div>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Examination Portal</CardTitle>
@@ -889,38 +1619,473 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           </Card>
         </main>
       ) : activeSection === 'active-session' ? (
-        <main className="container mx-auto px-4 py-8 max-w-4xl">
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Session</CardTitle>
-              <CardDescription>Your admission session from the enrolled student record.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {enrolledSession ? (
-                <div className="rounded-lg border p-4 space-y-2">
-                  <p className="font-semibold">{enrolledSession.name}</p>
-                  {enrolledSession.startDate && enrolledSession.endDate && (
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(enrolledSession.startDate).toLocaleDateString()} - {new Date(enrolledSession.endDate).toLocaleDateString()}
-                    </p>
-                  )}
-                  {enrolledSession.status && <Badge variant="outline">{enrolledSession.status}</Badge>}
+        <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
+          {/* Main Card: Academic overview */}
+          <Card className="w-full border-none shadow-xl bg-card/70 backdrop-blur-xl overflow-hidden">
+            <CardHeader className="border-b bg-muted/30 pb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="gap-1.5 py-1 px-2.5 text-xs font-semibold uppercase tracking-wider bg-primary/10 text-primary border-primary/20">
+                      <Sparkles className="w-3.5 h-3.5" /> Academic Status
+                    </Badge>
+                    {enrolledSession?.status && (
+                      <Badge variant="outline" className="text-xs capitalize border-green-500/30 text-green-600 dark:text-green-400 bg-green-500/10">
+                        ● {enrolledSession.status} Session
+                      </Badge>
+                    )}
+                  </div>
+                  <CardTitle className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2.5 pt-1">
+                    <GraduationCap className="h-7 w-7 text-primary shrink-0" />
+                    Academic overview
+                  </CardTitle>
+                  <CardDescription className="text-sm text-muted-foreground max-w-2xl">
+                    Comprehensive overview of your enrolled session, semester progression, active program details, and upcoming academic timeline.
+                  </CardDescription>
                 </div>
-              ) : (
-                <p className="py-8 text-center text-sm text-muted-foreground">No active admission session is assigned.</p>
-              )}
+
+                <div className="flex items-center gap-2.5 self-start sm:self-center">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      fetchStudentData();
+                      fetchAcademicEvents();
+                      fetchStudentExaminations();
+                    }}
+                    disabled={calendarLoading}
+                    className="gap-2 shadow-sm"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', calendarLoading && 'animate-spin')} />
+                    Refresh Overview
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-6">
+              {/* The 4-Item Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* 1. Student Taken Session */}
+                <Card className="border border-border/70 hover:border-primary/40 transition-all duration-300 shadow-sm hover:shadow-md bg-background/60 backdrop-blur flex flex-col justify-between">
+                  <div>
+                    <CardHeader className="pb-3 border-b border-border/40 bg-muted/10">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                            <CalendarCheck className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Enrolled Session</p>
+                            <h3 className="text-base font-semibold text-foreground">Taken Academic Session</h3>
+                          </div>
+                        </div>
+                        {enrolledSession?.status ? (
+                          <Badge variant="secondary" className="capitalize text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20">
+                            {enrolledSession.status}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">Active</Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-5 space-y-4">
+                      {enrolledSession ? (
+                        <>
+                          <div>
+                            <p className="text-lg font-bold text-foreground tracking-tight">
+                              {enrolledSession.name}
+                            </p>
+                            {enrolledSession.startDate && enrolledSession.endDate ? (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
+                                <Calendar className="w-3.5 h-3.5 text-primary" />
+                                <span>
+                                  {new Date(enrolledSession.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' — '}
+                                  {new Date(enrolledSession.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground mt-1">Current Academic Cycle</p>
+                            )}
+                          </div>
+
+                          {/* Progress bar if dates exist */}
+                          {(() => {
+                            if (!enrolledSession.startDate || !enrolledSession.endDate) return null;
+                            const start = new Date(enrolledSession.startDate).getTime();
+                            const end = new Date(enrolledSession.endDate).getTime();
+                            const now = Date.now();
+                            if (isNaN(start) || isNaN(end) || end <= start) return null;
+                            const pct = now <= start ? 0 : now >= end ? 100 : Math.min(100, Math.max(0, Math.round(((now - start) / (end - start)) * 100)));
+                            return (
+                              <div className="space-y-1.5 rounded-lg bg-muted/40 p-3 border border-border/50">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground font-medium">Session Timeline Progress</span>
+                                  <span className="font-semibold text-primary">{pct}% Completed</span>
+                                </div>
+                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500" 
+                                    style={{ width: `${pct}%` }} 
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Session Metadata Grid */}
+                          <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
+                            <div className="rounded-lg border bg-muted/20 p-2.5 space-y-0.5">
+                              <span className="text-muted-foreground">Enrollment No.</span>
+                              <p className="font-semibold text-foreground truncate">{student.enrollmentNo || 'N/A'}</p>
+                            </div>
+                            <div className="rounded-lg border bg-muted/20 p-2.5 space-y-0.5">
+                              <span className="text-muted-foreground">Admission Date</span>
+                              <p className="font-semibold text-foreground">
+                                {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'Active'}
+                              </p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          <p>No active admission session record is currently linked to this student profile.</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </div>
+
+                  <div className="px-6 pb-4 pt-1 border-t border-border/30 text-xs text-muted-foreground flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Primary academic session registered for coursework and exams</span>
+                  </div>
+                </Card>
+
+                {/* 2. That Session Contained Semester */}
+                <Card className="border border-border/70 hover:border-emerald-500/40 transition-all duration-300 shadow-sm hover:shadow-md bg-background/60 backdrop-blur flex flex-col justify-between">
+                  <div>
+                    <CardHeader className="pb-3 border-b border-border/40 bg-muted/10">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                            <Layers className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Curriculum Structure</p>
+                            <h3 className="text-base font-semibold text-foreground">Contained Semesters</h3>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          {displaySemesters.length} Semesters Total
+                        </Badge>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-5 space-y-4">
+                      {/* Current Semester Highlight Banner */}
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <div>
+                            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Your Current Level</p>
+                            <p className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
+                              Semester {student.currentSemester || 1}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs">
+                          In Progress
+                        </Badge>
+                      </div>
+
+                      {/* Semesters List */}
+                      {displaySemesters.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Semesters in this session curriculum:
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                            {displaySemesters.map((sem: any) => {
+                              const isCurrent = (student.currentSemester || 1) === sem.semesterNumber;
+                              const moduleCount = enrolledModules.filter((m: any) => m.semesterId === sem.id).length;
+                              return (
+                                <div
+                                  key={sem.id || sem.semesterNumber}
+                                  className={cn(
+                                    'p-2.5 rounded-lg border text-xs transition-colors flex items-center justify-between gap-2',
+                                    isCurrent 
+                                      ? 'border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20 font-medium' 
+                                      : 'border-border/60 bg-muted/20 hover:bg-muted/40'
+                                  )}
+                                >
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="font-semibold text-foreground truncate">
+                                        {sem.semesterName || `Semester ${sem.semesterNumber}`}
+                                      </span>
+                                      {isCurrent && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-emerald-500/50 text-emerald-600 bg-emerald-500/10">
+                                          Current
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                      {moduleCount > 0 ? `${moduleCount} Modules / Subjects` : 'Core Curriculum'}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="py-6 text-center text-xs text-muted-foreground">
+                          Semester configuration for this session is being assigned.
+                        </p>
+                      )}
+                    </CardContent>
+                  </div>
+
+                  <div className="px-6 pb-4 pt-1 border-t border-border/30 text-xs text-muted-foreground flex items-center justify-between">
+                    <span>Total Enrolled Modules: <strong className="text-foreground">{enrolledModules.length}</strong></span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 text-xs text-emerald-600 hover:text-emerald-700 p-0"
+                      onClick={() => {
+                        setPreviousSection(activeSection);
+                        setActiveSection('e-books');
+                      }}
+                    >
+                      View Syllabus <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                    </Button>
+                  </div>
+                </Card>
+
+                {/* 3. Currently Active Program In It */}
+                <Card className="border border-border/70 hover:border-violet-500/40 transition-all duration-300 shadow-sm hover:shadow-md bg-background/60 backdrop-blur flex flex-col justify-between">
+                  <div>
+                    <CardHeader className="pb-3 border-b border-border/40 bg-muted/10">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                            <School className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Degree Program</p>
+                            <h3 className="text-base font-semibold text-foreground">Currently Active Program</h3>
+                          </div>
+                        </div>
+                        {program?.code && (
+                          <Badge variant="secondary" className="font-mono text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20">
+                            {program.code}
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-5 space-y-4">
+                      {program ? (
+                        <>
+                          <div>
+                            <p className="text-lg font-bold text-foreground tracking-tight">
+                              {program.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {program.programType || 'Undergraduate Degree'} · {program.duration || 0} Year Program
+                            </p>
+                          </div>
+
+                          {/* Program Attributes Grid */}
+                          <div className="grid grid-cols-2 gap-2.5 pt-1 text-xs">
+                            <div className="p-2.5 rounded-lg border border-border/50 bg-muted/20 space-y-0.5">
+                              <span className="text-muted-foreground block">Degree / Type</span>
+                              <span className="font-semibold text-foreground">{program.programType || 'Standard Degree'}</span>
+                            </div>
+                            <div className="p-2.5 rounded-lg border border-border/50 bg-muted/20 space-y-0.5">
+                              <span className="text-muted-foreground block">Program Duration</span>
+                              <span className="font-semibold text-foreground">{program.duration || 0} Years ({(program.duration || 0) * 2} Sem.)</span>
+                            </div>
+                            <div className="p-2.5 rounded-lg border border-border/50 bg-muted/20 space-y-0.5">
+                              <span className="text-muted-foreground block">Study Center</span>
+                              <span className="font-semibold text-foreground truncate block">{student.center?.name || 'Direct / University'}</span>
+                            </div>
+                            <div className="p-2.5 rounded-lg border border-border/50 bg-muted/20 space-y-0.5">
+                              <span className="text-muted-foreground block">Center Code</span>
+                              <span className="font-semibold text-foreground">{student.center?.code || 'MAIN-01'}</span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          <p>No program is assigned to this profile.</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </div>
+
+                  <div className="px-6 pb-4 pt-1 border-t border-border/30 text-xs text-muted-foreground flex items-center justify-between">
+                    <span className="truncate">University: <strong className="text-foreground">{program?.university?.name || 'University Management'}</strong></span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 text-xs text-violet-600 hover:text-violet-700 p-0"
+                      onClick={() => {
+                        setPreviousSection(activeSection);
+                        setActiveSection('video-classes');
+                      }}
+                    >
+                      Video Classes <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                    </Button>
+                  </div>
+                </Card>
+
+                {/* 4. Next Academic Events Info */}
+                <Card className="border border-border/70 hover:border-amber-500/40 transition-all duration-300 shadow-sm hover:shadow-md bg-background/60 backdrop-blur flex flex-col justify-between">
+                  <div>
+                    <CardHeader className="pb-3 border-b border-border/40 bg-muted/10">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                            <CalendarClock className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Timeline & Milestones</p>
+                            <h3 className="text-base font-semibold text-foreground">Next Academic Events</h3>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+                          {combinedAcademicEvents.length} Upcoming
+                        </Badge>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-5 space-y-3">
+                      {calendarLoading ? (
+                        <div className="py-10 flex flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+                          <RefreshCw className="w-5 h-5 animate-spin text-primary" />
+                          <span>Loading upcoming academic schedule...</span>
+                        </div>
+                      ) : combinedAcademicEvents.length > 0 ? (
+                        <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                          {combinedAcademicEvents.slice(0, 4).map((event: any, idx: number) => {
+                            const eventDate = new Date(event.startDate);
+                            const formattedDate = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            return (
+                              <div
+                                key={event.id || idx}
+                                className="p-3 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors flex items-start gap-3"
+                              >
+                                <div className="p-2 rounded-lg bg-background border border-border/60 shrink-0 text-center min-w-[50px]">
+                                  <p className="text-[10px] uppercase font-bold text-muted-foreground">
+                                    {eventDate.toLocaleDateString('en-US', { month: 'short' })}
+                                  </p>
+                                  <p className="text-base font-extrabold text-foreground leading-none mt-0.5">
+                                    {eventDate.getDate()}
+                                  </p>
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h4 className="text-xs font-bold text-foreground truncate">{event.title}</h4>
+                                    <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 capitalize shrink-0', getEventBadgeClass(event.category))}>
+                                      {event.category}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                                    <Clock className="w-3 h-3 text-muted-foreground" />
+                                    <span>{event.time || formattedDate}</span>
+                                  </div>
+                                  {event.description && (
+                                    <p className="text-[11px] text-muted-foreground line-clamp-1">
+                                      {event.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center space-y-2">
+                          <Calendar className="w-8 h-8 text-muted-foreground/50 mx-auto" />
+                          <p className="text-xs font-medium text-foreground">No Upcoming Academic Events Scheduled</p>
+                          <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                            Examination notices, session commencements, and academic milestones for this session will appear here.
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </div>
+
+                  <div className="px-6 pb-4 pt-1 border-t border-border/30 text-xs text-muted-foreground flex items-center justify-between">
+                    <span>Timeline updates sync with academic calendar</span>
+                    {combinedAcademicEvents.some((e: any) => e.source === 'examination') ? (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 text-xs text-amber-600 hover:text-amber-700 p-0"
+                        onClick={() => {
+                          setPreviousSection(activeSection);
+                          setActiveSection('examination-portal');
+                        }}
+                      >
+                        Exam Portal <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 text-xs text-muted-foreground hover:text-foreground p-0"
+                        onClick={fetchAcademicEvents}
+                      >
+                        Refresh <RefreshCw className="w-3 h-3 ml-1" />
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+
+              </div>
             </CardContent>
           </Card>
         </main>
       ) : activeSection === 'e-books' ? (
-        <main className="container mx-auto max-w-7xl px-4 py-8">
+        <main className="container mx-auto max-w-7xl px-4 py-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+              className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back to {previousSection === 'active-session' || !previousSection ? 'Active Session' : 'Previous Page'}</span>
+            </Button>
+          </div>
+
           <Card className="border-none shadow-xl">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>E-Books</CardTitle>
-                <CardDescription>
-                  {program?.name || 'Program'}{enrolledSession?.name ? ` · ${enrolledSession.name}` : ''}
-                </CardDescription>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                  title="Back to Previous Page"
+                  className="h-8 w-8 rounded-full border hover:bg-muted shrink-0"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    E-Books & Syllabus
+                  </CardTitle>
+                  <CardDescription>
+                    {program?.name || 'Program'}{enrolledSession?.name ? ` · ${enrolledSession.name}` : ''}
+                  </CardDescription>
+                </div>
               </div>
               <Badge variant="outline">Enrolled Session</Badge>
             </CardHeader>
@@ -1061,201 +2226,320 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           )}
         </main>
       ) : activeSection === 'video-classes' ? (
-        <main className="container mx-auto max-w-screen-2xl px-4 py-10">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Video className="h-5 w-5 text-primary" />
-                Video Classes
-              </CardTitle>
-              <CardDescription>
-                {program?.name || 'Your program'} · {enrolledSession?.name || 'Current session'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {semesterList.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No semesters are available for your enrolled session.
-                </p>
-              ) : (
-                <Tabs
-                  value={activeSemester}
-                  onValueChange={value => {
-                    setSelectedSemester(value);
-                    setSelectedVideoClassId(null);
-                    setSelectedVideoMaterialId(null);
-                  }}
-                  className="space-y-5"
-                >
-                  <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted p-1">
-                    {enrolledSemesters.map((semester: any) => (
-                      <TabsTrigger key={semester.id} value={String(semester.semesterNumber)} className="px-4 py-2">
-                        {semester.semesterName}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {enrolledSemesters.map((semester: any) => {
-                    const semesterModules = enrolledModules.filter(
-                      (module: any) => module.semesterId === semester.id
-                    );
-                    const semesterVideos = semesterModules.flatMap(module =>
-                      getVideosForModule(module).map(material => ({ module, material }))
-                    );
-                    const selectedSemesterVideo = semesterVideos.find(
-                      ({ material }) => material.id === selectedVideoMaterialId
-                    );
-                    const selectedVideoUrl = selectedSemesterVideo
-                      ? selectedSemesterVideo.material.fileUrl.startsWith('http')
-                        ? selectedSemesterVideo.material.fileUrl
-                        : `${videoApiBase.replace('/api/v1', '')}${selectedSemesterVideo.material.fileUrl}`
-                      : '';
-                    const selectedVideoEmbedUrl = selectedVideoUrl ? getYouTubeEmbedUrl(selectedVideoUrl) : '';
+        <main className="container mx-auto max-w-screen-2xl px-4 py-8 space-y-6">
+          {previousSection && (
+            <div className="flex items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveSection((previousSection as any) || 'active-session')}
+                className="gap-2 shadow-xs hover:bg-muted font-medium text-xs sm:text-sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back to {previousSection === 'active-session' ? 'Active Session' : 'Previous Page'}</span>
+              </Button>
+            </div>
+          )}
+          {/* Header Card */}
+          <Card className="border shadow-sm bg-card/80 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                      <Video className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-2xl font-bold flex items-center gap-3">
+                        Video Classes
+                        <Badge variant="outline" className="font-semibold text-xs bg-primary/5 text-primary border-primary/20">
+                          {allSessionVideos.length} {allSessionVideos.length === 1 ? 'Video' : 'Videos'} Available
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription className="text-sm mt-0.5">
+                        {program?.name || 'Your Program'}
+                        {(enrolledSession?.name || student?.activeSession?.name) ? (
+                          <span className="font-medium text-foreground/80">
+                            {' '}· Enrolled Session: {enrolledSession?.name || student?.activeSession?.name}
+                          </span>
+                        ) : null}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="relative min-w-[200px] sm:min-w-[260px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search enrolled video classes..."
+                      value={videoSearchQuery}
+                      onChange={(e) => setVideoSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-sm"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    onClick={() => {
+                      fetchVideoMaterials();
+                      toast.success('Refreshing video classes...');
+                    }}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              {/* Semester filter tabs/pills if multiple semesters exist */}
+              {semesterFilterOptions.length > 0 && (
+                <div className="flex items-center gap-2 pt-4 flex-wrap border-t mt-4">
+                  <span className="text-xs font-medium text-muted-foreground mr-1">Filter by Semester:</span>
+                  <Button
+                    variant={videoFilterSemester === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7 text-xs rounded-full px-3"
+                    onClick={() => setVideoFilterSemester('all')}
+                  >
+                    All Semesters ({allSessionVideos.length})
+                  </Button>
+                  {semesterFilterOptions.map((semName) => {
+                    const count = allSessionVideos.filter(v => v.semesterName === semName).length;
                     return (
-                      <TabsContent key={semester.id} value={String(semester.semesterNumber)} className="outline-none">
-                        {semesterModules.length === 0 ? (
-                          <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
-                            No modules are available for {semester.semesterName}.
-                          </p>
-                        ) : (
-                          <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-                            <Card className="min-w-0 overflow-hidden">
-                              {selectedSemesterVideo ? (
-                                <>
-                                  <CardHeader>
-                                    <CardTitle className="truncate">
-                                      {selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
-                                    </CardTitle>
-                                    <CardDescription>
-                                      {selectedSemesterVideo.module.moduleName}
-                                      {selectedSemesterVideo.module.moduleCode ? ` · ${selectedSemesterVideo.module.moduleCode}` : ''}
-                                    </CardDescription>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <div ref={videoContainerRef} className="relative aspect-video overflow-hidden rounded-lg border bg-black">
-                                      {selectedVideoEmbedUrl ? (
-                                        <iframe
-                                          key={selectedSemesterVideo.material.id}
-                                          className="h-full w-full"
-                                          src={selectedVideoEmbedUrl}
-                                          title={selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
-                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                          allowFullScreen
-                                        />
-                                      ) : (
-                                        <video
-                                          key={selectedSemesterVideo.material.id}
-                                          className="h-full w-full"
-                                          src={selectedVideoUrl}
-                                          title={selectedSemesterVideo.material.title || selectedSemesterVideo.material.fileName}
-                                          controls
-                                          playsInline
-                                          preload="metadata"
-                                        />
-                                      )}
-                                      <Button
-                                        type="button"
-                                        size="icon"
-                                        variant="secondary"
-                                        className="absolute bottom-3 right-3 z-10"
-                                        aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
-                                        title={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
-                                        onClick={() => {
-                                          const container = videoContainerRef.current;
-                                          if (!container) return;
-                                          if (document.fullscreenElement === container) {
-                                            document.exitFullscreen().catch(() => toast.error('Unable to exit full screen'));
-                                            return;
-                                          }
-                                          if (!container.requestFullscreen) {
-                                            toast.error('Full screen is not supported by this browser');
-                                            return;
-                                          }
-                                          container.requestFullscreen().catch(() => toast.error('Unable to open full screen'));
-                                        }}
-                                      >
-                                        {isVideoFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-                                      </Button>
-                                    </div>
-                                  </CardContent>
-                                </>
-                              ) : (
-                                <CardContent className="flex aspect-video flex-col items-center justify-center gap-3 p-8 text-center">
-                                  <Video className="h-10 w-10 text-muted-foreground" />
-                                  <div>
-                                    <p className="font-medium">Choose a video to start watching</p>
-                                    <p className="mt-1 text-sm text-muted-foreground">
-                                      Select a class from {semester.semesterName} on the right.
-                                    </p>
-                                  </div>
-                                </CardContent>
-                              )}
-                            </Card>
-                            <Card className="min-w-0 lg:sticky lg:top-20">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-base">Upcoming videos</CardTitle>
-                                <CardDescription>{program?.name || 'Your program'} · {semester.semesterName}</CardDescription>
-                              </CardHeader>
-                              <CardContent className="max-h-[78vh] overflow-y-auto pt-0">
-                                <Accordion
-                                  type="single"
-                                  collapsible
-                                  value={selectedVideoClassId || ''}
-                                  onValueChange={value => {
-                                    setSelectedVideoClassId(value || null);
-                                    setSelectedVideoMaterialId(null);
-                                  }}
-                                  className="divide-y"
-                                >
-                                  {semesterModules.map(module => {
-                                    const moduleVideos = getVideosForModule(module);
-                                    return (
-                                      <AccordionItem key={module.id} value={module.id}>
-                                        <AccordionTrigger className="gap-2 py-3 text-left hover:no-underline">
-                                          <span className="min-w-0 flex-1">
-                                            <span className="block truncate font-medium">{module.moduleName}</span>
-                                            <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                                              {module.moduleCode}{module.moduleType ? ` · ${module.moduleType}` : ''}
-                                            </span>
-                                          </span>
-                                          <Badge variant="secondary" className="shrink-0">
-                                            {moduleVideos.length}
-                                          </Badge>
-                                        </AccordionTrigger>
-                                        <AccordionContent className="space-y-2 pb-3">
-                                          {moduleVideos.length === 0 ? (
-                                            <p className="px-2 py-2 text-xs text-muted-foreground">
-                                              No videos uploaded for this module yet.
-                                            </p>
-                                          ) : moduleVideos.map(material => (
-                                            <Button
-                                              key={material.id}
-                                              type="button"
-                                              variant={selectedVideoMaterialId === material.id ? 'default' : 'ghost'}
-                                              className="h-auto w-full justify-start whitespace-normal px-2 py-2 text-left"
-                                              onClick={() => setSelectedVideoMaterialId(material.id)}
-                                            >
-                                              <Video className="mr-2 h-4 w-4 shrink-0" />
-                                              <span className="line-clamp-2">
-                                                {material.title || material.fileName}
-                                              </span>
-                                            </Button>
-                                          ))}
-                                        </AccordionContent>
-                                      </AccordionItem>
-                                    );
-                                  })}
-                                </Accordion>
-                              </CardContent>
-                            </Card>
-                          </div>
-                        )}
-                      </TabsContent>
+                      <Button
+                        key={semName}
+                        variant={videoFilterSemester === semName ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-7 text-xs rounded-full px-3"
+                        onClick={() => setVideoFilterSemester(semName)}
+                      >
+                        {semName} ({count})
+                      </Button>
                     );
                   })}
-                </Tabs>
+                </div>
               )}
-            </CardContent>
+            </CardHeader>
           </Card>
+
+          {/* Videos Grid / Player Layout */}
+          {allSessionVideos.length === 0 ? (
+            <Card className="border border-dashed py-16 text-center">
+              <CardContent className="flex flex-col items-center justify-center gap-3">
+                <div className="p-4 rounded-full bg-muted text-muted-foreground">
+                  <Video className="h-10 w-10" />
+                </div>
+                <h3 className="font-semibold text-lg">No Video Classes Uploaded Yet</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  There are currently no recorded lectures or video classes available for your enrolled session in {program?.name || 'this program'}.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 gap-2"
+                  onClick={() => fetchVideoMaterials()}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Check for Updates
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Video Player & Active Video Information */}
+              <div className="lg:col-span-8 space-y-4">
+                <Card className="overflow-hidden border shadow-sm">
+                  {activeVideo ? (
+                    <>
+                      {/* Video Player Box */}
+                      <div ref={videoContainerRef} className="relative aspect-video w-full bg-black overflow-hidden group">
+                        {activeVideo.embedUrl ? (
+                          <iframe
+                            key={activeVideo.id}
+                            className="h-full w-full"
+                            src={activeVideo.embedUrl}
+                            title={activeVideo.title}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        ) : activeVideo.videoUrl ? (
+                          <video
+                            key={activeVideo.id}
+                            className="h-full w-full"
+                            src={activeVideo.videoUrl}
+                            title={activeVideo.title}
+                            controls
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-muted-foreground text-sm">
+                            Video source not available
+                          </div>
+                        )}
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="secondary"
+                          className="absolute bottom-3 right-3 z-10 opacity-80 group-hover:opacity-100 transition-opacity bg-black/70 hover:bg-black text-white border-white/20"
+                          aria-label={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                          title={isVideoFullscreen ? 'Exit full screen' : 'View video full screen'}
+                          onClick={() => {
+                            const container = videoContainerRef.current;
+                            if (!container) return;
+                            if (document.fullscreenElement === container) {
+                              document.exitFullscreen().catch(() => toast.error('Unable to exit full screen'));
+                              return;
+                            }
+                            if (!container.requestFullscreen) {
+                              toast.error('Full screen is not supported by this browser');
+                              return;
+                            }
+                            container.requestFullscreen().catch(() => toast.error('Unable to open full screen'));
+                          }}
+                        >
+                          {isVideoFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                        </Button>
+                      </div>
+
+                      {/* Video Details */}
+                      <CardContent className="p-5 space-y-3">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary" className="font-semibold text-xs">
+                              {activeVideo.semesterName}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {activeVideo.moduleName}
+                            </Badge>
+                            {activeVideo.sessionName ? (
+                              <Badge variant="outline" className="text-xs bg-muted/60">
+                                Session: {activeVideo.sessionName}
+                              </Badge>
+                            ) : null}
+                          </div>
+
+                          <h2 className="text-xl font-bold tracking-tight text-foreground">
+                            {activeVideo.title}
+                          </h2>
+
+                          {activeVideo.description && (
+                            <p className="text-sm text-muted-foreground whitespace-pre-line bg-muted/30 p-3.5 rounded-lg border">
+                              {activeVideo.description}
+                            </p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </>
+                  ) : (
+                    <CardContent className="flex aspect-video flex-col items-center justify-center gap-3 p-8 text-center">
+                      <PlayCircle className="h-12 w-12 text-muted-foreground animate-pulse" />
+                      <div>
+                        <p className="font-semibold text-base">Select a video to start watching</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Choose any video class from the playlist on the right.
+                        </p>
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              </div>
+
+              {/* Right Column: Playlist of Enrolled Session Videos */}
+              <div className="lg:col-span-4 space-y-3">
+                <Card className="border shadow-sm">
+                  <CardHeader className="pb-3 border-b">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <Play className="h-4 w-4 text-primary fill-primary" />
+                        Session Playlist
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-xs font-semibold">
+                        {displayedVideos.length} {displayedVideos.length === 1 ? 'class' : 'classes'}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-xs">
+                      All video lectures for your enrolled session
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-3">
+                    {displayedVideos.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-muted-foreground">
+                        {videoSearchQuery
+                          ? 'No videos match your search query.'
+                          : 'No videos found in this semester.'}
+                      </div>
+                    ) : (
+                      <div className="max-h-[640px] overflow-y-auto space-y-2 pr-1">
+                        {displayedVideos.map((video, idx) => {
+                          const isCurrent = activeVideo?.id === video.id;
+                          return (
+                            <button
+                              key={video.id}
+                              type="button"
+                              onClick={() => setSelectedVideoMaterialId(video.id)}
+                              className={cn(
+                                'w-full text-left p-3 rounded-lg border transition-all duration-200 flex items-start gap-3 group',
+                                isCurrent
+                                  ? 'bg-primary/10 border-primary text-foreground shadow-sm ring-1 ring-primary/30'
+                                  : 'bg-card hover:bg-muted/70 hover:border-muted-foreground/30 border-border text-foreground'
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  'shrink-0 w-8 h-8 rounded-md flex items-center justify-center mt-0.5 transition-colors',
+                                  isCurrent
+                                    ? 'bg-primary text-primary-foreground font-bold'
+                                    : 'bg-muted text-muted-foreground group-hover:bg-primary/20 group-hover:text-primary'
+                                )}
+                              >
+                                {isCurrent ? (
+                                  <PlayCircle className="h-4 w-4 animate-pulse" />
+                                ) : (
+                                  <span className="text-xs font-semibold">{idx + 1}</span>
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <Badge
+                                    variant={isCurrent ? 'default' : 'outline'}
+                                    className="text-[10px] px-1.5 py-0 h-4 font-normal"
+                                  >
+                                    {video.semesterName}
+                                  </Badge>
+                                  {isCurrent && (
+                                    <span className="text-[10px] font-semibold text-primary uppercase tracking-wider">
+                                      Playing
+                                    </span>
+                                  )}
+                                </div>
+                                <h4
+                                  className={cn(
+                                    'text-sm font-semibold leading-snug line-clamp-2 transition-colors',
+                                    isCurrent ? 'text-primary' : 'group-hover:text-primary'
+                                  )}
+                                >
+                                  {video.title}
+                                </h4>
+                                <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  {video.moduleName}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
         </main>
       ) : (
       <>
