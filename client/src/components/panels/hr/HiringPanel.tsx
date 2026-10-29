@@ -14,7 +14,7 @@ import html2pdf from 'html2pdf.js';
 import { OfferLetterDocument } from './OfferLetterDocument';
 import { Plus, UserPlus } from 'lucide-react';
 
-export function HiringPanel() {
+export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'requests' | 'candidates' }) {
   const [requests, setRequests] = useState<any[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [candidateDialogOpen, setCandidateDialogOpen] = useState(false);
@@ -210,8 +210,8 @@ export function HiringPanel() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="requests">
-        <TabsList>
+      <Tabs defaultValue={initialTab}>
+        <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="requests">Requests ({requests.length})</TabsTrigger>
           <TabsTrigger value="candidates">Candidate Pipeline ({candidates.length})</TabsTrigger>
         </TabsList>

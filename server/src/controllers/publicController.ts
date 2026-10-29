@@ -7,6 +7,8 @@ import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getSingleTenantContext } from '../utils/contextHelper.js';
 import { getStudentPortalPassword } from '../utils/studentPortalAccess.js';
+import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
+import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
@@ -205,14 +207,42 @@ const findFeeStructure = async (organizationId: string, programId: string, unive
     || null;
 };
 
-export const getPublicStudentEnrollmentPrograms = asyncHandler(async (_req: Request, res: Response) => {
+// Student self-enrollment invites created by Sales. Multi-use until they expire; every submission is attributed to the referrer.
+const findStudentInvite = async (token: unknown, organizationId: string) => {
+  if (typeof token !== 'string' || token.length < 8 || token.length > 128) return null;
+  const invite = await prisma.studyCenterInvite.findFirst({
+    where: { token, organizationId, inviteType: 'student', status: 'pending', expiresAt: { gt: new Date() } },
+    include: { referrer: { select: { id: true, name: true, status: true } } },
+  });
+  return invite && invite.referrer?.status === 'active' ? invite : null;
+};
+
+export const getPublicStudentInvite = asyncHandler(async (req: Request, res: Response) => {
   const { organizationId } = await getSingleTenantContext();
+  const invite = await findStudentInvite(req.params.token, organizationId);
+  if (!invite) {
+    res.status(404).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
+  res.json({ success: true, data: { referrerName: invite.referrer.name } });
+});
+
+export const getPublicStudentEnrollmentPrograms = asyncHandler(async (req: Request, res: Response) => {
+  const { organizationId } = await getSingleTenantContext();
+  const inviteToken = typeof req.query.invite === 'string' ? req.query.invite : '';
+  const invite = inviteToken ? await findStudentInvite(inviteToken, organizationId) : null;
+  if (inviteToken && !invite) {
+    res.status(400).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
   const programs = await prisma.program.findMany({
     where: {
       organizationId,
       status: 'active',
       isDeleted: false,
       university: { singletonKey: 'primary', status: 'active' },
+      ...(invite && invite.programIds.length > 0 ? { id: { in: invite.programIds } } : {}),
+      ...(invite && invite.universityIds.length > 0 ? { universityId: { in: invite.universityIds } } : {}),
     },
     include: {
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
@@ -300,8 +330,13 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, inviteToken, initialPayment, initialPaymentProof,
   } = req.body;
+  const invite = inviteToken ? await findStudentInvite(inviteToken, organizationId) : null;
+  if (inviteToken && !invite) {
+    res.status(400).json({ success: false, message: 'This invite link is invalid or has expired' });
+    return;
+  }
   const normalizedEmail = typeof studentEmail === 'string' ? studentEmail.trim().toLowerCase() : '';
   const studentNameValue = typeof studentName === 'string' ? studentName.trim() : '';
   const studentPhoneValue = typeof studentPhone === 'string' ? studentPhone.trim() : '';
@@ -328,10 +363,26 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
     res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
     return;
   }
+  const parsedInitialPayment = parseInitialPayment(initialPayment);
+  if ('error' in parsedInitialPayment) {
+    res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
+    return;
+  }
 
   const { program, session } = await getPublicProgramAndSession(organizationId, programId, sessionId);
   if (!program || !session) {
     res.status(400).json({ success: false, message: 'Selected program or admission session is invalid' });
+    return;
+  }
+  if (invite
+    && ((invite.programIds.length > 0 && !invite.programIds.includes(program.id))
+      || (invite.universityIds.length > 0 && !invite.universityIds.includes(program.universityId)))) {
+    res.status(400).json({ success: false, message: 'This invite link does not cover the selected program' });
     return;
   }
   if (Array.isArray(program.specialisations) && program.specialisations.length > 0 && !program.specialisations.includes(specialisation)) {
@@ -453,21 +504,42 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
         educationalDetails: parsedEducation,
         paymentMethod: paymentMethod || 'installment',
         totalFee: fee,
+        initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         publicTrackingTokenHash,
-        status: 'pending_doc_review',
-        statusHistory: [
-          {
-            status: 'pending_doc_review',
-            actorId: 'student',
-            actorName: studentNameValue,
-            timestamp: now.toISOString(),
-            note: 'Application submitted directly through the university website',
-          },
-        ],
+        // Sales-invited applications follow the Sales pipeline: attributed to the referrer and queued for Operations.
+        status: invite ? 'document_review' : 'pending_doc_review',
+        ...(invite ? { salesUserId: invite.referredBy } : {}),
+        statusHistory: invite
+          ? [
+            {
+              status: 'submitted',
+              actorId: 'student',
+              actorName: studentNameValue,
+              timestamp: now.toISOString(),
+              note: `Student enrolled themselves through the invite link of ${invite.referrer.name}`,
+            },
+            { status: 'document_review', actorId: 'system', timestamp: now.toISOString(), note: 'Forwarded to Operations for document verification' },
+          ]
+          : [
+            {
+              status: 'pending_doc_review',
+              actorId: 'student',
+              actorName: studentNameValue,
+              timestamp: now.toISOString(),
+              note: 'Application submitted directly through the university website',
+            },
+          ],
       },
       select: { id: true, studentName: true, status: true },
     });
-  });
+  }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice generation failed:', invoiceErr);
+  }
 
   try {
     const opsUsers = await prisma.user.findMany({
@@ -497,6 +569,23 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   } catch (error) {
     console.error('Failed to notify Operations about a direct student application:', error);
   }
+  if (invite) {
+    try {
+      await prisma.notification.create({
+        data: {
+          organizationId,
+          userId: invite.referredBy,
+          title: 'New Student Application',
+          message: `${studentNameValue} enrolled for ${program.name} through your invite link.`,
+          type: 'general',
+          priority: 'medium',
+          link: 'student-applications',
+        },
+      });
+    } catch (error) {
+      console.error('Failed to notify the Sales referrer about an invited application:', error);
+    }
+  }
 
   res.status(201).json({ success: true, data: { trackingToken: token, enrollmentId: enrollment.id, status: enrollment.status } });
 });
@@ -510,7 +599,7 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
   const {
     studentName, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, initialPayment, initialPaymentProof,
   } = req.body;
   const studentNameValue = typeof studentName === 'string' ? studentName.trim() : '';
   const studentPhoneValue = typeof studentPhone === 'string' ? studentPhone.trim() : '';
@@ -525,6 +614,16 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
   }
   if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
     res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
+    return;
+  }
+  const parsedInitialPayment = parseInitialPayment(initialPayment);
+  if ('error' in parsedInitialPayment) {
+    res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
     return;
   }
   const { program, session } = await getPublicProgramAndSession(enrollment.organizationId, programId, sessionId);
@@ -624,6 +723,8 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
         educationalDetails: parseJsonArray(educationalDetails),
         paymentMethod: paymentMethod || 'installment',
         totalFee: fee,
+        initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         status: 'pending_doc_review',
         departmentRemarks: null,
         departmentReviewedBy: null,
@@ -632,7 +733,13 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
         statusHistory,
       },
     });
-  });
+  }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice update failed:', invoiceErr);
+  }
 
   try {
     const opsUsers = await prisma.user.findMany({
@@ -768,6 +875,8 @@ const sendPublicStudentApplicationStatus = (enrollment: any, res: Response) => {
         maritalStatus: enrollment.maritalStatus || '',
         currentlyWorking: enrollment.currentlyWorking || '',
         paymentMethod: enrollment.paymentMethod || 'installment',
+        initialPayment: enrollment.initialPayment ?? 500,
+        initialPaymentProof: enrollment.initialPaymentProof || '',
         documents: parseJsonArray(enrollment.documents).filter((document: any) => document?.reqName !== 'Student Payment Proof'),
         educationalDetails: parseJsonArray(enrollment.educationalDetails),
       },

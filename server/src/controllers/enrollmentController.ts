@@ -7,6 +7,8 @@ import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
+import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -199,7 +201,7 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, documents, educationalDetails, sessionId, specialisation,
     abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto, admissionDate,
-    pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee
+    pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee, initialPayment, initialPaymentProof
   } = req.body;
   const organizationId = req.user.organizationId;
   const studyCenterId = req.user.studyCenterId || req.body.studyCenterId || null;
@@ -214,6 +216,16 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   }
   if (!/^\d{12}$/.test(String(abcId)) || !/^\d{12}$/.test(String(debId))) {
     res.status(400).json({ success: false, message: 'ABCID and DEBID must each be exactly 12 digits' });
+    return;
+  }
+  const parsedInitialPayment = parseInitialPayment(initialPayment);
+  if ('error' in parsedInitialPayment) {
+    res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
     return;
   }
   if (req.user.role === 'center_admin' && !studyCenterId) {
@@ -429,6 +441,8 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
         educationalDetails: educationalDetails ? (typeof educationalDetails === 'string' ? JSON.parse(educationalDetails) : educationalDetails) : [],
         paymentMethod: paymentMethod || 'installment',
         totalFee: totalFee ? Number(totalFee) : null,
+        initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         organization: { connect: { id: organizationId } },
         program: { connect: { id: programId } },
         studyCenter: studyCenterId ? { connect: { id: studyCenterId } } : undefined,
@@ -437,6 +451,12 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
       }
     });
   }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice generation failed:', invoiceErr);
+  }
 
   // Notify Operations Users
   try {

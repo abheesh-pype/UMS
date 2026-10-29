@@ -5,7 +5,7 @@ import prisma from '../lib/prisma.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
-  buildStudentPayload, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, requestLaunchTicket, SyncError, syncStudent,
+  buildStudentPayload, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, SyncError, syncStudent,
 } from '../services/examPortalSync.js';
 
 const encryptionKey = () => {
@@ -138,6 +138,78 @@ export const syncExamPortalStudent = asyncHandler(async (req: AuthRequest, res: 
     if (!(error instanceof SyncError)) throw error;
     console.warn('[exam-portal-sync] failed', { by: req.user.id, code: error.code });
     res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+const notConfigured = (res: Response) => {
+  const { missing, invalid } = getSyncConfigIssues();
+  res.status(503).json({ success: false, message: 'Exam Portal sync is not configured on the server', data: { missing, invalid } });
+};
+
+const syncErrorStatus = (error: SyncError) => (error.statusCode === 504 ? 504 : error.statusCode === 409 ? 409 : 502);
+
+/** Academic Admin single sign-on: returns a single-use link that opens the Exam Portal (questions, bulk upload, assessments). */
+export const openExamPortalAsStaff = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  try {
+    const launchUrl = await requestStaffLaunch(config, { id: req.user.id, name: req.user.name, email: req.user.email });
+    console.info('[exam-portal-staff] launch', { by: req.user.id });
+    res.json({ success: true, data: { launchUrl } });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-staff] failed', { by: req.user.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+const GRACE_MINUTES = 30;
+
+/**
+ * Creates/updates the Exam Portal assessment for a UMS examination (idempotent: the examination id is the external id).
+ * Body: { startsAt: ISO date-time, durationMinutes?: number, active?: boolean }. The window runs from startsAt until
+ * duration + 30 minutes of late-entry grace.
+ */
+export const publishExaminationToExamPortal = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+
+  const examination = await prisma.examination.findFirst({
+    where: { id: req.params.examinationId, organizationId: req.user.organizationId },
+    include: { semester: { select: { semesterName: true } } },
+  });
+  if (!examination) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+  const startsAt = new Date(String(req.body?.startsAt ?? ''));
+  if (Number.isNaN(startsAt.getTime())) {
+    res.status(400).json({ success: false, message: 'A valid start date and time is required' });
+    return;
+  }
+  const schedule = Array.isArray(examination.schedule) ? examination.schedule : [];
+  const scheduledDuration = Math.max(0, ...schedule.map((row: any) => Number(row?.examDuration) || 0));
+  const durationMinutes = req.body?.durationMinutes != null ? Number(req.body.durationMinutes) : (scheduledDuration || 120);
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) {
+    res.status(400).json({ success: false, message: 'Duration must be a whole number of minutes between 1 and 1440' });
+    return;
+  }
+  try {
+    const result = await publishAssessment(config, {
+      externalAssessmentId: examination.id,
+      name: examination.examinationName,
+      examination: examination.semester?.semesterName || examination.examinationType,
+      startDate: startsAt,
+      endDate: new Date(startsAt.getTime() + (durationMinutes + GRACE_MINUTES) * 60_000),
+      totalTimeMinutes: durationMinutes,
+      active: req.body?.active !== false,
+    });
+    console.info('[exam-portal-publish] ok', { by: req.user.id, examination: examination.id, outcome: result.outcome });
+    res.json({ success: true, data: { ...result, startsAt, durationMinutes } });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-publish] failed', { by: req.user.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
   }
 });
 

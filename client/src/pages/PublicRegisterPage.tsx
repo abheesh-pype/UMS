@@ -52,6 +52,10 @@ export default function PublicRegisterPage() {
     const validateInvite = () => {
       axios.get(`${API_BASE}/public/invite/${token}`)
         .then(res => {
+          if (res.data.data?.inviteType === 'student') {
+            window.location.replace(`/apply?invite=${encodeURIComponent(token)}`);
+            return;
+          }
           setUniversities(res.data.data?.universityIds || []);
           setInvitePrograms(res.data.data?.programIds || []);
           setValidating(false);

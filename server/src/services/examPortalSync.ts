@@ -21,6 +21,8 @@ export interface SyncConfig {
   scope?: string;
   audience?: string;
   launchTicketUrl: string;
+  staffLaunchTicketUrl: string;
+  assessmentsUrl: string;
 }
 
 const REQUIRED = [
@@ -61,6 +63,8 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
     upsertUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim(),
     launchTicketUrl: env.EXAM_PORTAL_LAUNCH_TICKET_URL?.trim()
       || env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/launch-tickets'),
+    staffLaunchTicketUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-launch-tickets'),
+    assessmentsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessments'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
   };
@@ -249,18 +253,14 @@ export const syncStudent = (
 
 // ---- Launch ticket (student signs in to the Exam Portal through UMS) ---------------------
 
-/**
- * Asks the Exam Portal for a single-use sign-in link for an already-provisioned student. The returned URL is
- * only accepted if it is HTTPS (or localhost outside production) and on the same origin as the configured portal,
- * so a compromised or misconfigured response cannot redirect students elsewhere.
- */
-export const requestLaunchTicket = async (config: SyncConfig, externalStudentId: string, deps: Deps = {}) => {
-  const post = async (token: string) => {
+/** Authenticated JSON request to the Exam Portal: one token refresh + retry on 401, explicit timeout, no redirects. */
+const portalRequest = async (config: SyncConfig, method: string, url: string, body: unknown, deps: Deps = {}) => {
+  const send = async (token: string) => {
     try {
-      return await (deps.fetch ?? fetch)(config.launchTicketUrl, {
-        method: 'POST',
+      return await (deps.fetch ?? fetch)(url, {
+        method,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ tenant_id: config.tenantId, external_student_id: externalStudentId }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(deps.timeoutMs ?? 10_000),
         redirect: 'error',
       });
@@ -268,26 +268,95 @@ export const requestLaunchTicket = async (config: SyncConfig, externalStudentId:
       throw new SyncError(504, 'The Exam Portal did not respond in time', 'timeout');
     }
   };
-  let response = await post(await getAccessToken(config, deps));
+  let response = await send(await getAccessToken(config, deps));
   if (response.status === 401) {
     clearTokenCache();
-    response = await post(await getAccessToken(config, deps, true));
+    response = await send(await getAccessToken(config, deps, true));
   }
+  return response;
+};
+
+/** Only accepts a sign-in URL that is HTTPS (or localhost outside production) and on the portal's own origin. */
+const trustedPortalUrl = (config: SyncConfig, value: unknown) => {
+  let url: URL;
+  try { url = new URL(String(value)); } catch { throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed'); }
+  const production = process.env.NODE_ENV === 'production';
+  const secure = url.protocol === 'https:' || (!production && url.protocol === 'http:' && isLocalHost(url.hostname));
+  if (!secure || url.origin !== new URL(config.launchTicketUrl).origin || url.username || url.password) {
+    throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
+  }
+  return url.toString();
+};
+
+/** Asks the Exam Portal for a single-use sign-in link for an already-provisioned student. */
+export const requestLaunchTicket = async (config: SyncConfig, externalStudentId: string, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'POST', config.launchTicketUrl, { tenant_id: config.tenantId, external_student_id: externalStudentId }, deps);
   if (response.status === 401 || response.status === 403) {
     throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope students:launch)', 'unauthorized');
   }
   if (response.status === 404) throw new SyncError(502, 'The student is not provisioned in the Exam Portal', 'invalid_student');
   if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
   const body = await safeJson(response);
-  let launchUrl: URL;
-  try { launchUrl = new URL(body?.launch_url); } catch { throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed'); }
-  const production = process.env.NODE_ENV === 'production';
-  const portalOrigin = new URL(config.launchTicketUrl).origin;
-  const secure = launchUrl.protocol === 'https:' || (!production && launchUrl.protocol === 'http:' && isLocalHost(launchUrl.hostname));
-  if (body?.ok !== true || !secure || launchUrl.origin !== portalOrigin || launchUrl.username || launchUrl.password) {
-    throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
+  if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
+  return trustedPortalUrl(config, body.launch_url);
+};
+
+// ---- Staff single sign-on (Academic Admin -> Exam Portal question/assessment authoring) ----
+
+export const portalStaffId = (userId: string) => `ums-user:${userId}`;
+
+/** Single-use sign-in link for a UMS staff member. The portal creates/updates a restricted account for them. */
+export const requestStaffLaunch = async (config: SyncConfig, user: { id: string; name: string; email: string }, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'POST', config.staffLaunchTicketUrl,
+    { tenant_id: config.tenantId, external_user_id: portalStaffId(user.id), name: user.name, email: user.email }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
   }
-  return launchUrl.toString();
+  if (response.status === 409) {
+    throw new SyncError(409, 'An Exam Portal account with your email already exists. Ask the portal administrator to resolve it.', 'account_conflict');
+  }
+  if (response.status === 400) throw new SyncError(502, 'The Exam Portal rejected the account details', 'rejected');
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
+  return trustedPortalUrl(config, body.launch_url);
+};
+
+// ---- Assessment (examination) publishing ----
+
+export interface PortalAssessment {
+  externalAssessmentId: string;
+  name: string;
+  examination: string;
+  startDate: Date;
+  endDate: Date;
+  totalTimeMinutes: number;
+  active: boolean;
+}
+
+/** Creates/updates the assessment shell in the Exam Portal. Success requires the portal to confirm with its assessment id. */
+export const publishAssessment = async (config: SyncConfig, a: PortalAssessment, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'PUT', config.assessmentsUrl, {
+    tenant_id: config.tenantId,
+    external_assessment_id: a.externalAssessmentId,
+    name: a.name,
+    examination: a.examination,
+    start_date: a.startDate.toISOString(),
+    end_date: a.endDate.toISOString(),
+    total_time: a.totalTimeMinutes,
+    status: a.active ? 'active' : 'inactive',
+  }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope assessments:write)', 'unauthorized');
+  }
+  if (response.status === 400) throw new SyncError(502, 'The Exam Portal rejected the examination details', 'rejected');
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if ((response.status !== 200 && response.status !== 201) || body?.ok !== true || !Number.isInteger(body.assessment_id)
+    || String(body.external_assessment_id) !== a.externalAssessmentId) {
+    throw new SyncError(502, 'The Exam Portal response did not confirm the examination', 'unconfirmed');
+  }
+  return { assessmentId: body.assessment_id as number, outcome: response.status === 201 ? 'created' as const : 'updated' as const };
 };
 
 // ---- Authorization + data loading -------------------------------------------------------

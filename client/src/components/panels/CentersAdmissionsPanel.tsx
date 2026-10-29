@@ -101,6 +101,10 @@ export function CentersAdmissionsPanel() {
     setMissingDocumentUrls(current => (current.has(url) ? current : new Set(current).add(url)));
   const departmentType = ((user as any)?.department?.type || (user as any)?.subDepartment?.parentDept?.type || '').toLowerCase();
   const isFinanceDepartment = ['finance_admin', 'finance_sub_admin'].includes(user?.role || '') || departmentType === 'finance';
+  // Finance sees both study-centre admissions and student admissions; toggle between them
+  const [admissionView, setAdmissionView] = useState<'centers' | 'students'>('centers');
+  const showCentersView = isFinanceDepartment && admissionView === 'centers';
+  const showStudentsView = !isFinanceDepartment || admissionView === 'students';
 
   const fetch = async () => {
     setLoading(true);
@@ -150,8 +154,32 @@ export function CentersAdmissionsPanel() {
         </Button>
       </div>
 
-      {isFinanceDepartment && <FinanceCenterVerificationPanel />}
+      {isFinanceDepartment && (
+        <div className="inline-flex rounded-lg border border-border bg-muted/30 p-1 gap-1">
+          {([
+            ['centers', 'Centers Admission', Building2],
+            ['students', 'Students Admission', GraduationCap],
+          ] as const).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setAdmissionView(value)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all',
+                admissionView === value
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-background'
+              )}
+            >
+              <Icon className="w-4 h-4" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
 
+      {showCentersView && <FinanceCenterVerificationPanel />}
+
+      {showStudentsView && (<>
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -260,6 +288,7 @@ export function CentersAdmissionsPanel() {
           ))}
         </div>
       )}
+      </>)}
 
       <Dialog open={!!selectedEnrollment} onOpenChange={open => !open && setSelectedEnrollment(null)}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

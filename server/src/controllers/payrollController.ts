@@ -247,7 +247,35 @@ export const getPayrollBatches = asyncHandler(async (req: AuthRequest, res: Resp
     where: { organizationId: req.user.organizationId },
     orderBy: { createdAt: 'desc' }
   });
-  res.status(200).json({ success: true, count: batches.length, data: batches });
+
+  // Attach the employees in each batch so the batch can be reviewed and paid as one group
+  const memberIds = [...new Set(batches.flatMap(batch => batch.payrollIds || []))];
+  const members = memberIds.length ? await prisma.payroll.findMany({
+    where: { id: { in: memberIds }, organizationId: req.user.organizationId },
+    select: {
+      id: true, month: true, basicSalary: true, grossSalary: true, netSalary: true, status: true,
+      paymentDate: true, paymentMethod: true, paymentReference: true,
+      user: {
+        select: {
+          name: true, email: true, designation: true,
+          department: { select: { name: true } },
+          employeeProfileDetail: { select: { employeeCode: true, bankName: true, bankAccountNo: true, ifscCode: true } }
+        }
+      }
+    }
+  }) : [];
+  const memberById = new Map(members.map(member => [member.id, member]));
+  const userIds = [...new Set(batches.flatMap(batch => [batch.transferredBy, batch.approvedBy]).filter(Boolean))];
+  const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
+  const userNameById = new Map(users.map(user => [user.id, user.name]));
+
+  const data = batches.map(batch => ({
+    ...batch,
+    transferredByName: userNameById.get(batch.transferredBy) || null,
+    approvedByName: userNameById.get(batch.approvedBy) || null,
+    payrolls: (batch.payrollIds || []).map(id => memberById.get(id)).filter(Boolean)
+  }));
+  res.status(200).json({ success: true, count: data.length, data });
 });
 
 export const getPayrollBatch = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -347,4 +375,153 @@ export const completeBatchPayment = asyncHandler(async (req: AuthRequest, res: R
     return;
   }
   res.status(200).json({ success: true, data: batch });
+});
+
+// ── Finance payroll review ─────────────────────────────────────────────
+// Finance only sees payroll that HR selected and submitted to Finance.
+
+const FINANCE_APPROVED_BATCH_STATUSES = ['approved_by_finance', 'payment_in_progress', 'completed'];
+
+const getFinancePayrollApproval = (payroll: any, batch: any) => {
+  if (payroll.status === 'paid') return 'paid';
+  // HR's confirm step stamps financeApprovedAt, so Finance approval is tracked by financeApprovedBy
+  if (payroll.financeApprovedBy || (batch && FINANCE_APPROVED_BATCH_STATUSES.includes(batch.status))) return 'approved';
+  return 'pending';
+};
+
+export const getFinancePayrollRecords = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payrolls = await prisma.payroll.findMany({
+    where: {
+      organizationId: req.user.organizationId,
+      status: { in: ['transferred_to_finance', 'paid'] }
+    },
+    include: {
+      user: {
+        select: {
+          id: true, name: true, email: true, phone: true, userId: true, designation: true,
+          department: { select: { name: true } },
+          employeeProfileDetail: {
+            select: { employeeCode: true, bankName: true, bankAccountNo: true, ifscCode: true, panNumber: true }
+          }
+        }
+      },
+      confirmer: { select: { name: true } },
+      transferer: { select: { name: true } },
+      financeApprover: { select: { name: true } }
+    },
+    orderBy: [{ transferredToFinanceAt: 'desc' }, { createdAt: 'desc' }]
+  });
+
+  const batches = await prisma.payrollBatch.findMany({
+    where: { organizationId: req.user.organizationId },
+    orderBy: { createdAt: 'asc' }
+  });
+  // Latest batch that contains each payroll
+  const batchByPayrollId = new Map<string, any>();
+  for (const batch of batches) {
+    for (const payrollId of batch.payrollIds || []) batchByPayrollId.set(payrollId, batch);
+  }
+
+  const data = payrolls.map(payroll => {
+    const batch = batchByPayrollId.get(payroll.id) || null;
+    return {
+      ...payroll,
+      batch: batch ? { id: batch.id, status: batch.status, remarks: batch.remarks, createdAt: batch.createdAt } : null,
+      financeApproval: getFinancePayrollApproval(payroll, batch)
+    };
+  });
+
+  res.status(200).json({ success: true, count: data.length, data });
+});
+
+export const financeApprovePayrolls = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { payrollIds } = req.body;
+  if (!Array.isArray(payrollIds) || payrollIds.length === 0 ||
+      payrollIds.some(id => typeof id !== 'string')) {
+    res.status(400).json({ success: false, message: 'Select at least one payroll record to approve' });
+    return;
+  }
+
+  const uniquePayrollIds = [...new Set(payrollIds)];
+  const payrolls = await prisma.payroll.findMany({
+    where: {
+      id: { in: uniquePayrollIds },
+      organizationId: req.user.organizationId,
+      status: 'transferred_to_finance',
+      financeApprovedBy: null
+    },
+    select: { id: true }
+  });
+  if (payrolls.length !== uniquePayrollIds.length) {
+    res.status(400).json({ success: false, message: 'One or more selected payroll records are not awaiting Finance approval' });
+    return;
+  }
+
+  const approvedAt = new Date();
+  const approvedBatch = await prisma.$transaction(async transaction => {
+    await transaction.payroll.updateMany({
+      where: { id: { in: uniquePayrollIds }, organizationId: req.user.organizationId },
+      data: { financeApprovedBy: req.user.id, financeApprovedAt: approvedAt }
+    });
+
+    const selectedPayrolls = await transaction.payroll.findMany({
+      where: { id: { in: uniquePayrollIds }, organizationId: req.user.organizationId },
+      select: { id: true, month: true, netSalary: true }
+    });
+    const months = [...new Set(selectedPayrolls.map(payroll => payroll.month))].sort();
+    const totalAmount = selectedPayrolls.reduce((sum, payroll) => sum + (payroll.netSalary || 0), 0);
+
+    // Move the selected records out of the batches HR submitted them in
+    const sourceBatches = await transaction.payrollBatch.findMany({
+      where: {
+        organizationId: req.user.organizationId,
+        status: 'pending_finance_approval',
+        payrollIds: { hasSome: uniquePayrollIds }
+      }
+    });
+    const transferredBy = sourceBatches[0]?.transferredBy || null;
+    const selected = new Set(uniquePayrollIds);
+    for (const batch of sourceBatches) {
+      const remainingIds = batch.payrollIds.filter(id => !selected.has(id));
+      if (remainingIds.length === 0) {
+        // Every record of this HR batch is in the approved group
+        await transaction.payrollBatch.delete({ where: { id: batch.id } });
+        continue;
+      }
+      const remaining = await transaction.payroll.findMany({
+        where: { id: { in: remainingIds }, organizationId: req.user.organizationId },
+        select: { netSalary: true }
+      });
+      await transaction.payrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          payrollIds: remainingIds,
+          employeeCount: remainingIds.length,
+          totalAmount: remaining.reduce((sum, payroll) => sum + (payroll.netSalary || 0), 0)
+        }
+      });
+    }
+
+    return transaction.payrollBatch.create({
+      data: {
+        organizationId: req.user.organizationId,
+        month: months.join(', '),
+        payrollIds: uniquePayrollIds,
+        totalAmount,
+        employeeCount: uniquePayrollIds.length,
+        transferredBy,
+        remarks: typeof req.body.remarks === 'string' && req.body.remarks.trim() ? req.body.remarks.trim() : null,
+        status: 'approved_by_finance' as any,
+        approvedBy: req.user.id,
+        approvedAt
+      }
+    });
+  });
+
+  res.status(200).json({
+    success: true,
+    count: uniquePayrollIds.length,
+    data: approvedBatch,
+    message: `Approved ${uniquePayrollIds.length} payroll record${uniquePayrollIds.length === 1 ? '' : 's'} as one payroll batch`
+  });
 });

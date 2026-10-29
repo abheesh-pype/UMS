@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { GraduationCap, RefreshCw, Upload, Plus, Trash2, FileText, Edit, ShieldAlert, Check } from 'lucide-react';
+import { GraduationCap, RefreshCw, Upload, Plus, Trash2, FileText, Edit, ShieldAlert, Check, CreditCard } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -59,15 +59,33 @@ interface Session {
   programId?: string | null;
 }
 
+const MIN_INITIAL_PAYMENT = 500;
+const getInitialPaymentError = (value: string, label = 'Initial payment') => {
+  if (!value.trim()) return `${label} is required`;
+  if (!/^\d+$/.test(value.trim())) return `${label} must be a number`;
+  if (Number(value) < MIN_INITIAL_PAYMENT) return `${label} must be at least ₹${MIN_INITIAL_PAYMENT}`;
+  return '';
+};
+
+// Name of the paying-amount field, following the selected payment method.
+const getPaymentAmountLabel = (method: string, programName?: string) =>
+  method === 'full_payment'
+    ? `${programName || 'Program'} Program Fee`
+    : method === 'yearly'
+      ? 'Yearly Payment'
+      : 'Semester Fee';
+
 interface EnrollStudentPanelProps {
   mode?: 'center' | 'sales' | 'public';
   onSubmitted?: (result?: any) => void;
   onBack?: () => void;
   initialData?: Record<string, any>;
   resubmitAuthorization?: { token?: string; email?: string; password?: string };
+  /** Public mode only: Sales student invite token. Restricts programs and attributes the application to the referrer. */
+  inviteToken?: string;
 }
 
-export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initialData, resubmitAuthorization }: EnrollStudentPanelProps) {
+export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initialData, resubmitAuthorization, inviteToken }: EnrollStudentPanelProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,6 +125,13 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
   const [educationList, setEducationList] = useState<EducationDetail[]>([]);
   const [documentList, setDocumentList] = useState<DocumentFile[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<'full_payment' | 'yearly' | 'semester'>('yearly');
+  // Amount collected at admission. Required, whole rupees, minimum ₹500.
+  const [initialPayment, setInitialPayment] = useState<string>(String(MIN_INITIAL_PAYMENT));
+  // Required proof of the initial payment (image or PDF), stored with the enrollment.
+  const [initialPaymentProof, setInitialPaymentProof] = useState<{ name: string; url: string } | null>(null);
+  const [uploadingInitialPaymentProof, setUploadingInitialPaymentProof] = useState(false);
+  // Program/session/method the paying amount was last auto-filled for; a resubmission keeps its saved amount.
+  const paymentAutofillKey = useRef('');
   
   // Single entry helper state for educational details form
   const [tempEdu, setTempEdu] = useState<EducationDetail>({
@@ -137,7 +162,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         return;
       }
       if (mode === 'public') {
-        const programsResponse = await api.get('/public/student-enrollment/programs');
+        const programsResponse = await api.get('/public/student-enrollment/programs', { params: inviteToken ? { invite: inviteToken } : undefined });
         setPrograms(programsResponse.data.data || []);
         setWallet(null);
         setCenterConfig(null);
@@ -158,7 +183,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     }
   };
 
-  useEffect(() => { fetchData(); }, [mode]);
+  useEffect(() => { fetchData(); }, [mode, inviteToken]);
 
   const fetchSessions = async (programId: string) => {
     try {
@@ -195,6 +220,14 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         ? initialData.paymentMethod
         : 'yearly'
     );
+    if (initialData.initialPayment !== undefined && initialData.initialPayment !== null && initialData.initialPayment !== '') {
+      setInitialPayment(String(initialData.initialPayment));
+      const initialMethod = initialData.paymentMethod === 'full_payment' || initialData.paymentMethod === 'semester' ? initialData.paymentMethod : 'yearly';
+      paymentAutofillKey.current = `${initialData.programId}|${initialData.sessionId || ''}|${initialMethod}`;
+    }
+    if (typeof initialData.initialPaymentProof === 'string' && initialData.initialPaymentProof) {
+      setInitialPaymentProof({ name: 'Payment proof', url: initialData.initialPaymentProof });
+    }
   }, [initialData, programs]);
 
   useEffect(() => {
@@ -374,6 +407,75 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
     return Number(breakdowns[0].universityFee || 0);
   };
 
+  // Fee-structure helpers for the verification dialog's Payment Summary.
+  const parseFeeBreakdowns = (fs: any): any[] => {
+    let breakdowns = fs?.feeBreakdown;
+    if (typeof breakdowns === 'string') {
+      try { breakdowns = JSON.parse(breakdowns); } catch { breakdowns = []; }
+    }
+    return Array.isArray(breakdowns) ? breakdowns : [];
+  };
+
+  const parseBreakdownAdditionalFees = (b: any): { label: string; amount: number }[] => {
+    if (typeof b?.additionalFees !== 'string' || b.additionalFees.trim() === '') return [];
+    return b.additionalFees.split(',').map((s: string) => {
+      const parts = s.trim().split(':');
+      return { label: (parts[0] || 'Additional Fee').trim(), amount: Number(parts[1]) || 0 };
+    });
+  };
+
+  // Whole-program fee for the selected payment method: the one-time fee, otherwise the sum of the fee schedule.
+  const getProgramTotalFee = (p: Program): number => {
+    if (paymentMethod === 'full_payment') return getTotalFee(p, 'full_payment');
+    const scheduleTotal = getFeeSchedule(p).reduce((s, item) => s + item.amount, 0);
+    if (scheduleTotal > 0) return scheduleTotal;
+    return getTotalFee(p, 'full_payment') || getTotalFee(p);
+  };
+
+  // Full installment schedule from the fee structure (Semester 1, Semester 2 ...), shown when it has more than one entry.
+  const getFeeSchedule = (p: Program): { label: string; amount: number }[] => {
+    const fs: any = getSelectedProgramFeeStructure(p);
+    if (!fs) return [];
+    const breakdowns = parseFeeBreakdowns(fs);
+    const cycleUnit = fs.billingCycle === 'per_semester' ? 'Semester'
+      : (fs.billingCycle === 'per_year' || fs.billingCycle === 'yearly') ? 'Year'
+        : 'Installment';
+    const scheduleLabel = (value: any, index: number) =>
+      value !== undefined && value !== null && value !== '' && !Number.isNaN(Number(value))
+        ? `${cycleUnit} ${value}`
+        : (value ? String(value) : `${cycleUnit} ${index + 1}`);
+    if (breakdowns.length < 2) {
+      // No multi-entry breakdown: fall back to the configured per-semester amounts.
+      const semesterFees = Array.isArray(fs.semesterFees) ? fs.semesterFees.map(Number).filter((n: number) => n > 0) : [];
+      return semesterFees.length > 1 ? semesterFees.map((amount: number, index: number) => ({ label: `Semester ${index + 1}`, amount })) : [];
+    }
+    const addFees: { label: string; amount: number }[] = Array.isArray(fs.additionalFees) ? fs.additionalFees : [];
+    const additionalFeesTotal = addFees.filter(f => f.label !== 'GST').reduce((s, f) => s + (Number(f.amount) || 0), 0);
+    const gstEntry = addFees.find(f => f.label === 'GST');
+    return breakdowns.map((b: any, index: number) => {
+      let amount = fs.level === 'university'
+        ? Number(b.universityFee || 0)
+        : Number(b.baseFee || 0) + Number(b.examFee || 0) + parseBreakdownAdditionalFees(b).reduce((s, f) => s + f.amount, 0);
+      if (fs.level !== 'university') {
+        if (amount === 0) amount = Number(b.universityFee || 0);
+        if (index === 0) amount += additionalFeesTotal;
+        if (gstEntry) amount += Math.round((amount * gstEntry.amount) / 100);
+      }
+      return { label: scheduleLabel(b.year, index), amount };
+    });
+  };
+
+  // Auto-fill the paying amount with the selected method's fee (One-Time / Yearly / Semester); the user can still edit it.
+  useEffect(() => {
+    if (!selectedProgram || !selectedSessionId) return;
+    const key = `${selectedProgram.id}|${selectedSessionId}|${paymentMethod}`;
+    if (paymentAutofillKey.current === key) return;
+    paymentAutofillKey.current = key;
+    const fee = getTotalFee(selectedProgram, paymentMethod);
+    if (fee > 0) setInitialPayment(String(fee));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProgram, selectedSessionId, paymentMethod]);
+
 
   const getBillingCycleText = () => paymentMethod === 'yearly' ? 'Yearly' : paymentMethod === 'semester' ? 'Semester' : 'One-Time';
 
@@ -418,6 +520,32 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       toast.error(err.response?.data?.message || 'File upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleInitialPaymentProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+      toast.error('Payment proof must be an image or PDF file');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingInitialPaymentProof(true);
+    try {
+      const res = await api.post(mode === 'public' ? '/public/student-enrollment/upload' : '/enrollment/payment-proof-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.success) {
+        setInitialPaymentProof({ name: res.data.filename || file.name, url: res.data.url });
+        toast.success('Payment proof uploaded');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Payment proof upload failed');
+    } finally {
+      setUploadingInitialPaymentProof(false);
     }
   };
 
@@ -620,6 +748,15 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       toast.error(`Missing required fields: ${missing.join(', ')}`);
       return;
     }
+    const initialPaymentError = getInitialPaymentError(initialPayment, getPaymentAmountLabel(paymentMethod, selectedProgram?.name));
+    if (initialPaymentError) {
+      toast.error(initialPaymentError);
+      return;
+    }
+    if (!initialPaymentProof) {
+      toast.error('Payment proof is required');
+      return;
+    }
     setConfirmOpen(true);
   };
 
@@ -652,7 +789,10 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
         documents: documentList,
         educationalDetails: educationList,
         paymentMethod: paymentMethod,
+        initialPayment: Number(initialPayment),
+        initialPaymentProof: initialPaymentProof?.url || '',
         totalFee: getTotalFee(selectedProgram),
+        ...(mode === 'public' && inviteToken && !isResubmitting ? { inviteToken } : {}),
         ...(isResubmitting && !resubmitAuthorization?.token
           ? { email: resubmitAuthorization?.email, password: resubmitAuthorization?.password }
           : {}),
@@ -688,6 +828,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
       setSelectedSessionId('');
       setEducationList([]);
       setDocumentList([]);
+      setInitialPayment(String(MIN_INITIAL_PAYMENT));
+      setInitialPaymentProof(null);
       setSelectedProgram(null);
       fetchData();
     } catch (e: any) {
@@ -812,6 +954,17 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
           }
         }
       }
+    } else if (stepNum === 5) {
+      // Validate Step 5: paying amount and its proof
+      const initialPaymentError = getInitialPaymentError(initialPayment, getPaymentAmountLabel(paymentMethod, selectedProgram?.name));
+      if (initialPaymentError) {
+        toast.error(initialPaymentError);
+        return false;
+      }
+      if (!initialPaymentProof) {
+        toast.error('Payment proof is required');
+        return false;
+      }
     }
     return true;
   };
@@ -845,7 +998,8 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
             { step: 1, label: 'Admission Info', icon: GraduationCap },
             { step: 2, label: 'Personal Details', icon: Edit },
             { step: 3, label: 'Family Info', icon: Plus },
-            { step: 4, label: 'Documents', icon: FileText }
+            { step: 4, label: 'Documents', icon: FileText },
+            { step: 5, label: 'Payment Info', icon: CreditCard }
           ].map((item) => {
             const IconComp = item.icon;
             const isActive = activeStep === item.step;
@@ -1273,6 +1427,68 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
             </div>
           )}
 
+          {activeStep === 5 && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-primary" /> Payment Info
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Enter the amount being paid now and upload its payment proof.
+                </p>
+              </div>
+
+              <div className="p-4 border rounded-xl shadow-sm bg-slate-50 dark:bg-slate-900/50 space-y-2">
+                <Label htmlFor="initial-payment" className="text-sm font-semibold">
+                  {getPaymentAmountLabel(paymentMethod, selectedProgram?.name)} (₹) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="initial-payment"
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  value={initialPayment}
+                  onChange={e => setInitialPayment(e.target.value.replace(/\D/g, ''))}
+                  placeholder={String(MIN_INITIAL_PAYMENT)}
+                  className={cn('max-w-xs bg-background', getInitialPaymentError(initialPayment) && 'border-destructive focus-visible:ring-destructive')}
+                />
+                {getInitialPaymentError(initialPayment, getPaymentAmountLabel(paymentMethod, selectedProgram?.name)) ? (
+                  <p className="text-xs text-destructive">{getInitialPaymentError(initialPayment, getPaymentAmountLabel(paymentMethod, selectedProgram?.name))}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Auto-filled from the selected payment method ({getBillingCycleText()}): ₹{selectedProgram ? getTotalFee(selectedProgram).toLocaleString() : 0}. You can change it. Minimum ₹{MIN_INITIAL_PAYMENT}, numbers only.
+                  </p>
+                )}
+              </div>
+
+              <div className="p-4 border rounded-xl shadow-sm bg-slate-50 dark:bg-slate-900/50 space-y-2">
+                <Label htmlFor="initial-payment-proof" className="text-sm font-semibold">
+                  Payment Proof <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="initial-payment-proof"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  required={!initialPaymentProof}
+                  disabled={uploadingInitialPaymentProof}
+                  onChange={handleInitialPaymentProofUpload}
+                  className={cn('max-w-sm bg-background cursor-pointer', !initialPaymentProof && 'border-destructive')}
+                />
+                {uploadingInitialPaymentProof ? (
+                  <p className="text-xs text-muted-foreground">Uploading...</p>
+                ) : initialPaymentProof ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <span className="truncate font-medium">{initialPaymentProof.name}</span>
+                    <a href={initialPaymentProof.url} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold flex-shrink-0">View</a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-destructive">Upload the payment proof (image or PDF).</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Stepper Footer Controls */}
           <div className="flex items-center justify-between border-t pt-5 mt-8 bg-slate-50/50 -mx-6 -mb-6 p-6 rounded-b-2xl">
             <Button
@@ -1286,10 +1502,10 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
             </Button>
             
             <span className="text-xs font-semibold text-slate-500">
-              Step {activeStep} of 4
+              Step {activeStep} of 5
             </span>
 
-            {activeStep < 4 ? (
+            {activeStep < 5 ? (
               <Button
                 type="button"
                 onClick={() => {
@@ -1313,7 +1529,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
               </Button>
             )}
           </div>
-          {mode === 'center' && activeStep === 4 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
+          {mode === 'center' && activeStep === 5 && selectedProgram && selectedProgram?.university?.category === 'direct_iits' && balance < getTotalFee(selectedProgram) && (
             <p className="text-xs text-destructive text-center mt-3">Insufficient wallet balance. Please top up first.</p>
           )}
         </CardContent>
@@ -1417,6 +1633,58 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground italic bg-muted/15 p-3 rounded-lg border">No files uploaded.</p>
+                )}
+              </div>
+
+              {/* Payment Summary */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-sm text-foreground">Payment Summary</h4>
+                <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 text-sm space-y-2.5">
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="font-semibold text-foreground">
+                      Total Program Fee ({selectedProgram.university?.name ? `${selectedProgram.university.name} · ` : ''}{selectedProgram.name})
+                    </span>
+                    <span className="font-semibold text-foreground">₹{getProgramTotalFee(selectedProgram).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="text-muted-foreground">
+                      {paymentMethod === 'full_payment' ? 'Course Fee (One-Time Payment)' : paymentMethod === 'yearly' ? 'Course Fee per Year' : 'Course Fee per Semester'}
+                    </span>
+                    <span className="font-medium text-foreground">₹{getTotalFee(selectedProgram).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="text-muted-foreground">Paying Amount ({getPaymentAmountLabel(paymentMethod, selectedProgram.name)})</span>
+                    <span className="font-medium text-foreground">₹{(Number(initialPayment) || 0).toLocaleString()}</span>
+                  </div>
+                  {initialPaymentProof && (
+                    <div className="flex justify-between items-center gap-4">
+                      <span className="text-muted-foreground">Payment Proof</span>
+                      <a href={initialPaymentProof.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold">View</a>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center gap-4 border-t border-primary/20 pt-2.5">
+                    <span className="font-semibold text-foreground">Payable Amount</span>
+                    <span className="font-bold text-foreground">₹{Math.max(0, getTotalFee(selectedProgram) - (Number(initialPayment) || 0)).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="font-semibold text-foreground">Outstanding Amount</span>
+                    <span className="font-extrabold text-base text-primary">₹{Math.max(0, getProgramTotalFee(selectedProgram) - (Number(initialPayment) || 0)).toLocaleString()}</span>
+                  </div>
+                </div>
+                {getFeeSchedule(selectedProgram).length > 0 && (
+                  <div className="bg-muted/10 p-4 rounded-xl border text-sm space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fee Structure Schedule</p>
+                    {getFeeSchedule(selectedProgram).map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center gap-4">
+                        <span className="text-muted-foreground">{item.label}</span>
+                        <span className="font-medium text-foreground">₹{item.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center gap-4 border-t pt-2">
+                      <span className="font-semibold text-foreground">Total Program Fee</span>
+                      <span className="font-semibold text-foreground">₹{getFeeSchedule(selectedProgram).reduce((s, i) => s + i.amount, 0).toLocaleString()}</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

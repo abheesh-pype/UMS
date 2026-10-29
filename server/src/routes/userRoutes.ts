@@ -6,7 +6,7 @@ import {
   getUser,
   createUser,
   updateUser,
-  updateUserRole,
+  transferUser,
   deleteUser,
   bulkImportUsers,
 } from '../controllers/userController.js';
@@ -17,7 +17,8 @@ const router = express.Router();
 router.use(protect);
 
 router.post('/bulk-import', authorize('superadmin', 'org_admin', 'hr_admin'), bulkImportUsers);
-router.put('/:id/role', authorize('superadmin', 'org_admin', 'hr_admin'), updateUserRole);
+router.put('/:id/role', authorize('superadmin', 'org_admin', 'hr_admin'), transferUser);
+router.put('/:id/transfer', authorize('superadmin', 'org_admin', 'hr_admin'), transferUser);
 router.get('/my-team', getMyTeam);
 
 router

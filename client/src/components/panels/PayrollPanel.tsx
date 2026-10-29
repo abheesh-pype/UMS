@@ -29,7 +29,12 @@ interface Payroll {
   overtime: number;
   remarks?: string;
   createdAt?: string;
+  transferredToFinanceAt?: string;
 }
+
+// Payroll reaches Finance only once HR selects it and submits it to Finance
+const isSubmittedToFinance = (p: Payroll) =>
+  ['transferred_to_finance', 'paid'].includes(p.status) || !!p.transferredToFinanceAt;
 
 const STATUS_COLOR: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -193,7 +198,9 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
   const toggleSelect = (id: string) =>
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
-  const filtered = activeTab === 'all' ? payrolls : payrolls.filter(p => p.status === activeTab);
+  // HR manages every record; Finance only sees payroll that HR has submitted to Finance
+  const managedPayrolls = canConfirmAndSubmit ? payrolls : payrolls.filter(isSubmittedToFinance);
+  const filtered = activeTab === 'all' ? managedPayrolls : managedPayrolls.filter(p => p.status === activeTab);
   const confirmedPayrolls = payrolls.filter(p => p.status === 'confirmed');
 
   if (personalView) {
@@ -291,9 +298,9 @@ export function PayrollPanel({ personalView = false }: { personalView?: boolean 
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="all">All ({payrolls.length})</TabsTrigger>
-          <TabsTrigger value="draft">Draft</TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmed</TabsTrigger>
+          <TabsTrigger value="all">All ({managedPayrolls.length})</TabsTrigger>
+          {canConfirmAndSubmit && <TabsTrigger value="draft">Draft</TabsTrigger>}
+          {canConfirmAndSubmit && <TabsTrigger value="confirmed">Confirmed</TabsTrigger>}
           <TabsTrigger value="transferred_to_finance">Submitted</TabsTrigger>
           <TabsTrigger value="paid">Paid</TabsTrigger>
         </TabsList>

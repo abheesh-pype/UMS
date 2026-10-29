@@ -100,12 +100,66 @@ export const getSalaryConfigs = asyncHandler(async (req: AuthRequest, res: Respo
   res.json({ success: true, count: configs.length, data: configs });
 });
 
+const SALARY_APPROVAL_STATUSES = ['pending_approval', 'approved', 'rejected'];
+
+// Allowances are saved either as { hra: 1000 } or as [{ name, amount }]; the approval screen reads a map
+const toAmountMap = (value: any): Record<string, number> => {
+  if (Array.isArray(value)) {
+    return value.reduce((map, item, index) => {
+      const key = item?.name || item?.type || item?.label || `item ${index + 1}`;
+      map[key] = (map[key] || 0) + (Number(item?.amount) || 0);
+      return map;
+    }, {} as Record<string, number>);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, amount]) => [key, Number(amount) || 0]));
+  }
+  return {};
+};
+
 export const getFinanceSalaryConfigs = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // ?status= pending_approval | approved | rejected; no status returns every salary configuration
+  const status = SALARY_APPROVAL_STATUSES.includes(req.query.status as string) ? req.query.status : undefined;
   const configs = await prisma.salaryConfig.findMany({
-    where: { organizationId: req.user.organizationId, approvalStatus: 'pending_approval' },
-    include: { user: { select: { name: true, email: true, designation: true } } }
+    where: { organizationId: req.user.organizationId, ...(status ? { approvalStatus: status } : {}) },
+    include: {
+      user: {
+        select: {
+          id: true, name: true, email: true, designation: true, role: true,
+          department: { select: { name: true } }
+        }
+      },
+      creator: { select: { name: true, email: true } },
+      approver: { select: { name: true, email: true } }
+    },
+    orderBy: { updatedAt: 'desc' }
   });
-  res.json({ success: true, count: configs.length, data: configs });
+
+  const counts = await prisma.salaryConfig.groupBy({
+    by: ['approvalStatus'],
+    where: { organizationId: req.user.organizationId },
+    _count: { _all: true }
+  });
+  const summary = { pending_approval: 0, approved: 0, rejected: 0 };
+  for (const row of counts) summary[row.approvalStatus] = row._count._all;
+
+  const data = configs.map(config => {
+    const deductions = toAmountMap(config.deductions);
+    // Statutory deductions are stored in their own columns
+    if (config.professionalTax) deductions.professionalTax = config.professionalTax;
+    if (config.labourWelfareFund) deductions.labourWelfareFund = config.labourWelfareFund;
+    if (config.tds) deductions.tds = config.tds;
+    return {
+      ...config,
+      allowances: toAmountMap(config.allowances),
+      deductions,
+      user: config.user ? { ...config.user, departmentId: config.user.department || null } : null,
+      createdBy: config.creator ? { name: config.creator.name, email: config.creator.email } : null,
+      approvedBy: config.approver ? { name: config.approver.name, email: config.approver.email } : null,
+    };
+  });
+
+  res.json({ success: true, count: data.length, summary, data });
 });
 
 export const getSalaryConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -430,6 +484,21 @@ export const generateSmartPayroll = asyncHandler(async (req: AuthRequest, res: R
 });
 
 export const approveSalaryConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Finance sends { action: 'reject', remarks } to reject; anything else approves as before
+  if (req.body?.action === 'reject') {
+    const remarks = typeof req.body.remarks === 'string' ? req.body.remarks.trim() : '';
+    if (!remarks) {
+      res.status(400).json({ success: false, message: 'A reason is required to reject a salary configuration' });
+      return;
+    }
+    const rejected = await prisma.salaryConfig.update({
+      where: { id: req.params.id },
+      data: { approvalStatus: 'rejected', rejectedRemarks: remarks, approvedBy: req.user.id, approvedAt: new Date() }
+    });
+    res.json({ success: true, data: rejected });
+    return;
+  }
+
   const config = await prisma.salaryConfig.update({
     where: { id: req.params.id },
     data: { approvalStatus: 'approved', approvedBy: req.user.id, approvedAt: new Date() }

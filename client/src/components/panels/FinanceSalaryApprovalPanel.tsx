@@ -45,7 +45,8 @@ export function FinanceSalaryApprovalPanel() {
   const [configs, setConfigs] = useState<SalaryConfig[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('pending_approval');
+  // Opens on All so pending, approved and rejected salary configurations are listed together
+  const [statusFilter, setStatusFilter] = useState('');
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; id: string }>({ open: false, id: '' });
   const [remarks, setRemarks] = useState('');
   const [detailConfig, setDetailConfig] = useState<SalaryConfig | null>(null);
@@ -230,7 +231,12 @@ export function FinanceSalaryApprovalPanel() {
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
                         {config.createdBy && <span>Set by: {config.createdBy.name}</span>}
                         <span>Updated: {new Date(config.updatedAt).toLocaleDateString()}</span>
-                        {config.approvedBy && <span>Reviewed by: {config.approvedBy.name}</span>}
+                        {config.approvedBy && (
+                          <span>
+                            {config.approvalStatus === 'rejected' ? 'Rejected' : 'Approved'} by: {config.approvedBy.name}
+                            {config.approvedAt && ` · ${new Date(config.approvedAt).toLocaleDateString()}`}
+                          </span>
+                        )}
                         {config.rejectedRemarks && (
                           <span className="text-red-500 flex items-center gap-1">
                             <AlertCircle className="w-3 h-3" />{config.rejectedRemarks}
@@ -281,7 +287,7 @@ export function FinanceSalaryApprovalPanel() {
       {/* Detail Dialog */}
       <Dialog open={!!detailConfig} onOpenChange={o => !o && setDetailConfig(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Salary Config — {detailConfig?.userId?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Salary Config — {(detailConfig as any)?.user?.name || detailConfig?.userId?.name}</DialogTitle></DialogHeader>
           {detailConfig && (
             <div className="space-y-4 py-2 text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -128,7 +128,7 @@ record. Nothing runs in the background; there is no automatic sync.
 | `EXAM_PORTAL_TOKEN_URL` | Token endpoint: the Exam Portal's built-in `<portal>/api/integrations/oauth/token`, or an external authorization server (HTTPS; HTTP only for localhost outside production) |
 | `EXAM_PORTAL_CLIENT_ID` / `EXAM_PORTAL_CLIENT_SECRET` | Issued once by `scripts/create-integration-client.mjs` in the Exam Portal (or by your IdP); keep in the server secret manager |
 | `EXAM_PORTAL_STUDENT_UPSERT_URL` | `https://<exam-portal>/api/integrations/v1/students` |
-| `EXAM_PORTAL_SCOPE`, `EXAM_PORTAL_AUDIENCE` | `students:write students:launch` and the portal audience (default `exam-portal-api`); with the built-in issuer, `students:launch` is needed for student launch |
+| `EXAM_PORTAL_SCOPE`, `EXAM_PORTAL_AUDIENCE` | `students:write students:launch staff:launch assessments:write` and the portal audience (default `exam-portal-api`); with the built-in issuer, `students:launch` is needed for student launch |
 | `EXAM_PORTAL_LAUNCH_TICKET_URL` | Optional; defaults to the upsert URL with `/students` replaced by `/launch-tickets` |
 
 Field mapping: `external_student_id` = `candidate_id` = UMS `Student.enrollmentNo` (the Exam Portal assigns its own
@@ -142,6 +142,10 @@ Behavior: success is shown only for HTTP 200/201 with `{"ok": true}`. A `401` tr
 timeouts (10 s), `4xx`/`5xx` and malformed responses are reported and not retried. Repeat syncs send the same
 `Idempotency-Key` (SHA-256 of the payload); concurrent requests for one student share a single call.
 Tests: `npm run test:exam-portal`.
+
+**Academic Admin:** on the *Create Exam Portal* screen, **Open Exam Portal (questions & bulk upload)** signs the Academic Admin (or Org Admin/Superadmin) into the Exam Portal
+with a restricted authoring account, and **Open Exam Portal** creates/updates the examination there (`POST /operations/examinations/:id/exam-portal`; window = start time
+until duration + 30 min; duration from the exam schedule, default 120 min). Student assignments then match by examination id.
 
 **Student launch:** when `EXAM_PORTAL_*` is configured, a student's **Launch exam** (after the existing registration/schedule checks) re-syncs that
 student's current assignments and then requests a single-use, 60-second sign-in link from the Exam Portal; the link must be HTTPS and on the portal's

@@ -1472,7 +1472,9 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
     include: {
       program: { select: { id: true, name: true, university: { select: { name: true, coordinatorName: true } } } },
       session: { select: { id: true, name: true } },
-      studyCenter: { select: { id: true, name: true, branchName: true, coordinatorName: true } },
+      studyCenter: { select: { id: true, name: true, branchName: true, coordinatorName: true, referredBy: true } },
+      student: { select: { enrollmentNo: true, uniEnrollmentNumber: true } },
+      salesUser: { select: { name: true } },
       payment: true,
       commissionIn: {
         include: {
@@ -1482,6 +1484,48 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Fees actually collected per enrollment: invoice payments (university fee invoices mirror
+  // remittances, so they are excluded) plus fee receipts not linked to an invoice payment
+  const enrollmentIds = enrollments.map(e => e.id);
+  const [enrollmentInvoices, unlinkedReceipts, centreReferrers] = enrollmentIds.length > 0
+    ? await Promise.all([
+        prisma.invoice.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            enrollmentId: { in: enrollmentIds },
+            invoiceType: { not: 'university_fee' },
+            status: { not: 'cancelled' },
+          },
+          select: { enrollmentId: true, total: true, paidAmount: true },
+        }),
+        prisma.studentFeeReceipt.findMany({
+          where: { organizationId: req.user.organizationId, enrollmentId: { in: enrollmentIds }, invoicePayment: null },
+          select: { enrollmentId: true, amount: true },
+        }),
+        prisma.user.findMany({
+          where: {
+            organizationId: req.user.organizationId,
+            id: { in: [...new Set(enrollments.map(e => e.studyCenter?.referredBy).filter(Boolean))] as string[] },
+          },
+          select: { id: true, name: true },
+        }),
+      ])
+    : [[], [], []];
+  const feesByEnrollment: Record<string, { billed: number; collected: number }> = {};
+  for (const invoice of enrollmentInvoices) {
+    if (!invoice.enrollmentId) continue;
+    const entry = feesByEnrollment[invoice.enrollmentId] || { billed: 0, collected: 0 };
+    entry.billed += Number(invoice.total) || 0;
+    entry.collected += Number(invoice.paidAmount) || 0;
+    feesByEnrollment[invoice.enrollmentId] = entry;
+  }
+  for (const receipt of unlinkedReceipts) {
+    const entry = feesByEnrollment[receipt.enrollmentId] || { billed: 0, collected: 0 };
+    entry.collected += Number(receipt.amount) || 0;
+    feesByEnrollment[receipt.enrollmentId] = entry;
+  }
+  const referrerNames = new Map(centreReferrers.map(user => [user.id, user.name]));
 
   // Fetch university fee payments for enrolled students
   const studentIds = [...new Set(enrollments.map(e => e.studentId).filter(Boolean))] as string[];
@@ -1578,17 +1622,35 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
       if (!payment && enrollment.paymentType === 'direct_to_university') {
         centerPaymentAmount = 0;
         centerPaymentStatus = 'Paid';
+      } else if (!payment) {
+        // No wallet debit: use the fees collected against the enrollment's invoices and receipts
+        const fees = feesByEnrollment[enrollment.id];
+        const billed = fees?.billed || Number(enrollment.totalFee) || 0;
+        const collected = fees?.collected || 0;
+        if (collected > 0) {
+          centerPaymentAmount = collected;
+          centerPaymentStatus = billed > 0 && collected < billed ? 'Partially Paid' : 'Paid';
+        }
       }
+
+      const isDirectApplication = Boolean((enrollment as any).publicTrackingTokenHash);
+      const centreReferrerName = enrollment.studyCenter?.referredBy
+        ? referrerNames.get(enrollment.studyCenter.referredBy) || null
+        : null;
 
       return {
         id: enrollment.id,
         studentName: enrollment.studentName,
-        enrollmentNumber: enrollment.enrollmentNumber,
-        uniEnrollmentNumber: enrollment.uniEnrollmentNumber,
+        // Admission number is assigned to the student when the application is created
+        enrollmentNumber: enrollment.enrollmentNumber || (enrollment as any).student?.enrollmentNo || null,
+        uniEnrollmentNumber: enrollment.uniEnrollmentNumber || (enrollment as any).student?.uniEnrollmentNumber || null,
         admissionDate: enrollment.admissionDate || enrollment.createdAt,
         admissionSession: enrollment.session?.name || '',
-        centerName: enrollment.studyCenter?.name || '',
+        centerName: enrollment.studyCenter?.name
+          || ((enrollment as any).salesUser ? 'Sales Direct' : isDirectApplication ? 'Direct (Online Application)' : 'Direct'),
+        isStudyCentre: Boolean(enrollment.studyCenter),
         subCenterName: enrollment.studyCenter?.branchName || '',
+        isSubCenter: Boolean(enrollment.studyCenter?.branchName?.trim()),
         program: enrollment.program?.name || '',
         university: (feeStruct?.university?.name || (enrollment.program as any)?.university?.name) || '',
         centerPaymentAmount,
@@ -1598,7 +1660,10 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
       universityPaidAmount: uniPayments.length > 0 ? paidUniAmount : 0,
       universityPaymentStatus: uniStatus,
       universityPaymentScreenshots: uniPayments.map(p => p.screenshot).filter(Boolean),
-      coordinatorName: enrollment.studyCenter?.coordinatorName || feeStruct?.university?.coordinatorName || (enrollment.program as any)?.university?.coordinatorName || coordinatorFee?.coordinator || null,
+      // Recorded coordinator first, otherwise who brought the admission in: the Sales executive
+      // for Sales applications, or the person who onboarded the study centre
+      coordinatorName: enrollment.studyCenter?.coordinatorName || feeStruct?.university?.coordinatorName || (enrollment.program as any)?.university?.coordinatorName || coordinatorFee?.coordinator
+        || (enrollment as any).salesUser?.name || centreReferrerName || null,
       coordinatorPaymentAmount: coordinatorFee?.amount || null,
       coordinatorPaymentStatus: coordinatorFee
         ? (uniStatus === 'Paid' ? 'paid' : 'Due')
@@ -1620,21 +1685,88 @@ export const getTotalReport = asyncHandler(async (req: AuthRequest, res: Respons
   res.json({ success: true, count: rows.length, data: rows });
 });
 
-// ─── Re-Reg Pending Report ────────────────────────────────────────────────────
-export const getReregPendingReport = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { centerId, universityId, programId, search, dueDate } = req.query as any;
+// ─── Re-Registration schedule (shared by the pending and completed reports) ──
+// A re-registration is every fee installment after the first one (Semester 2+, Year 2+); the first
+// installment is paid at admission. An installment counts as paid when the money collected for the
+// enrollment covers it (cumulatively, in installment order), or when a paid invoice names it.
+
+const REREG_PAID_TOLERANCE = 1; // rupee rounding
+
+const parseJsonArray = (value: any): any[] => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  }
+  return [];
+};
+
+const sumBreakdownAdditionalFees = (value: any) => {
+  if (typeof value !== 'string' || !value.trim()) return 0;
+  return value.split(',').reduce((sum, part) => sum + (Number(part.trim().split(':')[1]) || 0), 0);
+};
+
+// Same amounts used when the enrollment is approved (first installment) and billed afterwards
+const getInstallmentAmount = (feeStructure: any, item: any, isFirst: boolean) => {
+  const additionalFees = Array.isArray(feeStructure.additionalFees) ? feeStructure.additionalFees : [];
+  let subtotal = (Number(item.baseFee) || 0) + (Number(item.examFee) || 0) + sumBreakdownAdditionalFees(item.additionalFees);
+  // University-level structures carry the cycle amount in universityFee
+  if (subtotal === 0) subtotal = Number(item.universityFee) || 0;
+  if (isFirst) {
+    subtotal += additionalFees.filter((fee: any) => fee.label !== 'GST').reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
+  }
+  const gst = additionalFees.find((fee: any) => fee.label === 'GST');
+  return subtotal + (gst ? Math.round((subtotal * (Number(gst.amount) || 0)) / 100) : 0);
+};
+
+const pickReregFeeStructure = (enrollment: any, feeStructures: any[]) => {
+  const sessionId = enrollment.sessionId || null;
+  const universityId = enrollment.program?.university?.id;
+  const ranked = feeStructures
+    .map(c => {
+      let score = 0;
+      if (c.level === 'program' && c.programId === enrollment.programId
+        && (c.studyCenterId === enrollment.studyCenterId || c.studyCenterId === null)) {
+        const centerMatch = Boolean(enrollment.studyCenterId && c.studyCenterId === enrollment.studyCenterId);
+        if (c.admissionSessionId === sessionId) score = centerMatch ? 150 : 100;
+        else if (c.admissionSessionId === null) score = centerMatch ? 130 : 80;
+        else score = centerMatch ? 110 : 60;
+      } else if (!enrollment.studyCenterId && c.level === 'university' && c.universityId === universityId
+        && (c.programId === enrollment.programId || c.programId === null)) {
+        const programMatch = c.programId === enrollment.programId;
+        if (c.admissionSessionId === sessionId) score = programMatch ? 50 : 40;
+        else if (c.admissionSessionId === null) score = programMatch ? 30 : 20;
+        else score = programMatch ? 15 : 10;
+      }
+      return { c, score };
+    })
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.c || null;
+};
+
+const getCycleLabel = (billingCycle: string) =>
+  billingCycle === 'per_semester' ? 'Semester'
+    : (billingCycle === 'per_year' || billingCycle === 'yearly') ? 'Year'
+    : 'Installment';
+
+// Exact "Semester N" / "Year N" match, so "Semester 1" never matches "Semester 10"
+const invoiceNamesInstallment = (invoice: any, name: string) => {
+  const pattern = new RegExp(`\\b${name.replace(/\s+/g, '\\s*')}\\b`, 'i');
+  return parseJsonArray(invoice.items).some((item: any) => pattern.test(item?.description || ''));
+};
+
+const buildReregSchedules = async (req: AuthRequest) => {
+  const { centerId, universityId, programId, search } = req.query as any;
   const orgId = req.user.organizationId;
-  
+
   let actualCenterId = centerId;
   if (req.user.role === 'center_admin') {
     actualCenterId = (req.user as any).studyCenterId || (req.user as any).centerId;
   }
 
-  // Build program filter
-  let programFilter: any = {};
+  const programFilter: any = {};
   if (programId) programFilter.programId = programId;
   if (universityId) {
-    // Filter via program's university
     const progIds = (await prisma.program.findMany({
       where: { organizationId: orgId, universityId },
       select: { id: true },
@@ -1642,10 +1774,11 @@ export const getReregPendingReport = asyncHandler(async (req: AuthRequest, res: 
     programFilter.programId = programId ? (progIds.includes(programId) ? programId : '__none__') : { in: progIds };
   }
 
-  // Find all enrollments matching filters
+  // Only students who have completed admission owe re-registration fees
   const enrollments = await prisma.enrollment.findMany({
     where: {
       organizationId: orgId,
+      status: 'enrolled',
       ...(actualCenterId && { studyCenterId: actualCenterId }),
       ...programFilter,
       ...(search && {
@@ -1659,246 +1792,205 @@ export const getReregPendingReport = asyncHandler(async (req: AuthRequest, res: 
     },
     include: {
       program: { select: { id: true, name: true, duration: true, university: { select: { id: true, name: true } } } },
-      session: { select: { id: true, name: true } },
+      session: { select: { id: true, name: true, reregPaymentClosingDate: true } },
       studyCenter: { select: { id: true, name: true, branchName: true } },
-      student: { select: { id: true, createdAt: true, enrolledAt: true, invoices: true, status: true } },
+      student: { select: { id: true, createdAt: true, enrolledAt: true, status: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
+  if (enrollments.length === 0) return [];
 
-  // Pre-fetch all fee structures for this organization to avoid N+1 queries
-  const feeStructures = await prisma.programFeeStructure.findMany({
-    where: { organizationId: orgId }
-  });
+  const enrollmentIds = enrollments.map(e => e.id);
+  const studentIds = enrollments.map(e => e.student?.id).filter(Boolean) as string[];
+  const [feeStructures, invoices, unlinkedReceipts] = await Promise.all([
+    prisma.programFeeStructure.findMany({ where: { organizationId: orgId } }),
+    // Student fees only: university remittance mirrors are not money collected from the student
+    prisma.invoice.findMany({
+      where: {
+        organizationId: orgId,
+        invoiceType: { not: 'university_fee' },
+        status: { not: 'cancelled' },
+        OR: [{ enrollmentId: { in: enrollmentIds } }, ...(studentIds.length ? [{ studentId: { in: studentIds } }] : [])],
+      },
+      select: {
+        id: true, enrollmentId: true, studentId: true, status: true, items: true, paidAmount: true, paidAt: true, createdAt: true,
+        payments: { select: { amount: true, receivedAt: true, receiptDate: true } },
+      },
+    }),
+    prisma.studentFeeReceipt.findMany({
+      where: { organizationId: orgId, enrollmentId: { in: enrollmentIds }, invoicePayment: null },
+      select: { enrollmentId: true, amount: true, receiptDate: true },
+    }),
+  ]);
 
-  const rows: any[] = [];
+  const enrollmentIdByStudent = new Map<string, string>();
+  for (const e of enrollments) if (e.student?.id && !enrollmentIdByStudent.has(e.student.id)) enrollmentIdByStudent.set(e.student.id, e.id);
 
-  for (const e of enrollments) {
-    if (!e.student) continue;
-
-    const sessionId = e.sessionId || null;
-    
-    // Find candidate fee structures
-    const candidates = feeStructures.filter((c: any) =>
-      (
-        c.level === 'program'
-        && c.programId === e.programId
-        && (c.studyCenterId === e.studyCenterId || c.studyCenterId === null)
-      ) ||
-      (
-        !e.studyCenterId
-        && c.level === 'university'
-        && c.universityId === (e.program as any).university?.id
-        && (c.programId === e.programId || c.programId === null)
-      )
-    );
-
-    // Rank candidate fee structures
-    const sorted = candidates.map(c => {
-      let score = 0;
-      if (c.level === 'program' && c.programId === e.programId) {
-        const centerMatch = Boolean(e.studyCenterId && c.studyCenterId === e.studyCenterId);
-        if (c.admissionSessionId === sessionId) score = centerMatch ? 150 : 100;
-        else if (c.admissionSessionId === null) score = centerMatch ? 130 : 80;
-        else score = centerMatch ? 110 : 60;
-      } else if (c.level === 'university' && c.universityId === (e.program as any).university?.id) {
-        const programMatch = c.programId === e.programId;
-        if (c.admissionSessionId === sessionId) score = programMatch ? 50 : 40;
-        else if (c.admissionSessionId === null) score = programMatch ? 30 : 20;
-        else score = programMatch ? 15 : 10;
-      }
-      return { c, score };
-    }).sort((a, b) => b.score - a.score);
-
-    const feeStructure = sorted[0]?.c;
-    if (!feeStructure) continue;
-
-    let breakdownArray: any[] = [];
-    if (feeStructure.feeBreakdown) {
-      if (typeof feeStructure.feeBreakdown === 'string') {
-        try { breakdownArray = JSON.parse(feeStructure.feeBreakdown); } catch (err) {}
-      } else if (Array.isArray(feeStructure.feeBreakdown)) {
-        breakdownArray = feeStructure.feeBreakdown;
-      }
+  // Dated collections per enrollment
+  const collections = new Map<string, { invoices: any[]; payments: { amount: number; date: Date; invoiceId: string | null }[] }>();
+  const bucket = (id: string) => {
+    if (!collections.has(id)) collections.set(id, { invoices: [], payments: [] });
+    return collections.get(id)!;
+  };
+  for (const invoice of invoices) {
+    const enrollmentId = invoice.enrollmentId || (invoice.studentId ? enrollmentIdByStudent.get(invoice.studentId) : null);
+    if (!enrollmentId || !enrollmentIds.includes(enrollmentId)) continue;
+    const entry = bucket(enrollmentId);
+    entry.invoices.push(invoice);
+    let recorded = 0;
+    for (const payment of invoice.payments || []) {
+      const amount = Number(payment.amount) || 0;
+      recorded += amount;
+      entry.payments.push({ amount, date: new Date(payment.receiptDate || payment.receivedAt), invoiceId: invoice.id });
     }
-
-    if (breakdownArray.length === 0) continue;
-
-    const billingCycle = feeStructure.billingCycle;
-    let cycleLabel = 'Installment';
-    if (billingCycle === 'per_semester') cycleLabel = 'Semester';
-    else if (billingCycle === 'per_year' || billingCycle === 'yearly') cycleLabel = 'Year';
-
-    const invoices = e.student.invoices || [];
-
-    let nextUnpaidDate: Date | null = null;
-    let nextUnpaidName = '';
-
-    // Find the next UNPAID installment, starting from the 2nd installment (i = 1)
-    // The 1st installment (i = 0) is paid during initial enrollment, so it is not a "Re-Registration".
-    for (let i = 1; i < breakdownArray.length; i++) {
-      const b = breakdownArray[i];
-      const name = `${cycleLabel} ${b.year || i + 1}`;
-      
-      const isPaid = invoices.some((inv: any) => {
-        const items = Array.isArray(inv.items) ? inv.items : JSON.parse(typeof inv.items === 'string' ? inv.items : '[]');
-        return inv.status === 'paid' && items.some((item: any) => item.description?.toLowerCase().includes(name.toLowerCase()));
-      });
-
-      if (!isPaid) {
-        // This is the next unpaid installment (i > 0)
-        nextUnpaidName = name;
-        if (b.dueDate) {
-          nextUnpaidDate = new Date(b.dueDate);
-        } else {
-          nextUnpaidDate = new Date(e.student.enrolledAt || e.student.createdAt);
-          if (cycleLabel === 'Semester') nextUnpaidDate.setMonth(nextUnpaidDate.getMonth() + i * 6);
-          else nextUnpaidDate.setFullYear(nextUnpaidDate.getFullYear() + i);
-        }
-        break; // Stop at the first unpaid installment
-      }
-    }
-
-    if (nextUnpaidName && nextUnpaidDate) {
-      if (dueDate) {
-        const filterDate = new Date(dueDate);
-        filterDate.setHours(23, 59, 59, 999);
-        if (nextUnpaidDate > filterDate) {
-          continue;
-        }
-      }
-
-      const daysUntilDeadline = Math.ceil((nextUnpaidDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-
-
-      const closingDate = nextUnpaidDate.toISOString();
-      const sessionStr = e.session?.name ? `${e.session.name} - ${nextUnpaidName}` : nextUnpaidName;
-      rows.push({
-        id: e.id,
-        studentName: e.studentName,
-        studentEmail: e.studentEmail,
-        studentPhone: e.studentPhone,
-        enrollmentNumber: e.enrollmentNumber || '',
-        program: e.program?.name || '',
-        university: (e.program as any)?.university?.name || '',
-        center: e.studyCenter?.name || '',
-        branchName: e.studyCenter?.branchName || '',
-        session: sessionStr,
-        reregClosingDate: closingDate,
-        reregPaymentStatus: 'Pending',
-        enrollmentStatus: e.status,
-        daysUntilDeadline,
-      });
+    // Amounts marked paid on the invoice without a payment entry (e.g. approval or wallet)
+    const residual = (Number(invoice.paidAmount) || 0) - recorded;
+    if (residual > REREG_PAID_TOLERANCE) {
+      entry.payments.push({ amount: residual, date: new Date(invoice.paidAt || invoice.createdAt), invoiceId: invoice.id });
     }
   }
+  for (const receipt of unlinkedReceipts) {
+    bucket(receipt.enrollmentId).payments.push({ amount: Number(receipt.amount) || 0, date: new Date(receipt.receiptDate), invoiceId: null });
+  }
 
+  const schedules: any[] = [];
+  for (const e of enrollments) {
+    if (!e.student) continue;
+    const feeStructure = pickReregFeeStructure(e, feeStructures);
+    if (!feeStructure) continue;
+    const breakdown = parseJsonArray(feeStructure.feeBreakdown);
+    if (breakdown.length < 2) continue; // nothing to re-register after the first installment
+
+    const cycleLabel = getCycleLabel(feeStructure.billingCycle);
+    const entry = collections.get(e.id) || { invoices: [], payments: [] };
+    const payments = [...entry.payments].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
+    const startDate = new Date(e.enrolledAt || e.student.enrolledAt || e.student.createdAt);
+
+    let cumulativeDue = 0;
+    let nextUnpaidSeen = false;
+    const installments = breakdown.map((item: any, index: number) => {
+      const name = `${cycleLabel} ${item.year || index + 1}`;
+      const amount = getInstallmentAmount(feeStructure, item, index === 0);
+      cumulativeDue += amount;
+
+      const namedInvoice = entry.invoices.find(inv => inv.status === 'paid' && invoiceNamesInstallment(inv, name));
+      const coveredByCollections = amount > 0 && totalCollected + REREG_PAID_TOLERANCE >= cumulativeDue;
+      const paid = Boolean(namedInvoice) || coveredByCollections;
+
+      // Date the collections first covered this installment
+      let paidDate: Date | null = null;
+      let paidInvoiceId: string | null = namedInvoice?.id || null;
+      if (namedInvoice) {
+        paidDate = new Date(namedInvoice.paidAt || namedInvoice.createdAt);
+      } else if (coveredByCollections) {
+        let running = 0;
+        for (const payment of payments) {
+          running += payment.amount;
+          if (running + REREG_PAID_TOLERANCE >= cumulativeDue) { paidDate = payment.date; paidInvoiceId = payment.invoiceId; break; }
+        }
+      }
+
+      // Deadline: fee breakdown due date, else the session's re-registration closing date for the
+      // next pending installment, else an estimate from the enrolment date
+      let dueDate: Date;
+      let deadlineSource: 'fee_structure' | 'session' | 'estimated';
+      if (item.dueDate) {
+        dueDate = new Date(item.dueDate);
+        deadlineSource = 'fee_structure';
+      } else if (index > 0 && !paid && !nextUnpaidSeen && e.session?.reregPaymentClosingDate) {
+        dueDate = new Date(e.session.reregPaymentClosingDate);
+        deadlineSource = 'session';
+      } else {
+        dueDate = new Date(startDate);
+        if (cycleLabel === 'Semester') dueDate.setMonth(dueDate.getMonth() + index * 6);
+        else dueDate.setFullYear(dueDate.getFullYear() + index);
+        deadlineSource = 'estimated';
+      }
+      if (index > 0 && !paid) nextUnpaidSeen = true;
+
+      const collectedBefore = cumulativeDue - amount;
+      const paidTowards = Math.max(0, Math.min(amount, totalCollected - collectedBefore));
+      return { index, name, amount, paid, paidDate, paidInvoiceId, paidTowards, balance: paid ? 0 : Math.max(0, amount - paidTowards), dueDate, deadlineSource };
+    });
+
+    schedules.push({ enrollment: e, cycleLabel, installments, totalCollected, totalDue: cumulativeDue });
+  }
+  return schedules;
+};
+
+const reregBaseRow = (e: any) => ({
+  studentName: e.studentName,
+  studentEmail: e.studentEmail,
+  studentPhone: e.studentPhone,
+  enrollmentNumber: e.enrollmentNumber || '',
+  program: e.program?.name || '',
+  university: e.program?.university?.name || '',
+  center: e.studyCenter?.name || '',
+  branchName: e.studyCenter?.branchName || '',
+});
+
+// ─── Re-Reg Pending Report ────────────────────────────────────────────────────
+export const getReregPendingReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { dueDate } = req.query as any;
+  const filterDate = dueDate ? new Date(dueDate) : null;
+  if (filterDate) filterDate.setHours(23, 59, 59, 999);
+
+  const schedules = await buildReregSchedules(req);
+  const rows: any[] = [];
+  for (const { enrollment: e, installments, totalCollected, totalDue } of schedules) {
+    // Next unpaid re-registration (the first installment is the admission payment)
+    const next = installments.find((installment: any) => installment.index > 0 && !installment.paid);
+    if (!next) continue;
+    if (filterDate && next.dueDate > filterDate) continue;
+
+    const daysUntilDeadline = Math.ceil((next.dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    rows.push({
+      id: e.id,
+      ...reregBaseRow(e),
+      session: e.session?.name ? `${e.session.name} - ${next.name}` : next.name,
+      reregClosingDate: next.dueDate.toISOString(),
+      reregPaymentStatus: next.paidTowards > 0 ? 'Partially Paid' : 'Pending',
+      enrollmentStatus: e.status,
+      daysUntilDeadline,
+      installmentName: next.name,
+      installmentAmount: next.amount,
+      amountPaid: next.paidTowards,
+      balanceDue: next.balance,
+      deadlineSource: next.deadlineSource,
+      completedInstallments: installments.filter((installment: any) => installment.index > 0 && installment.paid).length,
+      totalInstallments: installments.length,
+      totalCollected,
+      totalDue,
+    });
+  }
+
+  rows.sort((a, b) => a.daysUntilDeadline - b.daysUntilDeadline);
   res.json({ success: true, count: rows.length, data: rows });
 });
 
 // ─── Re-Reg Completed Report ──────────────────────────────────────────────────
 export const getReregCompletedReport = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { centerId, universityId, programId, search } = req.query as any;
-  const orgId = req.user.organizationId;
-  
-  let actualCenterId = centerId;
-  if (req.user.role === 'center_admin') {
-    actualCenterId = (req.user as any).studyCenterId || (req.user as any).centerId;
-  }
-
-  // Build program filter
-  let programFilter: any = {};
-  if (programId) programFilter.programId = programId;
-  if (universityId) {
-    const progIds = (await prisma.program.findMany({
-      where: { organizationId: orgId, universityId },
-      select: { id: true },
-    })).map(p => p.id);
-    programFilter.programId = programId ? (progIds.includes(programId) ? programId : '__none__') : { in: progIds };
-  }
-
-  // Find all enrollments matching filters
-  const enrollments = await prisma.enrollment.findMany({
-    where: {
-      organizationId: orgId,
-      ...(actualCenterId && { studyCenterId: actualCenterId }),
-      ...programFilter,
-      ...(search && {
-        OR: [
-          { studentName: { contains: search, mode: 'insensitive' } },
-          { studentEmail: { contains: search, mode: 'insensitive' } },
-          { enrollmentNumber: { contains: search, mode: 'insensitive' } },
-        ]
-      })
-    },
-    include: {
-      program: {
-        select: { id: true, name: true, duration: true, university: { select: { id: true, name: true } } }
-      },
-      session: { select: { id: true, name: true } },
-      studyCenter: { select: { id: true, name: true, branchName: true } },
-      student: { 
-        select: { 
-          id: true, createdAt: true, enrolledAt: true, status: true, email: true, name: true,
-          invoices: {
-            where: { status: 'paid' }
-          }
-        } 
-      },
-    }
-  });
-
+  const schedules = await buildReregSchedules(req);
   const rows: any[] = [];
-  
-  for (const e of enrollments) {
-    if (!e.student || !e.student.invoices || e.student.invoices.length === 0) continue;
-
-    const invoices = e.student.invoices;
-
-    for (const inv of invoices) {
-      let items: any[] = [];
-      if (typeof inv.items === 'string') {
-        try { items = JSON.parse(inv.items); } catch(err) {}
-      } else if (Array.isArray(inv.items)) {
-        items = inv.items;
-      }
-
-      // Find items that represent a re-registration payment
-      // e.g., "Semester 2", "Year 2", etc. (excluding Semester 1/Year 1)
-      const reregItems = items.filter(item => {
-        const desc = (item.description || '').toLowerCase();
-        return (desc.includes('semester') || desc.includes('year')) && 
-               !desc.includes('semester 1') && !desc.includes('year 1');
+  for (const { enrollment: e, installments } of schedules) {
+    for (const installment of installments) {
+      if (installment.index === 0 || !installment.paid) continue;
+      rows.push({
+        id: `${e.id}-${installment.index}`,
+        ...reregBaseRow(e),
+        session: e.session?.name || '',
+        completedInstallment: installment.name,
+        paidDate: installment.paidDate ? installment.paidDate.toISOString() : null,
+        amountPaid: installment.amount,
+        invoiceId: installment.paidInvoiceId || '',
+        dueDate: installment.dueDate.toISOString(),
+        paidOnTime: installment.paidDate ? installment.paidDate <= installment.dueDate : null,
       });
-
-      if (reregItems.length > 0) {
-        for (const item of reregItems) {
-          // Try to extract just the "Semester X" or "Year X" part
-          const match = item.description?.match(/(Semester|Year)\s+\d+/i);
-          const installmentName = match ? match[0] : item.description;
-
-          rows.push({
-            id: `${e.id}-${inv.id}-${item.id || Math.random()}`,
-            studentName: e.studentName,
-            studentEmail: e.studentEmail,
-            studentPhone: e.studentPhone,
-            enrollmentNumber: e.enrollmentNumber || '',
-            program: e.program?.name || '',
-            university: (e.program as any)?.university?.name || '',
-            center: e.studyCenter?.name || '',
-            branchName: e.studyCenter?.branchName || '',
-            session: e.session?.name || '',
-            completedInstallment: installmentName,
-            paidDate: inv.createdAt,
-            amountPaid: item.amount || inv.amount,
-            invoiceId: inv.id
-          });
-        }
-      }
     }
   }
 
-  // Sort rows by paidDate descending (newest first)
-  rows.sort((a, b) => new Date(b.paidDate).getTime() - new Date(a.paidDate).getTime());
-
+  // Newest payments first
+  rows.sort((a, b) => new Date(b.paidDate || 0).getTime() - new Date(a.paidDate || 0).getTime());
   res.json({ success: true, count: rows.length, data: rows });
 });

@@ -30,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import api from '@/lib/api';
 import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
 import { RecordInvoicePaymentModal } from '@/components/dialogs/RecordInvoicePaymentModal';
+import { InvoiceReceiptsModal } from '@/components/dialogs/InvoiceReceiptsModal';
 import { toast } from 'sonner';
 
 export function InvoicesPanel() {
@@ -51,6 +52,7 @@ export function InvoicesPanel() {
   // Modals
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<any | null>(null);
   const [selectedInvoiceForPay, setSelectedInvoiceForPay] = useState<any | null>(null);
+  const [selectedInvoiceForReceipts, setSelectedInvoiceForReceipts] = useState<any | null>(null);
   const [successToast, setSuccessToast] = useState<{ message: string; receiptNo?: string } | null>(null);
 
   // Manual create/edit invoice dialog
@@ -694,6 +696,19 @@ export function InvoicesPanel() {
                             </Button>
                           )}
 
+                          {/* Payment Receipts */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedInvoiceForReceipts(inv)}
+                            disabled={!Array.isArray(inv.payments) || inv.payments.length === 0}
+                            className="h-8 px-2.5 text-xs font-semibold gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                            title={Array.isArray(inv.payments) && inv.payments.length > 0 ? 'View and download payment receipts' : 'No payment recorded yet'}
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Receipt</span>
+                          </Button>
+
                           {/* Recalculate Balance */}
                           <Button
                             variant="ghost"
@@ -733,6 +748,14 @@ export function InvoicesPanel() {
           if (!open) setSelectedInvoiceForPrint(null);
         }}
         invoice={selectedInvoiceForPrint}
+      />
+
+      {/* Payment Receipts Modal */}
+      <InvoiceReceiptsModal
+        invoice={selectedInvoiceForReceipts}
+        onOpenChange={(open) => {
+          if (!open) setSelectedInvoiceForReceipts(null);
+        }}
       />
 
       {/* Record Payment Modal */}

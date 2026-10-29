@@ -23,6 +23,7 @@ import { TargetsPanel } from '@/components/panels/TargetsPanel';
 import { TasksPanel } from '@/components/panels/TasksPanel';
 import { PayrollPanel } from '@/components/panels/PayrollPanel';
 import { PayrollBatchesPanel } from '@/components/panels/PayrollBatchesPanel';
+import { FinancePayrollPanel } from '@/components/panels/FinancePayrollPanel';
 import { StudentsPanel } from '@/components/panels/StudentsPanel';
 import { StudyCentersPanel } from '@/components/panels/StudyCentersPanel';
 import { BroadcastNotificationsPanel } from '@/components/panels/BroadcastNotificationsPanel';
@@ -117,7 +118,8 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'expenses': return <ExpensesPanel />;
       case 'targets': return <TargetsPanel endpoint="/finance/targets" title="Finance Targets" />;
       case 'fees': return <ProgramFeeStructurePanel />;
-      case 'payroll': return <PayrollPanel />;
+      // Finance reviews and approves payroll HR submitted; HR keeps using PayrollPanel
+      case 'payroll': return <FinancePayrollPanel />;
       case 'payroll-batches': return <PayrollBatchesPanel allowBatchCreation />;
       case 'students': return <StudentsPanel financeMode />;
       case 'study_centers': return <StudyCentersPanel financeMode />;

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { randomBytes } from 'crypto';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
@@ -228,18 +229,74 @@ export const deleteTarget = asyncHandler(async (req: AuthRequest, res: Response)
 });
 
 // Invites
+const INVITE_TTL_DAYS = 30;
+const INVITE_TYPES = ['center', 'student'];
+const newInviteToken = () => randomBytes(18).toString('base64url');
+const inviteExpiry = () => new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+const idList = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64))] : [];
+
 export const listMyInvites = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const invites = await prisma.studyCenterInvite.findMany({ where: { referredBy: req.user.id } });
-  res.json({ success: true, count: invites.length, data: invites });
+  const invites = await prisma.studyCenterInvite.findMany({
+    where: { referredBy: req.user.id, organizationId: req.user.organizationId },
+    orderBy: { createdAt: 'desc' },
+  });
+  const [universities, programs] = await Promise.all([
+    prisma.university.findMany({ where: { organizationId: req.user.organizationId, id: { in: invites.flatMap(i => i.universityIds) } }, select: { id: true, name: true, code: true } }),
+    prisma.program.findMany({ where: { organizationId: req.user.organizationId, id: { in: invites.flatMap(i => i.programIds) } }, select: { id: true, name: true, code: true, universityId: true, courseType: true } }),
+  ]);
+  const now = new Date();
+  res.json({
+    success: true,
+    count: invites.length,
+    data: invites.map(invite => ({
+      ...invite,
+      status: invite.status === 'pending' && invite.expiresAt < now ? 'expired' : invite.status,
+      universityIds: universities.filter(u => invite.universityIds.includes(u.id)),
+      programIds: programs.filter(p => invite.programIds.includes(p.id)),
+    })),
+  });
 });
+
 export const generateInvite = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const inviteType = INVITE_TYPES.includes(req.body?.inviteType) ? req.body.inviteType : 'center';
+  let universityIds = idList(req.body?.universityIds);
+  if (universityIds.length === 0) {
+    // One university per organization: use it automatically instead of asking the user to pick it.
+    const primary = await prisma.university.findFirst({ where: { organizationId: req.user.organizationId, singletonKey: 'primary' }, select: { id: true } });
+    if (primary) universityIds = [primary.id];
+  }
+  const programIds = idList(req.body?.programIds);
+  // Only reference universities/programs of this organization.
+  const [validUniversities, validPrograms] = await Promise.all([
+    prisma.university.count({ where: { organizationId: req.user.organizationId, id: { in: universityIds } } }),
+    prisma.program.count({ where: { organizationId: req.user.organizationId, id: { in: programIds } } }),
+  ]);
+  if (validUniversities !== universityIds.length || validPrograms !== programIds.length) {
+    res.status(400).json({ success: false, message: 'Invalid university or program selection' });
+    return;
+  }
   const invite = await prisma.studyCenterInvite.create({
-    data: { ...req.body, organizationId: req.user.organizationId, referredBy: req.user.id, token: Math.random().toString(36).substring(7).toUpperCase() }
+    data: {
+      organizationId: req.user.organizationId, referredBy: req.user.id, token: newInviteToken(),
+      universityIds, programIds, inviteType, expiresAt: inviteExpiry(),
+    },
   });
   res.status(201).json({ success: true, data: invite });
 });
+
 export const regenerateInvite = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const invite = await prisma.studyCenterInvite.update({ where: { id: req.params.id }, data: { token: Math.random().toString(36).substring(7).toUpperCase() } });
+  const existing = await prisma.studyCenterInvite.findFirst({
+    where: { id: req.params.id, referredBy: req.user.id, organizationId: req.user.organizationId },
+    select: { id: true },
+  });
+  if (!existing) {
+    res.status(404).json({ success: false, message: 'Invite not found' });
+    return;
+  }
+  const invite = await prisma.studyCenterInvite.update({
+    where: { id: existing.id },
+    data: { token: newInviteToken(), status: 'pending', usedAt: null, expiresAt: inviteExpiry() },
+  });
   res.json({ success: true, data: invite });
 });
 

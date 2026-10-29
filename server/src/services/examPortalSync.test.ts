@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
+  publishAssessment, requestStaffLaunch, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
 } from './examPortalSync.js';
 
 const env = {
@@ -207,4 +207,43 @@ test('launch ticket: foreign origin, http, missing ok, 404, 403 and timeout are 
     init.signal!.addEventListener('abort', () => reject(new Error('aborted')));
   }))) as unknown as typeof fetch;
   assert.equal(await code(requestLaunchTicket(config, '123456', { fetch: hang, timeoutMs: 20 })), 'timeout');
+});
+
+// ---- staff sign-in & assessment publishing ----
+
+test('staff launch: derived URL, identity sent, trusted URL returned; conflicts and scope errors surfaced', async () => {
+  assert.equal(config.staffLaunchTicketUrl, 'https://portal.example.edu/api/integrations/v1/staff-launch-tickets');
+  const ok = portal(() => json({ ok: true, launch_url: 'https://portal.example.edu/api/auth/launch?ticket=abc' }));
+  assert.equal(await requestStaffLaunch(config, { id: 'u1', name: 'Ann', email: 'ann@x.edu' }, { fetch: ok.fn }), 'https://portal.example.edu/api/auth/launch?ticket=abc');
+  assert.deepEqual(JSON.parse(String(ok.calls[1].init.body)), { tenant_id: 'institution-001', external_user_id: 'ums-user:u1', name: 'Ann', email: 'ann@x.edu' });
+  clearTokenCache();
+  assert.equal(await code(requestStaffLaunch(config, { id: 'u1', name: 'A', email: 'a@x.edu' }, { fetch: portal(() => json({}, 409)).fn })), 'account_conflict');
+  clearTokenCache();
+  assert.equal(await code(requestStaffLaunch(config, { id: 'u1', name: 'A', email: 'a@x.edu' }, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
+  clearTokenCache();
+  assert.equal(await code(requestStaffLaunch(config, { id: 'u1', name: 'A', email: 'a@x.edu' }, { fetch: portal(() => json({ ok: true, launch_url: 'https://evil.example/x' })).fn })), 'unconfirmed');
+});
+
+const assessment = { externalAssessmentId: 'exam-1', name: 'Midterm', examination: 'Semester 1', startDate: new Date('2026-11-01T04:00:00Z'), endDate: new Date('2026-11-01T06:30:00Z'), totalTimeMinutes: 120, active: true };
+
+test('publish assessment: payload mapping and confirmed result', async () => {
+  const { fn, calls } = portal(() => json({ ok: true, external_assessment_id: 'exam-1', assessment_id: 7 }, 201));
+  assert.deepEqual(await publishAssessment(config, assessment, { fetch: fn }), { assessmentId: 7, outcome: 'created' });
+  assert.equal(calls[1].url, 'https://portal.example.edu/api/integrations/v1/assessments');
+  assert.equal(calls[1].init.method, 'PUT');
+  assert.deepEqual(JSON.parse(String(calls[1].init.body)), {
+    tenant_id: 'institution-001', external_assessment_id: 'exam-1', name: 'Midterm', examination: 'Semester 1',
+    start_date: '2026-11-01T04:00:00.000Z', end_date: '2026-11-01T06:30:00.000Z', total_time: 120, status: 'active',
+  });
+});
+
+test('publish assessment: unconfirmed, mismatched id, rejection and timeout are errors', async () => {
+  for (const bad of [json({ ok: true, external_assessment_id: 'exam-1' }), json({ ok: true, external_assessment_id: 'other', assessment_id: 7 }), json({ ok: false, assessment_id: 7 }), json({ ok: true, external_assessment_id: 'exam-1', assessment_id: 7 }, 202)]) {
+    clearTokenCache();
+    assert.equal(await code(publishAssessment(config, assessment, { fetch: portal(() => bad.clone()).fn })), 'unconfirmed');
+  }
+  clearTokenCache();
+  assert.equal(await code(publishAssessment(config, assessment, { fetch: portal(() => json({}, 400)).fn })), 'rejected');
+  clearTokenCache();
+  assert.equal(await code(publishAssessment(config, assessment, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
 });
