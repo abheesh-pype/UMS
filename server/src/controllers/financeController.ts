@@ -1010,8 +1010,38 @@ export const financeVerifyCenter = asyncHandler(async (req: AuthRequest, res: Re
           centerId: existingCenter.id,
           invoiceType: 'study_center_admission'
         },
-        select: { id: true }
+        select: { id: true, status: true, paidAmount: true }
       });
+      if (existingInvoice && existingInvoice.status !== 'paid' && existingInvoice.status !== 'cancelled' && Number(existingInvoice.paidAmount || 0) === 0) {
+        // Invoice raised at Operations approval: settle it now and issue the receipt.
+        await tx.invoice.update({
+          where: { id: existingInvoice.id },
+          data: {
+            items: admissionInvoice.items,
+            amount: admissionInvoice.amount,
+            total: admissionInvoice.amount,
+            paidAmount: admissionInvoice.amount,
+            balanceAmount: 0,
+            status: 'paid',
+            paidAt: admissionInvoice.receivedAt
+          }
+        });
+        await tx.paymentEntry.create({
+          data: {
+            organizationId: req.user.organizationId,
+            invoiceId: existingInvoice.id,
+            amount: admissionInvoice.amount,
+            method: 'Study Centre Admission Payment',
+            // Data URL proofs are megabytes of base64 and stay on the center record, not in the reference field
+            referenceNo: String(paymentProofUrl).startsWith('data:') ? null : paymentProofUrl,
+            receiptNo: admissionInvoice.receiptNo,
+            receiptDate: admissionInvoice.receivedAt,
+            receivedBy: req.user.id,
+            receivedAt: admissionInvoice.receivedAt,
+            notes: 'Payment proof approved by Finance'
+          }
+        });
+      }
       if (!existingInvoice) {
         const invoice = await tx.invoice.create({
           data: {

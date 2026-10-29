@@ -99,11 +99,17 @@ import {
   updateFinanceTransaction,
   deleteFinanceTransaction,
 } from '../controllers/incomeExpenditureController.js';
+import { getBankDetails, updateBankDetails } from '../controllers/bankDetailsController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
 router.use(protect);
+
+// Collection bank details: readable by every signed-in user (shown on invoices), editable by Finance
+router.route('/bank-details')
+  .get(getBankDetails)
+  .put(authorize('finance_admin', 'org_admin', 'superadmin'), updateBankDetails);
 
 // Invoices
 router.route('/invoices').get(getInvoices).post(createInvoice);

@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import api from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,19 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   invoice
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
+  // Current bank details from Finance → Bank Details; they override the snapshot saved on older invoices.
+  const [liveBank, setLiveBank] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open || !invoice) return;
+    let cancelled = false;
+    api.get('/finance/bank-details')
+      .then(res => {
+        if (!cancelled && res.data?.configured) setLiveBank(res.data.data || {});
+      })
+      .catch(() => { /* keep the invoice's saved details */ });
+    return () => { cancelled = true; };
+  }, [open, invoice]);
 
   if (!invoice) return null;
 
@@ -65,7 +79,17 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const uni = invoice.universityDetails || {};
   const student = invoice.studentDetails || {};
   const tax = invoice.taxDetails || {};
-  const instructions = invoice.paymentInstructions || {};
+  const savedInstructions = invoice.paymentInstructions || {};
+  const instructions = {
+    ...savedInstructions,
+    instructions: liveBank.instructions || savedInstructions.instructions,
+    bankName: liveBank.bankName || savedInstructions.bankName,
+    accountHolder: liveBank.accountHolder || savedInstructions.accountHolder,
+    accountNumber: liveBank.accountNumber || savedInstructions.accountNumber,
+    ifscCode: liveBank.ifscCode || savedInstructions.ifscCode,
+    branch: liveBank.branch || savedInstructions.branch,
+    upiId: liveBank.upiId || savedInstructions.upiId,
+  };
   const items: any[] = Array.isArray(invoice.items) ? invoice.items : [];
   const payments: any[] = Array.isArray(invoice.payments) ? invoice.payments : [];
 
@@ -73,7 +97,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const uniAddress = uni.address || invoice.enrollment?.program?.university?.address || 'University Main Campus, Academic City';
   const uniContact = uni.contact || invoice.enrollment?.program?.university?.contact || '+91 98765 43210';
   const uniEmail = uni.email || 'finance@university.edu';
-  const uniGstin = uni.gstin || tax.gstin || '27AAACG0584P1Z3';
+  const uniGstin = liveBank.gstin || uni.gstin || tax.gstin || '27AAACG0584P1Z3';
+  const uniPan = liveBank.panNumber || uni.panNumber;
   const uniLogo = uni.logo || '/logo.png';
 
   const studentName = student.fullName || invoice.student?.name || invoice.enrollment?.studentName || 'Student Name';
@@ -194,7 +219,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700 mt-1 font-semibold">
                     <span><strong>GSTIN:</strong> {uniGstin}</span>
-                    {uni.panNumber && <span><strong>PAN:</strong> {uni.panNumber}</span>}
+                    {uniPan && <span><strong>PAN:</strong> {uniPan}</span>}
                   </div>
                 </div>
               </div>
@@ -353,6 +378,12 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                   <span className="text-slate-900 font-bold">{instructions.accountNumber || '40928374921'}</span>
                   <span className="text-slate-500">IFSC Code:</span>
                   <span className="text-slate-900 font-bold">{instructions.ifscCode || 'SBIN0001234'}</span>
+                  {instructions.branch && (
+                    <>
+                      <span className="text-slate-500">Branch:</span>
+                      <span className="text-slate-900 font-semibold">{instructions.branch}</span>
+                    </>
+                  )}
                   {instructions.upiId && (
                     <>
                       <span className="text-slate-500">UPI ID:</span>

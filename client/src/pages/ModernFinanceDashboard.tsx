@@ -68,6 +68,7 @@ import { toast } from 'sonner';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
+import { FinanceBankDetailsPanel } from '@/components/panels/FinanceBankDetailsPanel';
 
 
 export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
@@ -114,6 +115,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'team': return <MyTeamPanel departmentType="finance" title="Finance Team" />;
       case 'invoices': return <InvoicesPanel />;
       case 'payments': return <PaymentsPanel />;
+      case 'bank_details': return <FinanceBankDetailsPanel />;
       case 'university_fees': return <FinanceUniversityFeePanel />;
       case 'expenses': return <ExpensesPanel />;
       case 'targets': return <TargetsPanel endpoint="/finance/targets" title="Finance Targets" />;
@@ -178,6 +180,7 @@ export function getFinanceNavItems() {
     { id: 'fees', label: 'Fee Structure' },
     { id: 'invoices', label: 'Invoice' },
     { id: 'payments', label: 'Payment' },
+    { id: 'bank_details', label: 'Bank Details' },
     { id: 'student_payment_log', label: 'Student Payment Log' },
     { id: 'pending_payment', label: 'Pending Payment' },
     // { id: 'wallet_topups', label: 'Wallet Top Ups' },

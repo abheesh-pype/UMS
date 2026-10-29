@@ -8,6 +8,7 @@ import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '..
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { upsertStudyCenterAdmissionInvoice } from '../services/invoiceService.js';
 
 // Universities
 export const getUniversities = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -1843,6 +1844,15 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
       assignedOperationsUser: { select: { id: true, name: true, email: true, role: true } },
     }
   });
+
+  // Operations approval raises the centre's onboarding invoice (unpaid) for Finance to collect.
+  if (targetStatusCode === 'pending_payment' || targetStatusCode === 'finance_resubmitted') {
+    try {
+      await upsertStudyCenterAdmissionInvoice(existingCenter.id, req.user.organizationId);
+    } catch (invoiceErr) {
+      console.error('Study centre admission invoice generation failed:', invoiceErr);
+    }
+  }
   res.json({ success: true, data: center });
 });
 

@@ -23,6 +23,7 @@ model Organization {
   licenseId             String?
   licenseExpiry         DateTime?
   metadata              Json?
+  bankDetails           Json? // Collection bank account, UPI, PAN, GSTIN shown on invoices (Finance → Bank Details)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   sessions              AdmissionSession[]

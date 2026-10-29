@@ -464,11 +464,13 @@ export const generateInvoiceForEnrollment = async (
     igstRate: isInterstate ? taxRatePercent : 0,
     igstAmount: isInterstate ? taxAmount : 0,
     hsnSacCode: gstSetting?.sacCode || '999293', // Educational services SAC code
-    gstin: (university?.optionalFields as any)?.gstin || organization?.metadata?.gstin || '27AAACG0584P1Z3'
+    gstin: (organization as any)?.bankDetails?.gstin || (university?.optionalFields as any)?.gstin || organization?.metadata?.gstin || '27AAACG0584P1Z3'
   };
 
   // 4. University Details snapshot
   const uniOpt = (university?.optionalFields as any) || {};
+  // Bank details configured in Finance → Bank Details take precedence over older sources.
+  const orgBank = ((organization as any)?.bankDetails as Record<string, any>) || {};
   const universityDetails = {
     id: university?.id || null,
     name: university?.name || organization?.name || 'Autonomous State University',
@@ -479,14 +481,14 @@ export const generateInvoiceForEnrollment = async (
     email: organization?.contactEmail || organization?.email || 'finance@university.edu',
     website: organization?.slug ? `https://${organization.slug}.edu` : 'https://prohostix.edu',
     gstin: taxDetails.gstin,
-    panNumber: uniOpt.pan || 'AAACG0584P',
+    panNumber: orgBank.panNumber || uniOpt.pan || 'AAACG0584P',
     bankDetails: {
-      bankName: uniOpt.bankName || 'State Bank of India',
-      accountName: uniOpt.accountName || university?.name || organization?.name || 'University Collection A/C',
-      accountNumber: uniOpt.accountNumber || '40928374921',
-      ifscCode: uniOpt.ifscCode || 'SBIN0001234',
-      branch: uniOpt.branch || 'University Campus Main Branch',
-      upiId: uniOpt.upiId || 'payments@universityupi'
+      bankName: orgBank.bankName || uniOpt.bankName || 'State Bank of India',
+      accountName: orgBank.accountHolder || uniOpt.accountName || university?.name || organization?.name || 'University Collection A/C',
+      accountNumber: orgBank.accountNumber || uniOpt.accountNumber || '40928374921',
+      ifscCode: orgBank.ifscCode || uniOpt.ifscCode || 'SBIN0001234',
+      branch: orgBank.branch || uniOpt.branch || 'University Campus Main Branch',
+      upiId: orgBank.upiId || uniOpt.upiId || 'payments@universityupi'
     }
   };
 
@@ -511,7 +513,7 @@ export const generateInvoiceForEnrollment = async (
 
   // 6. Payment Instructions snapshot
   const paymentInstructions = {
-    instructions: 'Please make payments strictly via official University NetBanking, UPI, or through the verified Student Portal. Reference the Invoice Number on all remittances.',
+    instructions: orgBank.instructions || 'Please make payments strictly via official University NetBanking, UPI, or through the verified Student Portal. Reference the Invoice Number on all remittances.',
     bankName: universityDetails.bankDetails.bankName,
     accountHolder: universityDetails.bankDetails.accountName,
     accountNumber: universityDetails.bankDetails.accountNumber,
@@ -634,6 +636,88 @@ export const generateInvoiceForEnrollment = async (
   return await recalculateInvoiceBalance(invoice.id);
 };
 
+/**
+ * Study centre onboarding invoice, created (unpaid) when Operations approves the centre.
+ * Items are the authorization fee of each university the centre applied for, as Finance approval computes them.
+ * An unpaid invoice is refreshed to the current fees; a paid or cancelled one is left as it is.
+ */
+export const upsertStudyCenterAdmissionInvoice = async (centerId: string, organizationId: string) => {
+  const center = await prisma.studyCenter.findFirst({ where: { id: centerId, organizationId } });
+  if (!center) return null;
+
+  const universityIds = center.universityIds || [];
+  const [universities, authFees] = await Promise.all([
+    prisma.university.findMany({
+      where: { id: { in: universityIds }, organizationId },
+      select: { id: true, name: true, code: true },
+    }),
+    prisma.universityAuthFee.findMany({
+      where: { organizationId, universityId: { in: universityIds } },
+      select: { universityId: true, feeDetails: true },
+    }),
+  ]);
+  const universityById = new Map(universities.map(university => [university.id, university]));
+  const feeByUniversity = new Map(authFees.map(fee => {
+    const details = (fee.feeDetails as any) || {};
+    return [fee.universityId, Number(details.amount) || 0];
+  }));
+  const items = universityIds.flatMap((universityId: string) => {
+    const university = universityById.get(universityId);
+    const amount = feeByUniversity.get(universityId) || 0;
+    if (!university || amount <= 0) return [];
+    return [{
+      description: `Authorization Fee - ${university.name} (${university.code})`,
+      category: 'admission',
+      quantity: 1,
+      rate: amount,
+      taxRate: 0,
+      amount,
+    }];
+  });
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  if (total <= 0) return null;
+
+  const existing = await prisma.invoice.findFirst({
+    where: { organizationId, centerId: center.id, invoiceType: 'study_center_admission' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existing) {
+    if (Number(existing.paidAmount || 0) > 0 || existing.status === 'paid' || existing.status === 'cancelled') return existing;
+    return prisma.invoice.update({
+      where: { id: existing.id },
+      data: { items, amount: total, total, balanceAmount: total },
+    });
+  }
+
+  const issuedAt = new Date();
+  return prisma.invoice.create({
+    data: {
+      organizationId,
+      centerId: center.id,
+      invoiceNo: await generateNextInvoiceNumber(organizationId),
+      invoiceType: 'study_center_admission',
+      financialYear: calculateFinancialYear(issuedAt),
+      period: 'Study Centre Authorization Fee',
+      amount: total,
+      tax: 0,
+      total,
+      paidAmount: 0,
+      balanceAmount: total,
+      status: 'unpaid',
+      items,
+      studentDetails: {
+        fullName: center.name,
+        enrollmentNumber: center.code,
+        programName: 'Study Centre Authorization',
+        programCode: center.code,
+        admissionType: 'Study Centre Admission',
+      },
+      issuedAt,
+      dueDate: new Date(issuedAt.getTime() + 15 * 24 * 60 * 60 * 1000),
+    },
+  });
+};
+
 export const INITIAL_PAYMENT_INVOICE_TYPE = 'initial_payment';
 
 /**
@@ -687,6 +771,11 @@ export const upsertInitialPaymentInvoice = async (enrollmentId: string) => {
 
   const issuedAt = new Date();
   const studyCenter = enrollment.studyCenter;
+  const organization = await prisma.organization.findUnique({
+    where: { id: enrollment.organizationId },
+    select: { bankDetails: true },
+  });
+  const orgBank = (organization?.bankDetails as Record<string, any>) || {};
   return prisma.invoice.create({
     data: {
       organizationId: enrollment.organizationId,
@@ -720,7 +809,20 @@ export const upsertInitialPaymentInvoice = async (enrollmentId: string) => {
         studyCenterCode: studyCenter?.code || null,
         admissionType: studyCenter ? `Study Centre (${studyCenter.name})` : 'Direct University',
       },
-      universityDetails: { name: enrollment.program?.university?.name || null },
+      universityDetails: {
+        name: enrollment.program?.university?.name || null,
+        gstin: orgBank.gstin || null,
+        panNumber: orgBank.panNumber || null,
+      },
+      paymentInstructions: {
+        instructions: orgBank.instructions || null,
+        bankName: orgBank.bankName || null,
+        accountHolder: orgBank.accountHolder || null,
+        accountNumber: orgBank.accountNumber || null,
+        ifscCode: orgBank.ifscCode || null,
+        branch: orgBank.branch || null,
+        upiId: orgBank.upiId || null,
+      },
       issuedAt,
       dueDate: new Date(issuedAt.getTime() + 15 * 24 * 60 * 60 * 1000),
     },
