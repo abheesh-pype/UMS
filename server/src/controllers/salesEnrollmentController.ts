@@ -5,7 +5,8 @@ import { prisma } from '../config/postgres.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
-import { parseInitialPayment } from '../utils/initialPayment.js';
+import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
+import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
@@ -119,7 +120,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee, initialPayment,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, totalFee, initialPayment, initialPaymentProof,
   } = req.body;
 
   if (!studentName?.trim() || !studentEmail?.trim() || !studentPhone?.trim() || !studentAddress?.trim() || !programId || !sessionId) {
@@ -137,6 +138,11 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
   const parsedInitialPayment = parseInitialPayment(initialPayment);
   if ('error' in parsedInitialPayment) {
     res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
     return;
   }
 
@@ -274,6 +280,7 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
         paymentMethod: paymentMethod || 'installment',
         totalFee: totalFee ? Number(totalFee) : null,
         initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         status: 'document_review',
         salesUserId: req.user.id,
         statusHistory: [
@@ -299,6 +306,12 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
       },
     });
   }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice generation failed:', invoiceErr);
+  }
 
   // Notify Operations team of new student enrollment for review
   try {

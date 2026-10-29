@@ -7,7 +7,8 @@ import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getSingleTenantContext } from '../utils/contextHelper.js';
 import { getStudentPortalPassword } from '../utils/studentPortalAccess.js';
-import { parseInitialPayment } from '../utils/initialPayment.js';
+import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
+import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
@@ -329,7 +330,7 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   const {
     studentName, studentEmail, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, dob, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, inviteToken, initialPayment,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, inviteToken, initialPayment, initialPaymentProof,
   } = req.body;
   const invite = inviteToken ? await findStudentInvite(inviteToken, organizationId) : null;
   if (inviteToken && !invite) {
@@ -365,6 +366,11 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
   const parsedInitialPayment = parseInitialPayment(initialPayment);
   if ('error' in parsedInitialPayment) {
     res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
     return;
   }
 
@@ -499,6 +505,7 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
         paymentMethod: paymentMethod || 'installment',
         totalFee: fee,
         initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         publicTrackingTokenHash,
         // Sales-invited applications follow the Sales pipeline: attributed to the referrer and queued for Operations.
         status: invite ? 'document_review' : 'pending_doc_review',
@@ -527,6 +534,12 @@ export const createPublicStudentEnrollment = asyncHandler(async (req: Request, r
       select: { id: true, studentName: true, status: true },
     });
   }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice generation failed:', invoiceErr);
+  }
 
   try {
     const opsUsers = await prisma.user.findMany({
@@ -586,7 +599,7 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
   const {
     studentName, studentPhone, studentAddress, programId, sessionId, documents, educationalDetails,
     specialisation, abcId, debId, religion, caste, fatherName, motherName, parentMobile, studentPhoto,
-    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, initialPayment,
+    admissionDate, pincode, alternativePhone, maritalStatus, currentlyWorking, paymentMethod, initialPayment, initialPaymentProof,
   } = req.body;
   const studentNameValue = typeof studentName === 'string' ? studentName.trim() : '';
   const studentPhoneValue = typeof studentPhone === 'string' ? studentPhone.trim() : '';
@@ -606,6 +619,11 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
   const parsedInitialPayment = parseInitialPayment(initialPayment);
   if ('error' in parsedInitialPayment) {
     res.status(400).json({ success: false, message: parsedInitialPayment.error });
+    return;
+  }
+  const parsedInitialPaymentProof = parseInitialPaymentProof(initialPaymentProof);
+  if ('error' in parsedInitialPaymentProof) {
+    res.status(400).json({ success: false, message: parsedInitialPaymentProof.error });
     return;
   }
   const { program, session } = await getPublicProgramAndSession(enrollment.organizationId, programId, sessionId);
@@ -706,6 +724,7 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
         paymentMethod: paymentMethod || 'installment',
         totalFee: fee,
         initialPayment: parsedInitialPayment.amount,
+        initialPaymentProof: parsedInitialPaymentProof.proof,
         status: 'pending_doc_review',
         departmentRemarks: null,
         departmentReviewedBy: null,
@@ -715,6 +734,12 @@ const resubmitPublicStudentApplication = async (req: Request, res: Response, enr
       },
     });
   }, { timeout: 15000 });
+
+  try {
+    await upsertInitialPaymentInvoice(enrollment.id);
+  } catch (invoiceErr) {
+    console.error('Initial payment invoice update failed:', invoiceErr);
+  }
 
   try {
     const opsUsers = await prisma.user.findMany({
@@ -851,6 +876,7 @@ const sendPublicStudentApplicationStatus = (enrollment: any, res: Response) => {
         currentlyWorking: enrollment.currentlyWorking || '',
         paymentMethod: enrollment.paymentMethod || 'installment',
         initialPayment: enrollment.initialPayment ?? 500,
+        initialPaymentProof: enrollment.initialPaymentProof || '',
         documents: parseJsonArray(enrollment.documents).filter((document: any) => document?.reqName !== 'Student Payment Proof'),
         educationalDetails: parseJsonArray(enrollment.educationalDetails),
       },

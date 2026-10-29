@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto';
 import {
   generateInvoiceForEnrollment,
   generateNextReceiptNumber,
-  recalculateInvoiceBalance
+  recalculateInvoiceBalance,
+  INITIAL_PAYMENT_INVOICE_TYPE
 } from '../services/invoiceService.js';
 
 const findLinkedInvoicePayment = async (invoiceId: string, receipt: any) => {
@@ -35,7 +36,7 @@ const findLinkedInvoicePayment = async (invoiceId: string, receipt: any) => {
 
 const syncReceiptToInvoice = async (enrollmentId: string, receipt: any) => {
   let invoice = await prisma.invoice.findFirst({
-    where: { enrollmentId, organizationId: receipt.organizationId },
+    where: { enrollmentId, organizationId: receipt.organizationId, invoiceType: { not: INITIAL_PAYMENT_INVOICE_TYPE } },
     orderBy: { createdAt: 'desc' }
   });
 
@@ -367,7 +368,7 @@ export const addExtraFee = asyncHandler(async (req: AuthRequest, res: Response) 
   });
 
   let invoice = await prisma.invoice.findFirst({
-    where: { enrollmentId: id, organizationId: req.user.organizationId },
+    where: { enrollmentId: id, organizationId: req.user.organizationId, invoiceType: { not: INITIAL_PAYMENT_INVOICE_TYPE } },
     orderBy: { createdAt: 'desc' }
   });
   if (!invoice) {

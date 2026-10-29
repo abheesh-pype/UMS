@@ -117,9 +117,11 @@ export const generateInvoiceForEnrollment = async (
     throw new Error(`Enrollment not found for ID: ${enrollmentId}`);
   }
 
-  // If not forcing new and an invoice already exists for this enrollment, return existing
-  if (!options?.forceNew && enrollment.invoices && enrollment.invoices.length > 0) {
-    return enrollment.invoices[0];
+  // If not forcing new and an invoice already exists for this enrollment, return existing.
+  // The admission initial-payment invoice is separate and must not stop the fee invoice from being generated.
+  const feeInvoices = (enrollment.invoices || []).filter((invoice: any) => invoice.invoiceType !== INITIAL_PAYMENT_INVOICE_TYPE);
+  if (!options?.forceNew && feeInvoices.length > 0) {
+    return feeInvoices[0];
   }
 
   const organization = enrollment.organization;
@@ -632,6 +634,99 @@ export const generateInvoiceForEnrollment = async (
   return await recalculateInvoiceBalance(invoice.id);
 };
 
+export const INITIAL_PAYMENT_INVOICE_TYPE = 'initial_payment';
+
+/**
+ * Creates (or, on resubmission, updates) the invoice for the initial payment entered on the admission form.
+ * Kept separate from the fee invoice; Finance records the payment against it after verifying the proof.
+ */
+export const upsertInitialPaymentInvoice = async (enrollmentId: string) => {
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: enrollmentId },
+    include: {
+      student: true,
+      program: { include: { university: true } },
+      session: true,
+      studyCenter: true,
+    },
+  });
+  const amount = Number(enrollment?.initialPayment || 0);
+  if (!enrollment || amount <= 0) return null;
+
+  // Named after the payment method chosen on the form, matching the field label there.
+  const programName = enrollment.program?.name || 'Program';
+  const paymentLabel = enrollment.paymentMethod === 'full_payment'
+    ? `${programName} Program Fee`
+    : enrollment.paymentMethod === 'yearly'
+      ? 'Yearly Payment'
+      : enrollment.paymentMethod === 'semester'
+        ? 'Semester Fee'
+        : 'Initial Payment';
+
+  const items = [{
+    description: enrollment.paymentMethod === 'full_payment' ? paymentLabel : `${paymentLabel} - ${programName}`,
+    category: 'admission',
+    quantity: 1,
+    rate: amount,
+    taxRate: 0,
+    amount,
+  }];
+
+  const existing = await prisma.invoice.findFirst({
+    where: { enrollmentId, invoiceType: INITIAL_PAYMENT_INVOICE_TYPE },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existing) {
+    // Only an invoice with nothing paid against it yet follows the resubmitted amount.
+    if (Number(existing.paidAmount || 0) > 0 || existing.status === 'paid' || existing.status === 'cancelled') return existing;
+    return prisma.invoice.update({
+      where: { id: existing.id },
+      data: { amount, total: amount, balanceAmount: amount, items, period: paymentLabel },
+    });
+  }
+
+  const issuedAt = new Date();
+  const studyCenter = enrollment.studyCenter;
+  return prisma.invoice.create({
+    data: {
+      organizationId: enrollment.organizationId,
+      enrollmentId: enrollment.id,
+      studentId: enrollment.student?.id || null,
+      centerId: studyCenter?.id || null,
+      universityId: enrollment.program?.universityId || null,
+      invoiceNo: await generateNextInvoiceNumber(enrollment.organizationId),
+      invoiceType: INITIAL_PAYMENT_INVOICE_TYPE,
+      financialYear: calculateFinancialYear(issuedAt),
+      academicYear: calculateAcademicYear(enrollment.session?.name, issuedAt),
+      period: paymentLabel,
+      amount,
+      tax: 0,
+      total: amount,
+      paidAmount: 0,
+      balanceAmount: amount,
+      status: 'unpaid',
+      items,
+      studentDetails: {
+        id: enrollment.student?.id || null,
+        studentId: enrollment.student?.enrollmentNo || null,
+        fullName: enrollment.studentName,
+        email: enrollment.studentEmail,
+        phone: enrollment.studentPhone,
+        address: enrollment.studentAddress,
+        programName: enrollment.program?.name || null,
+        programCode: enrollment.program?.code || null,
+        sessionName: enrollment.session?.name || null,
+        studyCenterName: studyCenter?.name || null,
+        studyCenterCode: studyCenter?.code || null,
+        admissionType: studyCenter ? `Study Centre (${studyCenter.name})` : 'Direct University',
+      },
+      universityDetails: { name: enrollment.program?.university?.name || null },
+      issuedAt,
+      dueDate: new Date(issuedAt.getTime() + 15 * 24 * 60 * 60 * 1000),
+    },
+  });
+};
+
 /**
  * Recalculates Invoice paidAmount, balanceAmount, and status based on linked PaymentEntries.
  */
@@ -806,7 +901,7 @@ export const syncStudentFeeReceiptsToInvoices = async (organizationId: string) =
 
   for (const receipt of receipts) {
     let invoice = await prisma.invoice.findFirst({
-      where: { enrollmentId: receipt.enrollmentId, organizationId },
+      where: { enrollmentId: receipt.enrollmentId, organizationId, invoiceType: { not: INITIAL_PAYMENT_INVOICE_TYPE } },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -987,7 +1082,7 @@ export const autoGenerateMissingInvoices = async (organizationId: string) => {
       organizationId,
       status: 'enrolled',
       invoices: {
-        none: {}
+        none: { invoiceType: { not: INITIAL_PAYMENT_INVOICE_TYPE } }
       }
     },
     select: {
