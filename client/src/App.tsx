@@ -105,6 +105,8 @@ const TABLE_TO_TAB: Record<string, string> = {
   // Student portal
   'student-notifications': 'notifications',
   'student-active-session': 'active-session',
+  'student-academic-calendar': 'academic-calendar',
+  'academic-calendar': 'academic-calendar',
   'student-examination-portal': 'examination-portal',
   'student-payment-info': 'payment-info',
   'student-video-classes': 'video-classes',
@@ -349,6 +351,7 @@ function App() {
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'student-notifications', label: 'Notifications' },
         { id: 'student-active-session', label: 'Active Session' },
+        { id: 'student-academic-calendar', label: 'Academic Calendar' },
         { id: 'student-examination-portal', label: 'Examination Portal' },
         { id: 'student-payment-info', label: 'Payment info' },
         { id: 'student-video-classes', label: 'Video Classes' },

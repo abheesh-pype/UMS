@@ -185,6 +185,8 @@ export function PrismaLayout({
       case 'enrollments_finance': return <GraduationCap className={iconClass} />;
       case 'student-notifications': return <Bell className={iconClass} />;
       case 'student-active-session': return <Calendar className={iconClass} />;
+      case 'student-academic-calendar':
+      case 'academic-calendar': return <Calendar className={iconClass} />;
       case 'student-examination-portal': return <FileText className={iconClass} />;
       case 'student-payment-info': return <Wallet className={iconClass} />;
       case 'academic-video-classes':

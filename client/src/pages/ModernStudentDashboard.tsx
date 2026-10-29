@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   BookOpen, 
   Download, 
@@ -44,6 +45,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
+import { AcademicCalendarPanel } from '@/components/panels/AcademicCalendarPanel';
 
 interface StudentAssessmentResult {
   assessment_id: string;
@@ -68,7 +70,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones'>('all');
   const [notificationSearchQuery, setNotificationSearchQuery] = useState('');
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState<'unread' | 'read'>('unread');
   const [loading, setLoading] = useState(true);
   const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
   const [scheduledClassesLoading, setScheduledClassesLoading] = useState(false);
@@ -79,8 +81,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [videoSearchQuery, setVideoSearchQuery] = useState<string>('');
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'examination-portal' | 'payment-info' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
-    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+  const [activeSection, setActiveSection] = useState<'portal' | 'notifications' | 'active-session' | 'academic-calendar' | 'examination-portal' | 'payment-info' | 'video-classes' | 'scheduled-classes' | 'e-books' | 'results' | 'documents'>(
+    initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'academic-calendar' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
       ? initialTab
       : 'portal'
   );
@@ -119,7 +121,7 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
   useEffect(() => {
     setActiveSection(
-      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
+      initialTab === 'notifications' || initialTab === 'active-session' || initialTab === 'academic-calendar' || initialTab === 'examination-portal' || initialTab === 'payment-info' || initialTab === 'video-classes' || initialTab === 'scheduled-classes' || initialTab === 'e-books' || initialTab === 'results' || initialTab === 'documents'
         ? initialTab
         : 'portal'
     );
@@ -320,11 +322,13 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   useEffect(() => {
     if (activeSection === 'notifications') {
       fetchNotifications();
+      setNotificationStatus('unread');
     }
   }, [activeSection]);
 
   const openNotifications = () => {
     setActiveSection('notifications');
+    setNotificationStatus('unread');
     fetchNotifications();
   };
 
@@ -391,8 +395,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       setActiveSection('e-books');
     } else if (link.startsWith('classes/live/')) {
       setActiveSection('scheduled-classes');
-    } else if (link.startsWith('session/') || link.startsWith('calendar/')) {
+    } else if (link.startsWith('session/')) {
       setActiveSection('active-session');
+    } else if (link.startsWith('calendar/')) {
+      setActiveSection('academic-calendar');
     }
   };
 
@@ -1050,9 +1056,9 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                 </div>
               </div>
 
-              {/* Search & Quick Filter Pills */}
+              {/* Search, Category Filter Dropdown & Read/Unread Switch */}
               <div className="pt-4 space-y-3">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                   <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -1064,92 +1070,73 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                     />
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant={unreadOnly ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setUnreadOnly(prev => !prev)}
-                      className="h-9 text-xs rounded-lg gap-1.5"
-                    >
-                      <span className={cn('w-2 h-2 rounded-full', unreadOnly ? 'bg-white' : 'bg-primary')} />
-                      Unread Only {unreadNotifications > 0 && `(${unreadNotifications})`}
-                    </Button>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Category Filter Dropdown */}
+                    {(() => {
+                      const currentStatusList = notificationStatus === 'unread'
+                        ? notifications.filter(n => !n.read)
+                        : notifications.filter(n => Boolean(n.read));
+                      const feeCount = currentStatusList.filter(n => getNotificationCategory(n) === 'fees').length;
+                      const examCount = currentStatusList.filter(n => getNotificationCategory(n) === 'examinations').length;
+                      const materialCount = currentStatusList.filter(n => getNotificationCategory(n) === 'materials').length;
+                      const classCount = currentStatusList.filter(n => getNotificationCategory(n) === 'classes').length;
+                      const milestoneCount = currentStatusList.filter(n => getNotificationCategory(n) === 'milestones').length;
+
+                      return (
+                        <Select
+                          value={notificationFilter}
+                          onValueChange={(val: 'all' | 'fees' | 'examinations' | 'materials' | 'classes' | 'milestones') => setNotificationFilter(val)}
+                        >
+                          <SelectTrigger className="w-[190px] sm:w-[210px] h-9 text-xs sm:text-sm bg-background">
+                            <SelectValue placeholder="All Categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Categories ({currentStatusList.length})</SelectItem>
+                            <SelectItem value="fees">Fees & Invoices ({feeCount})</SelectItem>
+                            <SelectItem value="examinations">Examinations ({examCount})</SelectItem>
+                            <SelectItem value="materials">Curriculum & Videos ({materialCount})</SelectItem>
+                            <SelectItem value="classes">Live Classes ({classCount})</SelectItem>
+                            <SelectItem value="milestones">Milestones & Calendar ({milestoneCount})</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      );
+                    })()}
+
+                    {/* Read / Unread Two Classes Switcher */}
+                    {(() => {
+                      const unreadCount = notifications.filter(n => !n.read).length;
+                      const readCount = notifications.filter(n => Boolean(n.read)).length;
+
+                      return (
+                        <Tabs
+                          value={notificationStatus}
+                          onValueChange={(val) => setNotificationStatus(val as 'unread' | 'read')}
+                        >
+                          <TabsList className="h-9 p-1 bg-muted/80">
+                            <TabsTrigger value="unread" className="text-xs font-semibold gap-1.5 px-3 py-1">
+                              <span className={cn('w-2 h-2 rounded-full', notificationStatus === 'unread' ? 'bg-primary' : 'bg-muted-foreground')} />
+                              Unread ({unreadCount})
+                            </TabsTrigger>
+                            <TabsTrigger value="read" className="text-xs font-semibold gap-1.5 px-3 py-1">
+                              <CheckCheck className="w-3.5 h-3.5" />
+                              Read ({readCount})
+                            </TabsTrigger>
+                          </TabsList>
+                        </Tabs>
+                      );
+                    })()}
                   </div>
                 </div>
-
-                {/* Category Pills */}
-                {(() => {
-                  const feeCount = notifications.filter(n => getNotificationCategory(n) === 'fees').length;
-                  const examCount = notifications.filter(n => getNotificationCategory(n) === 'examinations').length;
-                  const materialCount = notifications.filter(n => getNotificationCategory(n) === 'materials').length;
-                  const classCount = notifications.filter(n => getNotificationCategory(n) === 'classes').length;
-                  const milestoneCount = notifications.filter(n => getNotificationCategory(n) === 'milestones').length;
-
-                  return (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar text-xs">
-                      <Button
-                        variant={notificationFilter === 'all' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('all')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0"
-                      >
-                        All ({notifications.length})
-                      </Button>
-                      <Button
-                        variant={notificationFilter === 'fees' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('fees')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
-                      >
-                        <Wallet className="w-3.5 h-3.5 text-blue-500" />
-                        Fees & Invoices ({feeCount})
-                      </Button>
-                      <Button
-                        variant={notificationFilter === 'examinations' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('examinations')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
-                      >
-                        <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
-                        Examinations ({examCount})
-                      </Button>
-                      <Button
-                        variant={notificationFilter === 'materials' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('materials')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
-                      >
-                        <Video className="w-3.5 h-3.5 text-emerald-500" />
-                        Curriculum & Videos ({materialCount})
-                      </Button>
-                      <Button
-                        variant={notificationFilter === 'classes' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('classes')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
-                      >
-                        <Calendar className="w-3.5 h-3.5 text-purple-500" />
-                        Live Classes ({classCount})
-                      </Button>
-                      <Button
-                        variant={notificationFilter === 'milestones' ? 'default' : 'secondary'}
-                        size="sm"
-                        onClick={() => setNotificationFilter('milestones')}
-                        className="h-7 text-xs rounded-full px-3 shrink-0 gap-1.5"
-                      >
-                        <CalendarCheck className="w-3.5 h-3.5 text-rose-500" />
-                        Milestones & Calendar ({milestoneCount})
-                      </Button>
-                    </div>
-                  );
-                })()}
               </div>
             </CardHeader>
 
             <CardContent className="p-6 space-y-4">
               {(() => {
-                const filtered = notifications.filter(n => {
-                  if (unreadOnly && n.read) return false;
+                const currentStatusList = notificationStatus === 'unread'
+                  ? notifications.filter(n => !n.read)
+                  : notifications.filter(n => Boolean(n.read));
+
+                const filtered = currentStatusList.filter(n => {
                   if (notificationFilter !== 'all') {
                     const cat = getNotificationCategory(n);
                     if (cat !== notificationFilter) return false;
@@ -1170,23 +1157,26 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                         <Bell className="w-6 h-6" />
                       </div>
                       <h4 className="text-base font-semibold text-foreground">
-                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all' 
+                        {notificationSearchQuery || notificationFilter !== 'all' 
                           ? 'No matching notifications found' 
-                          : 'No notifications at this time'}
+                          : notificationStatus === 'unread'
+                            ? 'No unread notifications'
+                            : 'No read notifications'}
                       </h4>
                       <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                        {notificationSearchQuery || unreadOnly || notificationFilter !== 'all'
+                        {notificationSearchQuery || notificationFilter !== 'all'
                           ? 'Try resetting your filter or search query to see all updates.'
-                          : 'All fee receipts, exam announcements, curriculum video releases, and calendar notices will appear here.'}
+                          : notificationStatus === 'unread'
+                            ? 'All caught up! Switch to "Read" to review your previous notifications.'
+                            : 'You have not marked any notifications as read yet.'}
                       </p>
-                      {(notificationSearchQuery || unreadOnly || notificationFilter !== 'all') && (
+                      {(notificationSearchQuery || notificationFilter !== 'all') && (
                         <Button 
                           variant="outline" 
                           size="sm"
                           onClick={() => {
                             setNotificationFilter('all');
                             setNotificationSearchQuery('');
-                            setUnreadOnly(false);
                           }}
                           className="mt-2 text-xs"
                         >
@@ -1618,6 +1608,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
             </CardContent>
           </Card>
         </main>
+      ) : activeSection === 'academic-calendar' ? (
+        <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
+          <AcademicCalendarPanel readOnly={true} />
+        </main>
       ) : activeSection === 'active-session' ? (
         <main className="w-full px-2 sm:px-4 lg:px-6 py-6 space-y-6">
           {/* Main Card: Academic overview */}
@@ -2022,28 +2016,41 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
 
                   <div className="px-6 pb-4 pt-1 border-t border-border/30 text-xs text-muted-foreground flex items-center justify-between">
                     <span>Timeline updates sync with academic calendar</span>
-                    {combinedAcademicEvents.some((e: any) => e.source === 'examination') ? (
+                    <div className="flex items-center gap-3">
                       <Button 
                         variant="ghost" 
                         size="sm" 
-                        className="h-6 text-xs text-amber-600 hover:text-amber-700 p-0"
+                        className="h-6 text-xs text-primary hover:text-primary/80 p-0"
                         onClick={() => {
                           setPreviousSection(activeSection);
-                          setActiveSection('examination-portal');
+                          setActiveSection('academic-calendar');
                         }}
                       >
-                        Exam Portal <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                        Academic Calendar <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                       </Button>
-                    ) : (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-6 text-xs text-muted-foreground hover:text-foreground p-0"
-                        onClick={fetchAcademicEvents}
-                      >
-                        Refresh <RefreshCw className="w-3 h-3 ml-1" />
-                      </Button>
-                    )}
+                      {combinedAcademicEvents.some((e: any) => e.source === 'examination') ? (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-xs text-amber-600 hover:text-amber-700 p-0"
+                          onClick={() => {
+                            setPreviousSection(activeSection);
+                            setActiveSection('examination-portal');
+                          }}
+                        >
+                          Exam Portal <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-xs text-muted-foreground hover:text-foreground p-0"
+                          onClick={fetchAcademicEvents}
+                        >
+                          Refresh <RefreshCw className="w-3 h-3 ml-1" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </Card>
 
