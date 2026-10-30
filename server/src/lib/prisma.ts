@@ -30,12 +30,33 @@ pool.on('error', (err) => {
 
 const adapter = new PrismaPg(pool as any);
 
+// "Can't reach database server" (P1001) means the query never reached the
+// database, so it is safe to retry when the remote connection briefly drops.
+const isUnreachable = (error: any) =>
+  error?.code === 'P1001' || /can't reach database server/i.test(error?.message || '');
+
+const RETRY_DELAYS_MS = [500, 1500, 3000];
+
 const prismaClientSingleton = () => {
   return new PrismaClient({
     adapter: adapter as any,
     log: ['error', 'warn'],
     // Each query is a round trip to the remote database, so the 5s default is too tight.
     transactionOptions: { maxWait: 10000, timeout: 20000 },
+  }).$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await query(args);
+          } catch (error) {
+            if (!isUnreachable(error) || attempt >= RETRY_DELAYS_MS.length) throw error;
+            console.warn(`Database unreachable, retrying (${attempt + 1}/${RETRY_DELAYS_MS.length})...`);
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+          }
+        }
+      },
+    },
   });
 };
 

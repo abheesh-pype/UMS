@@ -1782,7 +1782,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const openCreateProgram = (templateProg?: any) => {
     setEditingId(null);
-    setProgramFormSessionId(selectedSessionId || (sessions[0]?.id || ''));
+    const activeSessionId = sessions.find(s => s.status === 'active')?.id;
+    setProgramFormSessionId(activeSessionId || selectedSessionId || (sessions[0]?.id || ''));
     if (templateProg) {
       setProgramTemplateId(templateProg.id);
       setProgramCopySemesters(true);
@@ -3523,7 +3524,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             </div>
           ) : (
             <div ref={sessionScrollerRef} className="flex gap-3 overflow-x-auto pb-3 scroll-smooth snap-x snap-mandatory">
-                {sessions.map(session => {
+                {/* Active session first so it is visible without scrolling; the rest keep date order. */}
+                {[...sessions].sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active')).map(session => {
                   const sessionProgramCount = programs.filter(p => p.academicSessionId === session.id).length;
                   const isSelected = selectedSessionId === session.id;
 
