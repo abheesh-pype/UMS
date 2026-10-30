@@ -47,6 +47,7 @@ interface Department {
 }
 
 const DEPT_TYPE_COLORS: Record<string, string> = {
+  academic: 'bg-purple-100 text-purple-800',
   hr: 'bg-orange-100 text-orange-800',
   finance: 'bg-green-100 text-green-800',
   operations: 'bg-blue-100 text-blue-800',

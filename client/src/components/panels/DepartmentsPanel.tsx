@@ -47,7 +47,7 @@ interface User {
   role: string;
 }
 
-const BUILT_IN_DEPARTMENT_TYPES = ['hr', 'finance', 'operations', 'sales', 'ceo', 'org_admin', 'study_center', 'staff'];
+const BUILT_IN_DEPARTMENT_TYPES = ['academic', 'hr', 'finance', 'operations', 'sales', 'ceo', 'org_admin', 'study_center', 'staff'];
 
 export function DepartmentsPanel() {
   const { user } = useAuth();
@@ -104,11 +104,11 @@ export function DepartmentsPanel() {
   };
 
   const handleEdit = (dept: Department) => {
-    const isBuiltInType = BUILT_IN_DEPARTMENT_TYPES.includes(dept.type);
+    const isBuiltInType = BUILT_IN_DEPARTMENT_TYPES.includes(dept.type) || BUILT_IN_DEPARTMENT_TYPES.includes(dept.type?.toLowerCase());
     setEditingDept(dept);
     setFormData({
       name: dept.name,
-      type: isBuiltInType ? dept.type : 'custom',
+      type: isBuiltInType ? dept.type.toLowerCase() : 'custom',
       customType: isBuiltInType || dept.type === 'custom' ? '' : dept.type,
       organizationId: dept.organizationId?.id || dept.organizationId || user?.organizationId || '',
       managerId: dept.managerId?.id || dept.managerId || '',
@@ -177,6 +177,7 @@ export function DepartmentsPanel() {
 
   const getTypeBadgeColor = (type: string) => {
     const colors: any = {
+      academic: 'bg-purple-600',
       hr: 'bg-orange-500',
       finance: 'bg-green-500',
       operations: 'bg-blue-500',
@@ -187,7 +188,7 @@ export function DepartmentsPanel() {
       staff: 'bg-slate-500',
       custom: 'bg-purple-500',
     };
-    return colors[type] || 'bg-gray-500';
+    return colors[type?.toLowerCase()] || colors[type] || 'bg-gray-500';
   };
 
   if (loading) {
@@ -368,6 +369,7 @@ export function DepartmentsPanel() {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="academic">Academic</SelectItem>
                     <SelectItem value="hr">HR</SelectItem>
                     <SelectItem value="finance">Finance</SelectItem>
                     <SelectItem value="operations">Operations</SelectItem>

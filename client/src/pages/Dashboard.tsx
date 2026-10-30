@@ -135,11 +135,13 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
     if (departmentType) {
       // Regular employees (not sub-dept managers) always get the employee dashboard
       // Exception: Sales, Operations, HR, and Finance employees get their respective dashboards
-      if (!isSubDeptManager && !['sales', 'operations', 'hr', 'finance'].includes(departmentType)) {
+      if (!isSubDeptManager && !['sales', 'operations', 'hr', 'finance', 'academic'].includes(departmentType)) {
         return <ModernEmployeeDashboard initialTab={initialTab} onNavigate={onNavigateToTable} />;
       }
       // Sub-dept managers get the department admin dashboard
       switch (departmentType) {
+        case 'academic':
+          return <AcademicAdminPanel initialTab={initialTab} onNavigate={onNavigateToTable} />;
         case 'hr':
           return <ModernHRDashboard initialTab={initialTab} onNavigate={onNavigateToTable} />;
         case 'finance':

@@ -16,7 +16,7 @@ export type UserRole =
   | 'employee'
   | 'staff';
 
-export type DepartmentType = 'operations' | 'finance' | 'hr' | 'sales' | 'custom';
+export type DepartmentType = 'operations' | 'finance' | 'hr' | 'sales' | 'academic' | 'custom';
 export type SubDepartmentType = 'openschool' | 'online' | 'skill' | 'bvoc';
 
 export interface Organization {
