@@ -18,6 +18,7 @@
     "create-departments": "tsx src/scripts/auto-create-departments.ts",
     "clean-reseed": "tsx src/scripts/clean-and-reseed.ts",
     "migrate-uploads": "tsx src/scripts/migrate-uploads-to-db.ts",
+    "migrate-materials": "tsx src/scripts/migrate-materials-to-db.ts",
     "test:exam-portal": "node --import tsx --test src/services/examPortalReceiver.test.ts src/services/examPortalSync.test.ts"
   },
   "keywords": [

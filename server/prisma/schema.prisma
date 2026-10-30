@@ -1801,6 +1801,21 @@ model ProgramMaterial {
   @@index([organizationId])
 }
 
+// File contents kept in the database so every machine sharing it can serve the
+// file (E-Books, module videos, video classes). Served at /api/v1/files/:id.
+model StoredFile {
+  id             String   @id @default(uuid())
+  organizationId String?
+  fileName       String
+  mimeType       String
+  size           Int
+  data           Bytes
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("stored_files")
+}
+
 model ScheduledClass {
   id                String                 @id @default(uuid())
   organizationId    String

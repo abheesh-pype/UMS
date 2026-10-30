@@ -2152,8 +2152,10 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
                                     <div className="flex min-w-0 items-center gap-3">
                                       <BookOpen className="h-5 w-5 shrink-0 text-primary" />
                                       <div className="min-w-0">
-                                        <p className="truncate text-sm font-medium">{material.fileName}</p>
-                                        <p className="text-xs text-muted-foreground">{material.title}</p>
+                                        <p className="truncate text-sm font-medium">{material.title || material.fileName}</p>
+                                        {material.title && material.title !== material.fileName && (
+                                          <p className="truncate text-xs text-muted-foreground">{material.fileName}</p>
+                                        )}
                                       </div>
                                     </div>
                                     <Button type="button" variant="outline" size="sm" onClick={() => handleDownload(material)}>
