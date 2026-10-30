@@ -11,11 +11,21 @@ const useSSL = process.env.DATABASE_URL &&
                !process.env.DATABASE_URL.includes('127.0.0.1') &&
                !process.env.DATABASE_URL.includes('::1');
 
-const pool = new pg.Pool({ 
+// Neon suspends idle compute: allow time for it to wake, and drop idle
+// connections before Neon closes them so the pool never hands out a dead one.
+const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: useSSL ? {
     rejectUnauthorized: false
-  } : undefined
+  } : undefined,
+  connectionTimeoutMillis: 30000,
+  idleTimeoutMillis: 30000,
+  keepAlive: true,
+});
+
+// A connection dropped by the server while idle must not crash the process.
+pool.on('error', (err) => {
+  console.error('Postgres pool error:', err.message);
 });
 
 const adapter = new PrismaPg(pool as any);
@@ -24,6 +34,8 @@ const prismaClientSingleton = () => {
   return new PrismaClient({
     adapter: adapter as any,
     log: ['error', 'warn'],
+    // Each query is a round trip to the remote database, so the 5s default is too tight.
+    transactionOptions: { maxWait: 10000, timeout: 20000 },
   });
 };
 

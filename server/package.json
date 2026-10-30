@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "postinstall": "prisma generate",
     "seed": "tsx src/scripts/seed.ts",
+    "seed-superadmin": "tsx src/scripts/seed-superadmin.ts",
     "reset-single-tenant": "tsx src/scripts/reset-single-tenant.ts",
     "create-departments": "tsx src/scripts/auto-create-departments.ts",
     "clean-reseed": "tsx src/scripts/clean-and-reseed.ts",

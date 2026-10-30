@@ -215,6 +215,11 @@ export const updateCandidateStatus = async (req: AuthRequest, res: Response) => 
       return;
     }
 
+    // Hashing and user ID lookup are slow; do them before the transaction opens.
+    const joinPrep = status === 'joined'
+      ? { passwordHash: await bcrypt.hash('password123', 10), userId: await generateUserId(organizationId) }
+      : null;
+
     const result = await prisma.$transaction(async (tx) => {
       let candidate = await tx.candidate.findFirst({
         where: { id, organizationId },
@@ -241,7 +246,7 @@ export const updateCandidateStatus = async (req: AuthRequest, res: Response) => 
       }
       if (employmentRole) updateData.employmentRole = employmentRole as EmploymentRole;
 
-      if (status === 'joined' && !candidate.employeeId) {
+      if (joinPrep && !candidate.employeeId) {
         let vacancy = candidate.hiringRequest.vacancy;
         if (!vacancy) {
           vacancy = await tx.vacancy.create({
@@ -274,16 +279,15 @@ export const updateCandidateStatus = async (req: AuthRequest, res: Response) => 
           data: { status: 'closed' },
         });
 
-        const passwordHash = await bcrypt.hash('password123', 10);
         const newUser = await tx.user.create({
           data: {
-            userId: await generateUserId(organizationId),
+            userId: joinPrep.userId,
             organizationId,
             universityId: req.user.universityId,
             name: candidate.name,
             email: candidate.email,
             phone: candidate.phone,
-            password: passwordHash,
+            password: joinPrep.passwordHash,
             role: 'employee',
             departmentId: candidate.hiringRequest.departmentId,
             designation: candidate.hiringRequest.title,
@@ -315,7 +319,7 @@ export const updateCandidateStatus = async (req: AuthRequest, res: Response) => 
         include: { hiringRequest: { include: { department: true, vacancy: true } } },
       });
       return { data: candidate };
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     if ('error' in result) {
       res.status(result.statusCode).json({ success: false, message: result.error });

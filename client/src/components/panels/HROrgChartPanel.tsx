@@ -200,7 +200,7 @@ export function HROrgChartPanel() {
         api.get('/org/branches'),
       ]);
       setNodes(nodesRes.data.data || []);
-      setAllUsers(usersRes.data.data?.filter((u: any) => !['ceo', 'org_admin', 'superadmin', 'center_admin', 'student'].includes(u.role)) || []);
+      setAllUsers(usersRes.data.data?.filter((u: any) => !['ceo', 'superadmin', 'center_admin', 'student'].includes(u.role)) || []);
       setAllBranches(branchRes.data.data || []);
     } catch {
       toast.error('Failed to load org chart');
@@ -263,7 +263,7 @@ export function HROrgChartPanel() {
   // Users not yet in any position
   const assignedUserIds = new Set(nodes.flatMap(n => (n.filledBy || []).map(u => u.id)));
   const unplacedUsers = allUsers.filter(u =>
-    !assignedUserIds.has(u.id) && !['ceo', 'org_admin', 'superadmin', 'center_admin', 'student'].includes(u.role)
+    !assignedUserIds.has(u.id) && !['ceo', 'superadmin', 'center_admin', 'student'].includes(u.role)
   );
 
   // Filtered users for assign dialog
