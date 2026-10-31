@@ -152,13 +152,32 @@ export const getStudentPaymentLogs = asyncHandler(async (req: AuthRequest, res: 
       )
     );
     
-    // Sum receipts + initial wallet payment
+    // Sum receipts + initial wallet payment + the payment taken in "Payment Info" on the enrollment form
     const manualReceipts = enr.studentFeeReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
     const walletPayment = enr.payment?.amount || 0;
-    const totalReceived = manualReceipts + walletPayment;
+    const enrollmentPayment = Number(enr.initialPayment) > 0 ? Number(enr.initialPayment) : 0;
+    const totalReceived = manualReceipts + walletPayment + enrollmentPayment;
     const balance = Math.max(0, totalFee - totalReceived);
     
     const status = totalFee === 0 ? 'No Fee Set' : (balance <= 0 ? 'Paid' : (totalReceived > 0 ? 'Partial' : 'Pending'));
+
+    // Apply what the student has paid to the payment periods in order (Semester 1, 2, ... or Year 1, 2, ...).
+    // A period is paid once fully covered; a partly covered one stays pending with the amount paid so far.
+    // This is the student's coverage only: the period's own status tracks the university remittance.
+    const periodNumber = (label: string) => Number(String(label).match(/\d+/)?.[0] || 0);
+    let unallocated = totalReceived;
+    const periodsWithStudentPayment = [...studentPeriodPayments]
+      .sort((a, b) => periodNumber(a.semesterOrYear) - periodNumber(b.semesterOrYear))
+      .map(period => {
+        const periodAmount = Number(period.amount) || 0;
+        const studentPaid = Math.min(Math.max(unallocated, 0), periodAmount);
+        unallocated -= studentPaid;
+        return {
+          ...period,
+          studentPaid,
+          studentStatus: periodAmount > 0 && studentPaid >= periodAmount ? 'paid' : 'pending',
+        };
+      });
 
     return {
       id: enr.id,
@@ -204,9 +223,14 @@ export const getStudentPaymentLogs = asyncHandler(async (req: AuthRequest, res: 
         amount: enr.payment.amount,
         date: enr.payment.debitedAt || enr.payment.createdAt
       } : null,
+      enrollmentPayment: enrollmentPayment > 0 ? {
+        amount: enrollmentPayment,
+        date: enr.createdAt,
+        proof: enr.initialPaymentProof || null
+      } : null,
       status,
       receipts: enr.studentFeeReceipts,
-      periodPayments: studentPeriodPayments,
+      periodPayments: periodsWithStudentPayment,
       createdAt: enr.createdAt
     };
   });

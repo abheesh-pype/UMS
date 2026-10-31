@@ -48,6 +48,8 @@ interface Enrollment {
   paymentMethod?: string;
   documents?: { name: string; url: string; reqName?: string; uploadedAt?: string; remarks?: string }[];
   educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
+  initialPayment?: number | null;
+  initialPaymentProof?: string | null;
   createdAt: string;
   enrolledAt?: string;
 }
@@ -229,10 +231,14 @@ export function FinanceEnrollmentsPanel() {
     return e.isDirectStudentApplication ? 'Direct Student Application' : 'Direct Admission (Sales)';
   };
 
-  const paymentProof = selectedEnrollment?.documents?.find(isPaymentProofDocument);
+  // The proof taken with the payment info on the enrollment form counts as the student payment proof
+  const paymentProof: { name: string; url: string; uploadedAt?: string; remarks?: string } | undefined =
+    selectedEnrollment?.documents?.find(isPaymentProofDocument)
+    || (selectedEnrollment?.initialPaymentProof ? { name: 'Payment proof', url: selectedEnrollment.initialPaymentProof } : undefined);
   const canApproveEnrollment = (enrollment: Enrollment) => {
     const fee = Number(enrollment.totalFee);
     return (Number.isFinite(fee) && fee <= 0)
+      || Boolean(enrollment.initialPaymentProof)
       || Boolean(enrollment.documents?.some(isPaymentProofDocument));
   };
 
@@ -695,6 +701,11 @@ export function FinanceEnrollmentsPanel() {
                         </a>
                       )}
                     </div>
+                    {selectedEnrollment.initialPayment != null && Number(selectedEnrollment.initialPayment) > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Payment taken at enrollment: <span className="font-semibold text-foreground">₹{Number(selectedEnrollment.initialPayment).toLocaleString()}</span>
+                      </p>
+                    )}
                     {paymentProof?.uploadedAt && (
                       <p className="mt-2 text-xs text-muted-foreground">
                         Uploaded: {new Date(paymentProof.uploadedAt).toLocaleString()}

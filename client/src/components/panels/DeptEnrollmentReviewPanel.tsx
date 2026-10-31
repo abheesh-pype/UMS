@@ -50,6 +50,7 @@ interface Enrollment {
   session?: { name: string };
   documents?: { name: string; url: string }[];
   educationalDetails?: { qualification: string; institution: string; passingYear: string; percentage?: string }[];
+  initialPaymentProof?: string | null;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -83,6 +84,9 @@ export function DeptEnrollmentReviewPanel() {
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [editDocuments, setEditDocuments] = useState<{ name: string; url: string }[]>([]);
   const [uploadingDocument, setUploadingDocument] = useState(false);
+  // Replacement for a wrong payment proof submitted with the enrollment form
+  const [newPaymentProof, setNewPaymentProof] = useState<{ name: string; url: string } | null>(null);
+  const [uploadingPaymentProof, setUploadingPaymentProof] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [universityFilter, setUniversityFilter] = useState('all');
@@ -170,8 +174,33 @@ export function DeptEnrollmentReviewPanel() {
     ];
     setEditForm(Object.fromEntries(editableFields.map(field => [field, String((enrollment as any)[field] || '')])));
     setEditDocuments(enrollment.documents || []);
+    setNewPaymentProof(null);
     setEditingEnrollment(enrollment);
     setSelectedEnrollment(null);
+  };
+
+  const handleUploadPaymentProof = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+      toast.error('Payment proof must be an image or PDF file');
+      return;
+    }
+    setUploadingPaymentProof(true);
+    const body = new FormData();
+    body.append('file', file);
+    try {
+      const response = await api.post('/enrollment/payment-proof-upload', body, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setNewPaymentProof({ name: response.data.filename || file.name, url: response.data.url });
+      toast.success('Payment proof uploaded. Save to apply it.');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to upload payment proof');
+    } finally {
+      setUploadingPaymentProof(false);
+    }
   };
 
   const handleUploadEditDocument = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,6 +230,7 @@ export function DeptEnrollmentReviewPanel() {
       await api.put(`/enrollment/review/${editingEnrollment.id}/update`, {
         ...editForm,
         documents: editDocuments,
+        ...(newPaymentProof ? { initialPaymentProof: newPaymentProof.url } : {}),
       });
       toast.success('Student details updated and returned to Operations review');
       setEditingEnrollment(null);
@@ -823,9 +853,47 @@ export function DeptEnrollmentReviewPanel() {
                 </div>
               ))}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="updatePaymentProof">Update Payment Proof</Label>
+              {editingEnrollment?.initialPaymentProof ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
+                  <span className="text-muted-foreground">Current payment proof</span>
+                  <a className="text-primary hover:underline" href={resolveFileUrl(editingEnrollment.initialPaymentProof)} target="_blank" rel="noreferrer">
+                    View
+                  </a>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No payment proof was submitted with the enrollment form.</p>
+              )}
+              <Input
+                id="updatePaymentProof"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={handleUploadPaymentProof}
+                disabled={uploadingPaymentProof}
+              />
+              <p className="text-xs text-muted-foreground">Upload an image or PDF to replace a wrong payment proof.</p>
+              {uploadingPaymentProof && <p className="text-xs text-muted-foreground">Uploading payment proof...</p>}
+              {newPaymentProof && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-2 text-sm">
+                  <a className="truncate text-primary hover:underline" href={resolveFileUrl(newPaymentProof.url)} target="_blank" rel="noreferrer">
+                    New: {newPaymentProof.name}
+                  </a>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Remove new payment proof"
+                    onClick={() => setNewPaymentProof(null)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditingEnrollment(null)}>Cancel</Button>
-              <Button type="submit" disabled={uploadingDocument}>Save and Return to Operations Review</Button>
+              <Button type="submit" disabled={uploadingDocument || uploadingPaymentProof}>Save and Return to Operations Review</Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -498,8 +498,9 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     currency: paymentCurrency,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0);
+  // Semester / year schedule rows show which fees are covered; they are not payments themselves
   const totalReceived = (studentPaymentInfo?.payments || [])
-    .filter((payment: any) => payment.status === 'paid')
+    .filter((payment: any) => payment.status === 'paid' && payment.kind !== 'schedule')
     .reduce((total: number, payment: any) => total + (Number(payment.amount) || 0), 0);
   const outstandingInvoices = (studentPaymentInfo?.invoices || [])
     .filter((invoice: any) => invoice.status !== 'paid')

@@ -830,6 +830,7 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
         include: {
           session: { select: { id: true, name: true } },
           studentFeeReceipts: true,
+          payment: true,
         },
         orderBy: { createdAt: 'desc' },
       },
@@ -871,8 +872,11 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
   const feeStructure = feeCandidates
     .map(candidate => {
       const isProgramFee = candidate.level === 'program' && candidate.programId === student.programId;
+      // A university fee applies only to its own program; one without a program is a general fallback
       const isUniversityFee = candidate.level === 'university'
-        && candidate.universityId === student.program.universityId;
+        && candidate.universityId === student.program.universityId
+        && (!candidate.programId || candidate.programId === student.programId);
+      const isOwnProgramUniversityFee = isUniversityFee && candidate.programId === student.programId;
       let score = 0;
       if (isProgramFee) {
         const centerMatch = Boolean(student.centerId && candidate.studyCenterId === student.centerId);
@@ -880,12 +884,13 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
           ? centerMatch ? 150 : 100
           : candidate.admissionSessionId === null ? centerMatch ? 130 : 80 : centerMatch ? 110 : 60;
       } else if (isUniversityFee) {
-        score = candidate.admissionSessionId === sessionId
+        score = (candidate.admissionSessionId === sessionId
           ? 40
-          : candidate.admissionSessionId === null ? 20 : 10;
+          : candidate.admissionSessionId === null ? 20 : 10) + (isOwnProgramUniversityFee ? 5 : 0);
       }
       return { candidate, score };
     })
+    .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)[0]?.candidate;
 
   const feeItems: { label: string; amount: number }[] = [];
@@ -987,7 +992,51 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
     }
   }
 
+  // What the student has paid, counted the same way as Finance's Student Payment Log:
+  // the payment taken on the enrollment form + recorded receipts + study centre wallet payments.
+  const studentPaidTotal = student.enrollments.reduce((sum, enrollment) => sum
+    + (Number(enrollment.initialPayment) > 0 ? Number(enrollment.initialPayment) : 0)
+    + enrollment.studentFeeReceipts.reduce((receiptSum, receipt) => receiptSum + receipt.amount, 0)
+    + (enrollment.payment?.amount || 0), 0);
+  // Semester / year rows show the student's coverage, applied in order: fully covered = paid,
+  // otherwise pending with the amount paid so far. Their own status tracks the university remittance.
+  const periodNumber = (label: string) => Number(String(label).match(/\d+/)?.[0] || 0);
+  let unallocated = studentPaidTotal;
+  const scheduleRows = [...student.universityFeePayments]
+    .sort((a, b) => periodNumber(a.semesterOrYear) - periodNumber(b.semesterOrYear))
+    .map(period => {
+      const periodAmount = Number(period.amount) || 0;
+      const paidSoFar = Math.min(Math.max(unallocated, 0), periodAmount);
+      unallocated -= paidSoFar;
+      const isPaid = periodAmount > 0 && paidSoFar >= periodAmount;
+      return {
+        id: period.id,
+        date: period.paidAt || period.createdAt,
+        amount: period.amount,
+        method: 'Semester fee',
+        referenceNo: period.referenceNo,
+        description: !isPaid && paidSoFar > 0
+          ? `${period.semesterOrYear} (₹${paidSoFar.toLocaleString('en-IN')} of ₹${periodAmount.toLocaleString('en-IN')} paid)`
+          : period.semesterOrYear,
+        status: isPaid ? 'paid' : 'pending',
+        kind: 'schedule',
+      };
+    });
+
   const payments = [
+    ...student.enrollments
+      .filter(enrollment => Number(enrollment.initialPayment) > 0)
+      .map(enrollment => ({
+        id: `enrollment-payment-${enrollment.id}`,
+        date: enrollment.createdAt,
+        amount: Number(enrollment.initialPayment),
+        method: 'Paid at enrollment',
+        referenceNo: null,
+        description: enrollment.session?.name
+          ? `Payment at enrollment · ${enrollment.session.name}`
+          : 'Payment at enrollment',
+        status: 'paid',
+      })),
     ...student.enrollments.flatMap(enrollment => enrollment.studentFeeReceipts.map(receipt => ({
       id: receipt.id,
       date: receipt.receiptDate,
@@ -999,24 +1048,19 @@ export const getStudentPaymentInfo = asyncHandler(async (req: AuthRequest, res: 
         : 'Enrollment fee',
       status: 'paid',
     }))),
-    ...student.invoices.flatMap(invoice => invoice.payments.map(payment => ({
-      id: payment.id,
-      date: payment.receivedAt,
-      amount: payment.amount,
-      method: payment.method,
-      referenceNo: payment.referenceNo,
-      description: invoice.invoiceNo,
-      status: 'paid',
-    }))),
-    ...student.universityFeePayments.map(payment => ({
-      id: payment.id,
-      date: payment.paidAt || payment.createdAt,
-      amount: payment.amount,
-      method: 'University fee',
-      referenceNo: payment.referenceNo,
-      description: payment.semesterOrYear,
-      status: payment.status,
-    })),
+    // Invoice payments synced from a receipt are already listed as that receipt
+    ...student.invoices.flatMap(invoice => invoice.payments
+      .filter(payment => !payment.studentFeeReceiptId)
+      .map(payment => ({
+        id: payment.id,
+        date: payment.receivedAt,
+        amount: payment.amount,
+        method: payment.method,
+        referenceNo: payment.referenceNo,
+        description: invoice.invoiceNo,
+        status: 'paid',
+      }))),
+    ...scheduleRows,
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   res.status(200).json({
