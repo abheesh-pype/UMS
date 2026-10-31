@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -39,7 +38,11 @@ export function FinanceAuthFeePanel() {
     api.get('/operations/universities').then(r => setUniversities(r.data.data || [])).catch(() => {});
   }, []);
 
-  const openCreate = () => { setEditing(null); setForm({ universityId: '', amount: '', currency: 'INR' }); setOpen(true); };
+  // Single tenancy: there is exactly one university, so the fee is always for it.
+  const university = universities[0];
+  const hasFee = fees.some(fee => fee.universityId?.id === university?.id);
+
+  const openCreate = () => { setEditing(null); setForm({ universityId: university?.id || '', amount: '', currency: 'INR' }); setOpen(true); };
   const openEdit = (fee: AuthFee) => {
     setEditing(fee);
     setForm({ universityId: fee.universityId.id, amount: String(fee.amount), currency: fee.currency });
@@ -79,7 +82,14 @@ export function FinanceAuthFeePanel() {
           <Button variant="outline" size="sm" onClick={fetchFees} disabled={loading}>
             <RefreshCw className={cn('w-4 h-4 mr-2', loading && 'animate-spin')} />Refresh
           </Button>
-          <Button size="sm" onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Add Fee</Button>
+          <Button
+            size="sm"
+            onClick={openCreate}
+            disabled={!university || hasFee}
+            title={hasFee ? 'The auth fee is already configured. Use the edit button to change it.' : undefined}
+          >
+            <Plus className="w-4 h-4 mr-2" />Add Fee
+          </Button>
         </div>
       </div>
 
@@ -115,19 +125,17 @@ export function FinanceAuthFeePanel() {
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? 'Edit Auth Fee' : 'Configure Auth Fee'}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            {!editing && (
-              <div className="space-y-1">
-                <Label>University</Label>
-                <Select value={form.universityId} onValueChange={v => setForm(p => ({ ...p, universityId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select university" /></SelectTrigger>
-                  <SelectContent>
-                    {universities.map(u => (
-                      <SelectItem key={u.id} value={u.id}>{u.name} ({u.code})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-1">
+              <Label htmlFor="authFeeUniversity">University</Label>
+              <Input
+                id="authFeeUniversity"
+                value={editing
+                  ? `${editing.universityId.name} (${editing.universityId.code})`
+                  : university ? `${university.name} (${university.code})` : 'Loading university...'}
+                disabled
+                readOnly
+              />
+            </div>
             <div className="space-y-1">
               <Label>Amount</Label>
               <Input
