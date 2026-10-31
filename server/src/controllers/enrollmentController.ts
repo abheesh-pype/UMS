@@ -5,8 +5,9 @@ import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
-import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { filterProgramsWithActiveSessions, getAdmissionSessionsWhere } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 
@@ -140,14 +141,13 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
     status: 'active' as any,
     isDeleted: false
   };
+  const centerAllocationWhere = {
+    organizationId: req.user.organizationId,
+    centerId: req.user.studyCenterId || '',
+    isActive: true,
+  };
   if (req.user.studyCenterId) {
-    where.programAllocations = {
-      some: {
-        organizationId: req.user.organizationId,
-        centerId: req.user.studyCenterId,
-        isActive: true,
-      },
-    };
+    where.programAllocations = { some: centerAllocationWhere };
   } else {
     where.universityId = req.user.universityId;
   }
@@ -155,6 +155,7 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
   const programs = await prisma.program.findMany({
     where,
     include: {
+      programAllocations: { where: centerAllocationWhere, select: { admissionSessionId: true } },
       university: { select: { id: true, name: true, code: true, category: true, optionalFields: true } },
       admissionSessions: { select: { id: true, name: true, status: true } },
       programFeeStructure: {
@@ -169,8 +170,47 @@ export const getEnrollablePrograms = asyncHandler(async (req: AuthRequest, res: 
       }
     }
   });
-  const activeSessionPrograms = await filterProgramsWithActiveSessions(req.user.organizationId, programs);
-  res.json({ success: true, count: activeSessionPrograms.length, data: activeSessionPrograms });
+  if (!req.user.studyCenterId) {
+    const activeSessionPrograms = await filterProgramsWithActiveSessions(req.user.organizationId, programs);
+    res.json({ success: true, count: activeSessionPrograms.length, data: activeSessionPrograms });
+    return;
+  }
+
+  // A study center sees every active program that Operations allocated to it and marked Active.
+  const enrollablePrograms = programs.map(({ programAllocations: _allocations, ...program }) => program);
+  res.json({ success: true, count: enrollablePrograms.length, data: enrollablePrograms });
+});
+
+export const getAllocatedPrograms = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user.studyCenterId) {
+    res.status(400).json({ success: false, message: 'No study center assigned to your account' });
+    return;
+  }
+  const allocations = await prisma.programAllocation.findMany({
+    where: { organizationId: req.user.organizationId, centerId: req.user.studyCenterId },
+    include: {
+      program: {
+        select: {
+          id: true, name: true, code: true, courseType: true, duration: true, status: true, isDeleted: true, universityId: true,
+          university: { select: { id: true, name: true, code: true } },
+          academicSession: { select: { id: true, name: true, status: true } },
+        },
+      },
+      admissionSession: { select: { id: true, name: true, status: true, startDate: true, endDate: true } },
+    },
+    orderBy: [{ program: { name: 'asc' } }, { allocatedAt: 'desc' }],
+  });
+
+  const data = allocations.map(allocation => ({
+    id: allocation.id,
+    isActive: allocation.isActive,
+    allocatedAt: allocation.allocatedAt,
+    program: allocation.program,
+    admissionSession: allocation.admissionSession,
+    // Shown in Add New Student Record when Operations marked the allocation Active and the program is active
+    enrollable: allocation.isActive && allocation.program.status === 'active' && !allocation.program.isDeleted,
+  }));
+  res.json({ success: true, count: data.length, data });
 });
 
 export const checkEmailUniqueness = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -313,16 +353,21 @@ export const createEnrollment = asyncHandler(async (req: AuthRequest, res: Respo
   let finalSessionId = sessionId;
 
   if (finalSessionId) {
+    // A session Operations allocated this program for at the study center, otherwise
+    // the active session or an upcoming session for this program
+    const allocatedSession = studyCenterId
+      ? await prisma.programAllocation.findFirst({
+        where: { organizationId, centerId: studyCenterId, programId, admissionSessionId: finalSessionId, isActive: true },
+        select: { id: true }
+      })
+      : null;
     const chosenSession = await prisma.admissionSession.findFirst({
-      where: {
-        id: finalSessionId,
-        organizationId,
-        status: 'active',
-        AND: [
-          { OR: [{ programId }, { programId: null }] },
-          { OR: [{ universityId: selectedProgram.universityId }, { universityId: null }] }
-        ]
-      }
+      where: allocatedSession
+        ? { id: finalSessionId, organizationId }
+        : {
+          id: finalSessionId,
+          ...await getAdmissionSessionsWhere(organizationId, { id: programId, universityId: selectedProgram.universityId })
+        }
     });
     if (!chosenSession) {
       res.status(400).json({ success: false, message: 'Selected admission session is invalid or inactive' });
@@ -556,6 +601,23 @@ export const getMyCenterStatus = asyncHandler(async (req: AuthRequest, res: Resp
     const details = (fee.feeDetails as any) || {};
     return [fee.universityId, Number(details.amount) || 0];
   }));
+  // Collection account configured in Finance → Bank Details, shown for the authorization fee transfer.
+  const organization = await prisma.organization.findUnique({
+    where: { id: req.user.organizationId },
+    select: { bankDetails: true }
+  });
+  const savedBank = (organization?.bankDetails as Record<string, any>) || {};
+  const bankDetails = savedBank.accountNumber && savedBank.ifscCode
+    ? {
+      bankName: savedBank.bankName || '',
+      accountHolder: savedBank.accountHolder || '',
+      accountNumber: savedBank.accountNumber || '',
+      ifscCode: savedBank.ifscCode || '',
+      branch: savedBank.branch || '',
+      upiId: savedBank.upiId || '',
+      instructions: savedBank.instructions || ''
+    }
+    : null;
 
   res.json({
     success: true,
@@ -567,7 +629,8 @@ export const getMyCenterStatus = asyncHandler(async (req: AuthRequest, res: Resp
         ...university,
         fee: feeByUniversity.get(university.id) ?? null
       })),
-      totalFee: universities.reduce((total, university) => total + (feeByUniversity.get(university.id) || 0), 0)
+      totalFee: universities.reduce((total, university) => total + (feeByUniversity.get(university.id) || 0), 0),
+      bankDetails
     }
   });
 });
@@ -610,7 +673,7 @@ export const submitMyCenterPayment = asyncHandler(async (req: AuthRequest, res: 
       onboardingStatusId: targetStatus?.id || existingCenter.onboardingStatusId,
       status: 'pending_payment' as any,
       paymentProof: {
-        url: getPaymentProofDataUrl(req.file),
+        ...(await savePaymentProofFile(req.file, req.user.organizationId)),
         uploadedAt: new Date().toISOString(),
         remarks
       },
@@ -630,6 +693,7 @@ export const submitMyCenterPayment = asyncHandler(async (req: AuthRequest, res: 
     },
     include: { onboardingStatus: true }
   });
+  await deleteStoredFileByUrl((existingCenter.paymentProof as any)?.url);
   res.json({ success: true, message: 'Payment submitted', data: center });
 });
 
@@ -692,10 +756,9 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
       return;
     }
 
-    where.AND = [
-      { OR: [{ programId: program.id }, { programId: null }] },
-      { OR: [{ universityId: program.universityId }, { universityId: null }] }
-    ];
+    // The active session and the upcoming sessions for this program
+    delete where.status;
+    Object.assign(where, await getAdmissionSessionsWhere(req.user.organizationId, program));
   } else {
     where.OR = [
       { universityId: req.user.universityId },
@@ -723,10 +786,14 @@ export const getActiveSessions = asyncHandler(async (req: AuthRequest, res: Resp
     select: { admissionSessionId: true },
   });
   const hasLegacyUnscopedAllocation = allocations.some(allocation => !allocation.admissionSessionId);
-  const allocatedSessionIds = new Set(allocations.map(allocation => allocation.admissionSessionId).filter(Boolean));
+  const allocatedSessionIds = allocations.map(allocation => allocation.admissionSessionId).filter((id): id is string => !!id);
+  // A study center enrolls into the admission sessions Operations allocated the program for
   const availableSessions = hasLegacyUnscopedAllocation
     ? sessions
-    : sessions.filter(session => allocatedSessionIds.has(session.id));
+    : await prisma.admissionSession.findMany({
+      where: { organizationId: req.user.organizationId, id: { in: allocatedSessionIds } },
+      orderBy: { startDate: 'asc' }
+    });
   res.json({ success: true, count: availableSessions.length, data: availableSessions });
 });
 

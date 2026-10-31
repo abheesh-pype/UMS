@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 import { activateStudentPortalAccount, getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
-import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { filterProgramsWithActiveSessions, getAdmissionSessionsWhere } from '../services/activeSessionPrograms.js';
 
 const requireSalesDepartmentStaff = async (req: AuthRequest, res: Response) => {
   if (!req.user.organizationId) {
@@ -69,23 +69,17 @@ export const getSalesEnrollmentSessions = asyncHandler(async (req: AuthRequest, 
   const programId = String(req.query.programId || '');
   const program = await prisma.program.findFirst({
     where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
-    select: { universityId: true },
+    select: { id: true, universityId: true },
   });
   if (!program) {
     res.status(404).json({ success: false, message: 'Active program not found' });
     return;
   }
 
+  // The active session and the upcoming sessions for this program
   const sessions = await prisma.admissionSession.findMany({
-    where: {
-      organizationId: req.user.organizationId,
-      status: 'active',
-      AND: [
-        { OR: [{ programId }, { programId: null }] },
-        { OR: [{ universityId: program.universityId }, { universityId: null }] },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
+    where: await getAdmissionSessionsWhere(req.user.organizationId, program),
+    orderBy: { startDate: 'asc' },
     select: { id: true, name: true, programId: true },
   });
   res.json({ success: true, count: sessions.length, data: sessions });
@@ -146,20 +140,19 @@ export const createSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     return;
   }
 
-  const [program, session] = await Promise.all([
-    prisma.program.findFirst({
-      where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
-      select: { id: true, universityId: true },
-    }),
-    prisma.admissionSession.findFirst({
-      where: { id: sessionId, organizationId: req.user.organizationId, status: 'active' },
-      select: { id: true, programId: true, universityId: true },
-    }),
-  ]);
+  const program = await prisma.program.findFirst({
+    where: { id: programId, organizationId: req.user.organizationId, status: 'active', isDeleted: false },
+    select: { id: true, universityId: true },
+  });
   if (!program) {
     res.status(400).json({ success: false, message: 'Selected program is invalid or inactive' });
     return;
   }
+  // The active session or an upcoming session for this program
+  const session = await prisma.admissionSession.findFirst({
+    where: { id: sessionId, ...await getAdmissionSessionsWhere(req.user.organizationId, program) },
+    select: { id: true, programId: true, universityId: true },
+  });
   if (!session || (session.programId && session.programId !== programId) || (session.universityId && session.universityId !== program.universityId)) {
     res.status(400).json({ success: false, message: 'Selected admission session is invalid for this program' });
     return;
@@ -1219,12 +1212,18 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     }
   }
 
-  // Validate session if changed
+  // Validate session if changed: the active session or an upcoming session for the program
   if (sessionId && sessionId !== enrollment.sessionId) {
-    const session = await prisma.admissionSession.findFirst({
-      where: { id: sessionId, organizationId: req.user.organizationId, status: 'active' },
-      select: { id: true, programId: true, universityId: true }
+    const targetProgram = await prisma.program.findFirst({
+      where: { id: targetProgramId, organizationId: req.user.organizationId },
+      select: { id: true, universityId: true }
     });
+    const session = targetProgram
+      ? await prisma.admissionSession.findFirst({
+          where: { id: sessionId, ...await getAdmissionSessionsWhere(req.user.organizationId, targetProgram) },
+          select: { id: true, programId: true, universityId: true }
+        })
+      : null;
     if (!session) {
       res.status(400).json({ success: false, message: 'Selected admission session is invalid or inactive' });
       return;

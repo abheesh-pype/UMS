@@ -8,6 +8,7 @@ import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '..
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 import { upsertStudyCenterAdmissionInvoice } from '../services/invoiceService.js';
 
 // Universities
@@ -1891,7 +1892,7 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
 
   if (req.file) {
     updateData.paymentProof = {
-      url: getPaymentProofDataUrl(req.file),
+      ...(await savePaymentProofFile(req.file, req.user.organizationId)),
       uploadedAt: new Date().toISOString(),
       remarks: remarks?.trim() || ''
     };
@@ -1906,6 +1907,7 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
       assignedOperationsUser: { select: { id: true, name: true, email: true, role: true } },
     }
   });
+  if (req.file) await deleteStoredFileByUrl((existingCenter.paymentProof as any)?.url);
 
   // Operations approval raises the centre's onboarding invoice (unpaid) for Finance to collect.
   if (targetStatusCode === 'pending_payment' || targetStatusCode === 'finance_resubmitted') {

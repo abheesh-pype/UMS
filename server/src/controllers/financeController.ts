@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { hashPassword, generateStudyCenterUserId } from '../utils/authUtils.js';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 import {
   calculateFinancialYear,
   generateNextInvoiceNumber,
@@ -854,7 +855,7 @@ export const updateCenterPaymentProof = asyncHandler(async (req: AuthRequest, re
   }
 
   const paymentProof = {
-    url: getPaymentProofDataUrl(req.file),
+    ...(await savePaymentProofFile(req.file, req.user.organizationId)),
     uploadedAt: new Date().toISOString(),
     remarks: typeof req.body.remarks === 'string' ? req.body.remarks.trim() : ''
   };
@@ -870,6 +871,7 @@ export const updateCenterPaymentProof = asyncHandler(async (req: AuthRequest, re
       assignedFinanceUser: { select: { id: true, name: true, role: true } }
     }
   });
+  await deleteStoredFileByUrl((center.paymentProof as any)?.url);
 
   res.json({ success: true, data: updatedCenter });
 });

@@ -176,6 +176,7 @@ export function PrismaLayout({
       case 'sub_departments':
       case 'subdepartments': return <GitBranch className={iconClass} />;
       case 'announcements': return <Bell className={iconClass} />;
+      case 'center_allocated_programs':
       case 'programs':
       case 'academic-study-material':
       case 'academic-ebooks':

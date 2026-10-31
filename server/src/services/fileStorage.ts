@@ -26,3 +26,13 @@ export const deleteStoredFileByUrl = async (url?: string | null): Promise<void> 
   if (!url?.startsWith(STORED_FILE_URL_PREFIX)) return;
   await prisma.storedFile.deleteMany({ where: { id: url.slice(STORED_FILE_URL_PREFIX.length) } });
 };
+
+// Study center payment proofs: the file goes to stored_files and the record keeps its URL, name and type.
+export const savePaymentProofFile = async (
+  file: { buffer: Buffer; originalname: string; mimetype: string; size?: number },
+  organizationId?: string | null,
+) => ({
+  url: await saveUploadedFile(file, organizationId),
+  fileName: file.originalname,
+  mimeType: file.mimetype,
+});

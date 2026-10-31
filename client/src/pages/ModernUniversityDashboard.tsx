@@ -906,6 +906,7 @@ export function getUniversityNavItems() {
       ],
     },
     { id: 'pending_center_verification', label: 'Pending Verification' },
+    { id: 'manager_hiring', label: 'Hiring Requests' },
     { id: 'integration', label: 'Integration' },
   ];
 }

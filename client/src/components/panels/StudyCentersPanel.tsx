@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { ProofPreview } from '@/components/ProofPreview';
 import * as XLSX from 'xlsx';
 
 interface AssignableOpsUser {
@@ -653,11 +654,7 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
           <Dialog open={!!proofPreviewUrl} onOpenChange={(open) => !open && setProofPreviewUrl(null)}>
             <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 bg-transparent shadow-none">
               <div className="rounded-2xl border bg-background p-2 shadow-2xl">
-                <img
-                  src={proofPreviewUrl}
-                  alt="Payment proof preview"
-                  className="max-h-[80vh] w-full rounded-xl object-contain bg-muted"
-                />
+                <ProofPreview url={proofPreviewUrl} alt="Payment proof preview" />
               </div>
             </DialogContent>
           </Dialog>
@@ -833,22 +830,10 @@ export function StudyCentersPanel({ salesMode = false, operationsMode = false, f
                 <p className="text-sm font-semibold mb-3">Submitted Payment Proof</p>
                 {paymentProofUrl ? (
                   <div className="space-y-3">
-                    {isPaymentImage && (
-                      <button
-                        type="button"
-                        onClick={() => setProofPreviewUrl(paymentProofUrl)}
-                        className="block w-fit cursor-pointer rounded-lg border bg-muted p-1 hover:opacity-90 transition-opacity"
-                      >
-                        <img
-                          src={paymentProofUrl}
-                          alt={`Payment proof for ${selectedCenter.name}`}
-                          className="max-h-96 max-w-full rounded-md border object-contain bg-muted"
-                        />
-                      </button>
-                    )}
+                    <ProofPreview url={rawPaymentProofUrl} alt={`Payment proof for ${selectedCenter.name}`} className="max-h-96 h-96" />
                     <button
                       type="button"
-                      onClick={() => setProofPreviewUrl(paymentProofUrl)}
+                      onClick={() => setProofPreviewUrl(rawPaymentProofUrl)}
                       className="inline-flex items-center text-sm text-primary hover:underline"
                     >
                       {isPaymentImage ? 'Open payment image' : 'Open submitted payment proof'}

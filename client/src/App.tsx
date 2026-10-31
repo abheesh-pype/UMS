@@ -100,6 +100,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   center_wallet: 'wallet',
   enroll_student: 'enroll',
   center_enrollments: 'enrollments',
+  center_allocated_programs: 'allocated-programs',
   center_programs: 'programs',
   center_rereg_report: 'rereg-report',
   // Student portal
@@ -350,6 +351,7 @@ function App() {
         { id: 'center_enrollments', label: 'My Enrollments' },
         { id: 'students', label: 'Students' },
         { id: 'center_rereg_report', label: 'Re-Registration Report' },
+        { id: 'center_allocated_programs', label: 'Allocated Programs' },
         { id: 'center_programs', label: 'Programs & Materials' },
         { id: 'tasks', label: 'Tasks' },
       ];
@@ -396,6 +398,7 @@ function App() {
         },
         { id: 'academic-examination-registered', label: 'Registered Students' },
         { id: 'academic-examination-portal', label: 'Examination Portal' },
+        { id: 'manager_hiring', label: 'Hiring Requests' },
       ];
     }
 

@@ -6,6 +6,7 @@ import {
   getTopUpHistory,
   getWalletTransactions,
   getEnrollablePrograms,
+  getAllocatedPrograms,
   createEnrollment,
   updateEnrollment,
   getMyEnrollments,
@@ -47,6 +48,7 @@ router.get('/wallet/transactions', authorize('center_admin'), getWalletTransacti
 
 // Study Center enrollment routes
 router.get('/programs', authorize('center_admin'), getEnrollablePrograms);
+router.get('/allocated-programs', authorize('center_admin'), getAllocatedPrograms);
 router.get('/sessions', authorize('center_admin'), getActiveSessions);
 router.post('/check-email', authorize('center_admin'), checkEmailUniqueness);
 router.post('/enroll', authorize('center_admin'), createEnrollment);

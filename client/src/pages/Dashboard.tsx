@@ -17,6 +17,7 @@ import { ModernStudentDashboard } from './ModernStudentDashboard';
 import { AcademicAdminPanel } from './AcademicAdminPanel';
 import { ModernUniversityDashboard } from './ModernUniversityDashboard';
 import { ComplaintsPanel } from '@/components/panels/ComplaintsPanel';
+import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 
 interface DashboardProps {
   onNavigateToTable?: (table: string) => void;
@@ -111,6 +112,11 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
 
   if (initialTab === 'complaints') {
     return <ComplaintsPanel />;
+  }
+
+  // Admin panels without their own Hiring Requests tab
+  if (initialTab === 'manager_hiring' && ['academic_admin', 'university_admin'].includes(user?.role || '')) {
+    return <ManagerHiringPanel />;
   }
 
   // Branch managers always get the branch dashboard — skip all other routing
