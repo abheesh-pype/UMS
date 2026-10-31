@@ -27,6 +27,8 @@ import {
 import { protect, authorize } from '../middleware/auth.js';
 import {
   getSalesEnrollmentPipeline,
+  getSalesReassignTargets,
+  reassignSalesStudent,
   getSalesEnrollmentPrograms,
   getSalesEnrollmentSessions,
   checkSalesEnrollmentEmail,
@@ -63,6 +65,9 @@ router.get('/team-performance', getTeamPerformance);
 // Team members list for reassignment selection
 router.get('/team-members', getTeamMembers);
 router.get('/student-applications', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff'), getSalesEnrollmentPipeline);
+// Sales managers reassign a student to another member of their own team
+router.get('/student-applications/reassign-targets', authorize('sales_admin'), getSalesReassignTargets);
+router.put('/student-applications/:id/reassign', authorize('sales_admin'), reassignSalesStudent);
 router.get('/enrollment-programs', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), getSalesEnrollmentPrograms);
 router.get('/enrollment-sessions', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), getSalesEnrollmentSessions);
 router.post('/enrollment-check-email', authorize('sales_admin', 'sales_sub_admin', 'bde', 'employee', 'staff', 'org_admin', 'superadmin'), checkSalesEnrollmentEmail);

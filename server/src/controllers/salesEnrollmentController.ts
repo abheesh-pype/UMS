@@ -598,40 +598,144 @@ export const submitStudentApplication = asyncHandler(async (req: Request, res: R
   });
 });
 
-// ─── Sales: Get all enrollments from their invite links ──────────────────────
+// ─── Sales team scoping ──────────────────────────────────────────────────────
 
-export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const organizationId = req.user.organizationId;
-  const salesUserIds = new Set([req.user.id]);
+// A sales manager's team: the manager, everyone reporting to them (at any depth), and the members
+// of departments / sub-departments they manage who report to no one. Another sales manager's
+// people are never included, so a student is visible only to its sales owner and their manager.
+export const getSalesTeamUserIds = async (managerId: string, organizationId: string): Promise<Set<string>> => {
+  const team = new Set([managerId]);
 
-  if (req.user.role === 'sales_admin') {
-    let managers = [req.user.id];
-    while (managers.length > 0) {
-      const reports = await prisma.user.findMany({
-        where: { organizationId, reportingTo: { in: managers } },
-        select: { id: true },
-      });
-      const newReports = reports.map(user => user.id).filter(id => !salesUserIds.has(id));
-      newReports.forEach(id => salesUserIds.add(id));
-      managers = newReports;
-    }
-
-    const deptEmployees = await prisma.user.findMany({
+  const [managedDepartments, managedSubDepartments] = await Promise.all([
+    prisma.department.findMany({ where: { organizationId, managerId }, select: { id: true } }),
+    prisma.subDepartment.findMany({ where: { organizationId, managerId }, select: { id: true } }),
+  ]);
+  if (managedDepartments.length || managedSubDepartments.length) {
+    const unmanagedMembers = await prisma.user.findMany({
       where: {
         organizationId,
-        id: { not: req.user.id },
-        role: { in: ['employee', 'staff', 'bde', 'sales_sub_admin', 'sales subadmin'] as any },
+        reportingTo: null,
+        id: { not: managerId },
         OR: [
-          { department: { type: { equals: 'sales', mode: 'insensitive' } } },
-          { department: { name: { contains: 'sales', mode: 'insensitive' } } },
-          { subDepartment: { parentDept: { type: { equals: 'sales', mode: 'insensitive' } } } },
-          { subDepartment: { parentDept: { name: { contains: 'sales', mode: 'insensitive' } } } },
+          ...(managedDepartments.length ? [{ departmentId: { in: managedDepartments.map(d => d.id) } }] : []),
+          ...(managedSubDepartments.length ? [{ subDepartmentId: { in: managedSubDepartments.map(d => d.id) } }] : []),
         ],
       },
       select: { id: true },
     });
-    deptEmployees.forEach(u => salesUserIds.add(u.id));
+    unmanagedMembers.forEach(user => team.add(user.id));
   }
+
+  let managers = [...team];
+  while (managers.length > 0) {
+    const reports = await prisma.user.findMany({
+      where: { organizationId, reportingTo: { in: managers } },
+      select: { id: true },
+    });
+    managers = reports.map(user => user.id).filter(id => !team.has(id));
+    managers.forEach(id => team.add(id));
+  }
+  return team;
+};
+
+// ─── Sales manager: reassign a student to another member of their team ───────
+
+// Active members of the manager's team who can own a student (the manager included).
+export const getSalesReassignTargets = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const team = await getSalesTeamUserIds(req.user.id, req.user.organizationId);
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...team] }, organizationId: req.user.organizationId, status: 'active' },
+    select: { id: true, name: true, email: true, role: true, designation: true },
+    orderBy: { name: 'asc' },
+  });
+  res.json({ success: true, count: users.length, data: users });
+});
+
+export const reassignSalesStudent = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { salesUserId } = req.body;
+  if (typeof salesUserId !== 'string' || !salesUserId) {
+    res.status(400).json({ success: false, message: 'Select the sales staff member to reassign this student to' });
+    return;
+  }
+
+  const enrollment = await prisma.enrollment.findFirst({
+    where: { id: req.params.id, organizationId: req.user.organizationId },
+    include: { program: { select: { name: true } } },
+  });
+  if (!enrollment || !enrollment.salesUserId) {
+    res.status(404).json({ success: false, message: 'Sales student enrollment not found' });
+    return;
+  }
+
+  // Both the current owner and the new owner must be in this manager's team.
+  const team = await getSalesTeamUserIds(req.user.id, req.user.organizationId);
+  if (!team.has(enrollment.salesUserId)) {
+    res.status(403).json({ success: false, message: 'You can only reassign students belonging to your team' });
+    return;
+  }
+  if (!team.has(salesUserId)) {
+    res.status(403).json({ success: false, message: 'You can only reassign students to members of your team' });
+    return;
+  }
+  if (salesUserId === enrollment.salesUserId) {
+    res.status(400).json({ success: false, message: 'This student is already assigned to that sales staff member' });
+    return;
+  }
+  const target = await prisma.user.findFirst({
+    where: { id: salesUserId, organizationId: req.user.organizationId, status: 'active' },
+    select: { id: true, name: true },
+  });
+  if (!target) {
+    res.status(400).json({ success: false, message: 'The selected sales staff member is not active' });
+    return;
+  }
+
+  const previousOwnerId = enrollment.salesUserId;
+  const updated = await prisma.enrollment.update({
+    where: { id: enrollment.id },
+    data: { salesUserId },
+    include: { salesUser: { select: { id: true, name: true, email: true } } } as any,
+  });
+
+  const programName = enrollment.program?.name || 'Program';
+  try {
+    await prisma.notification.createMany({
+      data: [
+        {
+          organizationId: req.user.organizationId,
+          userId: salesUserId,
+          title: '🎓 Student Assigned to You',
+          message: `${req.user.name || 'Your sales manager'} assigned ${enrollment.studentName} (${programName}) to you.`,
+          type: 'general',
+          priority: 'medium',
+          link: 'student_enrollment',
+        },
+        ...(previousOwnerId !== req.user.id ? [{
+          organizationId: req.user.organizationId,
+          userId: previousOwnerId,
+          title: '🔁 Student Reassigned',
+          message: `${enrollment.studentName} (${programName}) has been reassigned to ${target.name}.`,
+          type: 'general',
+          priority: 'low',
+          link: 'student_enrollment',
+        }] : []),
+      ] as any,
+    });
+  } catch (notifErr) {
+    console.error('Notification dispatch failed:', notifErr);
+  }
+
+  res.json({ success: true, data: updated });
+});
+
+// ─── Sales: Get all enrollments from their invite links ──────────────────────
+
+export const getSalesEnrollmentPipeline = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const organizationId = req.user.organizationId;
+  // Sales staff see only their own students; a sales manager sees their team's.
+  const salesUserIds = req.user.role === 'sales_admin'
+    ? await getSalesTeamUserIds(req.user.id, organizationId)
+    : new Set([req.user.id]);
 
   const enrollments = await prisma.enrollment.findMany({
     where: {
@@ -1028,8 +1132,15 @@ export const updateSalesStudentEnrollment = asyncHandler(async (req: AuthRequest
     return;
   }
 
-  // Role scoping: sales employees can only edit their own or their team's enrollments
-  if (!['sales_admin', 'ceo', 'org_admin'].includes(req.user.role)) {
+  // Role scoping: a sales manager can only edit their own team's enrollments,
+  // sales employees their own or their direct reports'
+  if (req.user.role === 'sales_admin') {
+    const team = await getSalesTeamUserIds(req.user.id, req.user.organizationId);
+    if (!team.has(enrollment.salesUserId)) {
+      res.status(403).json({ success: false, message: 'You only have permission to edit and re-submit your own or team student enrollments' });
+      return;
+    }
+  } else if (!['ceo', 'org_admin'].includes(req.user.role)) {
     if (enrollment.salesUserId !== req.user.id) {
       const subordinates = await prisma.user.findMany({
         where: { organizationId: req.user.organizationId, reportingTo: req.user.id },
