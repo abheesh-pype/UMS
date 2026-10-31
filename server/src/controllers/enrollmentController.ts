@@ -10,6 +10,7 @@ import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
+import { getSalesTeamUserIds } from './salesEnrollmentController.js';
 
 const invalidNumericId = (value: unknown) =>
   value !== undefined && value !== null && value !== '' && !/^\d{12}$/.test(String(value));
@@ -700,9 +701,15 @@ export const submitMyCenterPayment = asyncHandler(async (req: AuthRequest, res: 
 export const getAllEnrollments = asyncHandler(async (req: AuthRequest, res: Response) => {
   const where: any = { organizationId: req.user.organizationId };
 
-  // Scoping for Sales users: only show admissions from centers they manually added/referred
-  if (['sales_admin', 'bde'].includes(req.user.role)) {
-    where.studyCenter = { referredBy: req.user.id };
+  // Scoping for Sales users: only show admissions from study centers they referred.
+  // A sales manager also sees the centers referred by their sales team.
+  const departmentType = req.user.department?.type || req.user.subDepartment?.parentDept?.type;
+  const isSalesStaff = req.user.role === 'bde' || (['employee', 'staff'].includes(req.user.role) && departmentType === 'sales');
+  if (req.user.role === 'sales_admin' || isSalesStaff) {
+    const referrerIds = req.user.role === 'sales_admin'
+      ? [...await getSalesTeamUserIds(req.user.id, req.user.organizationId)]
+      : [req.user.id];
+    where.studyCenter = { referredBy: { in: referrerIds } };
   }
 
   const enrollments = await prisma.enrollment.findMany({

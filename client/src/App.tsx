@@ -413,13 +413,13 @@ function App() {
             case 'sales': return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
+          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring', 'team_attendance'].includes(item.id));
         } else if (deptType === 'operations') {
-          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
+          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals', 'manager_hiring', 'team_attendance'].includes(item.id));
         } else if (deptType === 'hr') {
           return getHRNavItems();
         } else if (deptType === 'finance') {
-          return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+          return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals', 'team_attendance'].includes(item.id));
         }
       }
       return EMPLOYEE_NAV_ITEMS;

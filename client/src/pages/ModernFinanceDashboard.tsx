@@ -144,6 +144,7 @@ export function ModernFinanceDashboard({ initialTab, onNavigate: _onNavigate }: 
       case 'my_leaves': return <LeavesPanel isPersonalView />;
       case 'leave_approvals': return <LeavesPanel approvalsOnly />;
       case 'my_attendance': return <AttendancePanel isPersonalView />;
+      case 'team_attendance': return <AttendancePanel isTeamView />;
       case 'my_payslips': return <PayrollPanel personalView />;
       case 'my_documents': return <MyDocumentsPanel />;
       case 'manager_hiring': return <ManagerHiringPanel />;
@@ -222,6 +223,7 @@ export function getFinanceNavItems() {
     { id: 'my_leaves', label: 'My Leaves' },
     { id: 'leave_approvals', label: 'Leave Approvals' },
     { id: 'my_attendance', label: 'My Attendance' },
+    { id: 'team_attendance', label: 'Team Attendance' },
     { id: 'my_payslips', label: 'Pay Slips' },
     { id: 'my_documents', label: 'My Documents' },
     { id: 'holidays', label: 'Holidays' },
