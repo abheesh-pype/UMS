@@ -5,7 +5,9 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  // Absolute asset paths: pages such as /application-status/<token> are nested,
+  // and relative ./assets paths would resolve under them.
+  base: '/',
   plugins: [inspectAttr(), react()],
   resolve: {
     alias: {
