@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Search,
   RefreshCw,
+  ExternalLink,
   Users,
   KeyRound,
   Save,
@@ -794,6 +795,24 @@ function ExamPortalSyncCard({ universityId }: { universityId: string }) {
   const [config, setConfig] = useState<{ configured: boolean; missing: string[]; invalid: string[] } | null>(null);
   const [candidateId, setCandidateId] = useState('');
   const [state, setState] = useState<SyncState>({ phase: 'idle' });
+  const [openingPortal, setOpeningPortal] = useState(false);
+
+  // Opened inside the click so pop-up blockers allow it, then pointed at the single-use sign-in link.
+  const openPortal = async () => {
+    const win = window.open('about:blank', '_blank');
+    if (!win) { toast.error('Allow pop-ups to open the Exam Portal'); return; }
+    setOpeningPortal(true);
+    try {
+      const response = await api.post('/operations/exam-portal/staff-launch');
+      win.opener = null;
+      win.location.href = response.data.data.launchUrl;
+    } catch (error: any) {
+      win.close();
+      toast.error(error.response?.data?.message || 'Could not open the Exam Portal');
+    } finally {
+      setOpeningPortal(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -828,6 +847,10 @@ function ExamPortalSyncCard({ universityId }: { universityId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="max-w-2xl space-y-4">
+        <Button type="button" variant="outline" disabled={!config?.configured || openingPortal} onClick={openPortal}>
+          {openingPortal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
+          Open Exam Portal (questions &amp; assessments)
+        </Button>
         {config === null ? (
           <p className="text-sm text-muted-foreground">Checking connection...</p>
         ) : (
