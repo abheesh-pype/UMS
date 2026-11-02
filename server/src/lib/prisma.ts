@@ -11,15 +11,17 @@ const useSSL = process.env.DATABASE_URL &&
                !process.env.DATABASE_URL.includes('127.0.0.1') &&
                !process.env.DATABASE_URL.includes('::1');
 
-// Neon suspends idle compute: allow time for it to wake, and drop idle
-// connections before Neon closes them so the pool never hands out a dead one.
+// Neon suspends idle compute: allow time for it to wake. Opening a connection to the remote
+// database (TCP + TLS + login) costs about a second, so idle connections are kept for 4 minutes
+// and reused between clicks; that is still below Neon's 5 minute auto-suspend, and a connection
+// Neon closes anyway is dropped by the error handler below.
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: useSSL ? {
     rejectUnauthorized: false
   } : undefined,
   connectionTimeoutMillis: 30000,
-  idleTimeoutMillis: 30000,
+  idleTimeoutMillis: 240000,
   keepAlive: true,
 });
 

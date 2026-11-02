@@ -33,40 +33,9 @@ import { NoticeBoardPanel } from '@/components/panels/NoticeBoardPanel';
 import { PayrollPanel } from '@/components/panels/PayrollPanel';
 import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { getBranchManagerNavItems } from './navItems';
+export { getBranchManagerNavItems };
 
-export function getBranchManagerNavItems() {
-  return [
-    { id: '__branch_section', label: 'Branch Overview', isSection: true },
-    { id: 'overview', label: 'Overview' },
-    { id: '__sales_section', label: 'Sales', isSection: true },
-    { id: 'leads', label: 'Leads' },
-    { id: 'targets', label: 'Targets' },
-    { id: 'invite_links', label: 'Invite Links' },
-    { id: 'my_team', label: 'My Team' },
-    { id: 'branch_centers_sales', label: 'Study Centers (Sales)' },
-    { id: '__ops_section', label: 'Operations', isSection: true },
-    { id: 'students', label: 'Students' },
-    { id: 'universities', label: 'Universities' },
-    { id: 'programs', label: 'Programs' },
-    { id: 'centers', label: 'Study Centers' },
-    { id: 'pending_verification', label: 'Pending Verification' },
-    { id: 'enrollment_review', label: 'Enrollment Review' },
-    { id: 'sessions', label: 'Admission Sessions' },
-    { id: '__shared_section', label: 'Management', isSection: true },
-    { id: 'tasks', label: 'Tasks' },
-    { id: 'announcements', label: 'Announcements' },
-    { id: '__portal_section', label: 'My Portal', isSection: true },
-    { id: 'my_leaves', label: 'My Leaves' },
-    { id: 'leave_approvals', label: 'Leave Approvals' },
-    { id: 'my_attendance', label: 'Attendance' },
-    { id: 'team_attendance', label: 'Team Attendance' },
-    { id: 'my_payslips', label: 'Pay Slips' },
-    { id: 'my_documents', label: 'My Documents' },
-    { id: 'manager_hiring', label: 'Hiring Requests' },
-    { id: 'holidays', label: 'Holidays' },
-    { id: 'notice-board', label: 'Notice Board' },
-  ];
-}
 
 export function ModernBranchManagerDashboard({ initialTab, onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
   useAuth();

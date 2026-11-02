@@ -5,8 +5,9 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 const router = express.Router();
 
 // Public like the old /uploads folder: links are opened by <a>, <video> and <iframe>,
-// which cannot send the auth header. File ids are random UUIDs.
-router.get('/:id', asyncHandler(async (req, res) => {
+// which cannot send the auth header. File ids are random UUIDs. Enrollment upload links end
+// with the file name (/<id>/<name>), which is only there for display.
+router.get(['/:id', '/:id/:name'], asyncHandler(async (req, res) => {
   const file = await prisma.storedFile.findUnique({ where: { id: req.params.id } });
   if (!file) {
     res.status(404).json({ success: false, message: 'File not found' });

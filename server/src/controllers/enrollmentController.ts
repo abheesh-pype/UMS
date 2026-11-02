@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions, getAdmissionSessionsWhere } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
-import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
+import { savePaymentProofFile, deleteStoredFileByUrl, saveEnrollmentUpload } from '../services/fileStorage.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
 import { getSalesTeamUserIds } from './salesEnrollmentController.js';
@@ -573,7 +573,7 @@ export const uploadEnrollmentPaymentProof = asyncHandler(async (req: AuthRequest
   }
   res.json({
     success: true,
-    url: getPaymentProofDataUrl(req.file),
+    url: await saveEnrollmentUpload(req.file, req.user.organizationId),
     filename: req.file.originalname,
   });
 });

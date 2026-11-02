@@ -128,7 +128,7 @@ record. Nothing runs in the background; there is no automatic sync.
 | `EXAM_PORTAL_TOKEN_URL` | Token endpoint: the Exam Portal's built-in `<portal>/api/integrations/oauth/token`, or an external authorization server (HTTPS; HTTP only for localhost outside production) |
 | `EXAM_PORTAL_CLIENT_ID` / `EXAM_PORTAL_CLIENT_SECRET` | Issued once by `scripts/create-integration-client.mjs` in the Exam Portal (or by your IdP); keep in the server secret manager |
 | `EXAM_PORTAL_STUDENT_UPSERT_URL` | `https://<exam-portal>/api/integrations/v1/students` |
-| `EXAM_PORTAL_SCOPE`, `EXAM_PORTAL_AUDIENCE` | `students:write students:launch staff:launch assessments:write` and the portal audience (default `exam-portal-api`); with the built-in issuer, `students:launch` is needed for student launch |
+| `EXAM_PORTAL_SCOPE`, `EXAM_PORTAL_AUDIENCE` | `students:write students:launch staff:launch assessments:write results:read` and the portal audience (default `exam-portal-api`); with the built-in issuer, `students:launch` is needed for student launch and `results:read` for importing results |
 | `EXAM_PORTAL_LAUNCH_TICKET_URL` | Optional; defaults to the upsert URL with `/students` replaced by `/launch-tickets` |
 
 Field mapping: `external_student_id` = `candidate_id` = UMS `Student.enrollmentNo` (the Exam Portal assigns its own

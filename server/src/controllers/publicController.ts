@@ -6,6 +6,7 @@ import { getOnboardingStatusByCode } from '../services/onboardingStatusService.j
 import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getSingleTenantContext } from '../utils/contextHelper.js';
+import { saveEnrollmentUpload } from '../services/fileStorage.js';
 import { getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
@@ -308,9 +309,10 @@ export const uploadPublicEnrollmentFile = asyncHandler(async (req: Request, res:
     res.status(400).json({ success: false, message: 'No file uploaded' });
     return;
   }
+  const { organizationId } = await getSingleTenantContext();
   res.json({
     success: true,
-    url: getPaymentProofDataUrl(req.file),
+    url: await saveEnrollmentUpload(req.file, organizationId),
     filename: req.file.originalname,
   });
 });

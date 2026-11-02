@@ -345,7 +345,7 @@ export function OpsCenterVerificationPanel() {
                           {(c.pendingDocuments || []).map((doc, i) => (
                             <a
                               key={i}
-                              href={doc.url}
+                              href={resolveFileUrl(doc.url)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs text-primary hover:underline"

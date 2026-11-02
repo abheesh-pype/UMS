@@ -23,6 +23,7 @@ export interface SyncConfig {
   launchTicketUrl: string;
   staffLaunchTicketUrl: string;
   assessmentsUrl: string;
+  resultsUrl: string;
 }
 
 const REQUIRED = [
@@ -65,6 +66,7 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
       || env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/launch-tickets'),
     staffLaunchTicketUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-launch-tickets'),
     assessmentsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessments'),
+    resultsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/results'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
   };
@@ -260,7 +262,8 @@ const portalRequest = async (config: SyncConfig, method: string, url: string, bo
       return await (deps.fetch ?? fetch)(url, {
         method,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(body),
+        // GET requests carry no body
+        body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(deps.timeoutMs ?? 10_000),
         redirect: 'error',
       });
@@ -357,6 +360,69 @@ export const publishAssessment = async (config: SyncConfig, a: PortalAssessment,
     throw new SyncError(502, 'The Exam Portal response did not confirm the examination', 'unconfirmed');
   }
   return { assessmentId: body.assessment_id as number, outcome: response.status === 201 ? 'created' as const : 'updated' as const };
+};
+
+// ---- Results (published, evaluated marks from the Exam Portal) ----
+
+export interface PortalResult {
+  externalStudentId: string;
+  candidateId: string | null;
+  obtainedMark: number;
+  negativeMark: number | null;
+  totalMark: number;
+  passMark: number | null;
+  passed: boolean | null;
+  evaluatedAt: Date;
+}
+
+const finiteOrNull = (value: unknown) => (value === null || value === undefined || value === '' ? null : Number.isFinite(Number(value)) ? Number(value) : NaN);
+
+/** Published results of one assessment. Rows that are malformed or for another assessment are skipped and counted. */
+export const fetchAssessmentResults = async (config: SyncConfig, externalAssessmentId: string, deps: Deps = {}) => {
+  const url = new URL(config.resultsUrl);
+  url.searchParams.set('external_assessment_id', externalAssessmentId);
+  url.searchParams.set('tenant_id', config.tenantId);
+  const response = await portalRequest(config, 'GET', url.toString(), undefined, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope results:read)', 'unauthorized');
+  }
+  if (response.status === 404) throw new SyncError(502, 'This examination has not been published to the Exam Portal', 'not_found');
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true || !Array.isArray(body.results)) {
+    throw new SyncError(502, 'The Exam Portal returned an invalid results response', 'unconfirmed');
+  }
+
+  const results: PortalResult[] = [];
+  let skipped = 0;
+  for (const row of body.results) {
+    const obtainedMark = finiteOrNull(row?.obtained_mark);
+    const totalMark = finiteOrNull(row?.total_mark);
+    const negativeMark = finiteOrNull(row?.negative_mark);
+    const passMark = finiteOrNull(row?.pass_mark);
+    const evaluatedAt = new Date(String(row?.evaluated_at ?? ''));
+    const valid = typeof row?.external_student_id === 'string' && row.external_student_id.trim()
+      && String(row?.external_assessment_id ?? externalAssessmentId) === externalAssessmentId
+      && obtainedMark !== null && !Number.isNaN(obtainedMark)
+      && totalMark !== null && !Number.isNaN(totalMark) && totalMark >= 0
+      && !Number.isNaN(negativeMark) && !Number.isNaN(passMark)
+      && !Number.isNaN(evaluatedAt.getTime());
+    if (!valid) {
+      skipped++;
+      continue;
+    }
+    results.push({
+      externalStudentId: row.external_student_id.trim(),
+      candidateId: row.candidate_id != null ? String(row.candidate_id) : null,
+      obtainedMark: obtainedMark as number,
+      negativeMark,
+      totalMark: totalMark as number,
+      passMark,
+      passed: typeof row.passed === 'boolean' ? row.passed : null,
+      evaluatedAt,
+    });
+  }
+  return { results, skipped };
 };
 
 // ---- Authorization + data loading -------------------------------------------------------
