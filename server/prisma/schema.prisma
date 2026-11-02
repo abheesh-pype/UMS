@@ -66,6 +66,7 @@ model Organization {
   semesters             Semester[]
   examinations          Examination[]
   examinationRegistrations ExaminationRegistration[]
+  examinationResults       ExaminationResult[]
   programMaterials      ProgramMaterial[]
   scheduledClasses     ScheduledClass[]
   academicCalendarEvents AcademicCalendar[]
@@ -525,10 +526,39 @@ model Examination {
   program           Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
   semester          Semester         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   registrations     ExaminationRegistration[]
+  results           ExaminationResult[]
 
   @@index([organizationId])
   @@index([academicSessionId, programId, semesterId])
   @@map("examinations")
+}
+
+// Published marks imported from the Exam Portal, one row per student per examination.
+model ExaminationResult {
+  id                String       @id @default(uuid())
+  organizationId    String
+  examinationId     String
+  studentId         String
+  enrollmentNo      String
+  portalCandidateId String?
+  obtainedMark      Float
+  negativeMark      Float?
+  totalMark         Float
+  passMark          Float?
+  passed            Boolean?
+  evaluatedAt       DateTime
+  source            String       @default("exam_portal")
+  importedBy        String?
+  importedAt        DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination       Examination  @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  student           Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examinationId, studentId])
+  @@index([organizationId, studentId])
+  @@map("examination_results")
 }
 
 model ExaminationRegistration {
@@ -682,6 +712,7 @@ model Student {
   referrer              User?                  @relation("StudentReferredBy", fields: [referredBy], references: [id])
   statusRequests        StudentStatusRequest[]
   examinationRegistrations ExaminationRegistration[]
+  examinationResults       ExaminationResult[]
   scheduledClasses     ScheduledClassStudent[]
 
   @@index([organizationId, status])

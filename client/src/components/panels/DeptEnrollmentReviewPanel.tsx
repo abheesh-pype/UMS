@@ -838,7 +838,7 @@ export function DeptEnrollmentReviewPanel() {
               {uploadingDocument && <p className="text-xs text-muted-foreground">Uploading document...</p>}
               {editDocuments.map((document, index) => (
                 <div key={`${document.url}-${index}`} className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
-                  <a className="truncate text-primary hover:underline" href={document.url} target="_blank" rel="noreferrer">
+                  <a className="truncate text-primary hover:underline" href={resolveFileUrl(document.url)} target="_blank" rel="noreferrer">
                     {document.name || 'Application document'}
                   </a>
                   <Button

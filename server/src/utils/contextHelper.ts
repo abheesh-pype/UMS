@@ -36,11 +36,17 @@ export const getDefaultUniversityId = async (): Promise<string> => {
   return uni.id;
 };
 
+// The single-tenant IDs never change while the server runs, and this is called on every
+// authenticated request, so they are looked up once and kept.
+let cachedContext: { organizationId: string; universityId: string } | null = null;
+
 /**
  * Helper to get both organization and university IDs.
  */
 export const getSingleTenantContext = async (): Promise<{ organizationId: string; universityId: string }> => {
-  const organizationId = await getDefaultOrganizationId();
-  const universityId = await getDefaultUniversityId();
-  return { organizationId, universityId };
+  if (!cachedContext) {
+    const [organizationId, universityId] = await Promise.all([getDefaultOrganizationId(), getDefaultUniversityId()]);
+    cachedContext = { organizationId, universityId };
+  }
+  return { ...cachedContext };
 };

@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  publishAssessment, requestStaffLaunch, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
+  fetchAssessmentResults, publishAssessment, requestStaffLaunch, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
 } from './examPortalSync.js';
 
 const env = {
@@ -246,4 +246,55 @@ test('publish assessment: unconfirmed, mismatched id, rejection and timeout are 
   assert.equal(await code(publishAssessment(config, assessment, { fetch: portal(() => json({}, 400)).fn })), 'rejected');
   clearTokenCache();
   assert.equal(await code(publishAssessment(config, assessment, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
+});
+
+const resultRow = (overrides: Record<string, unknown> = {}) => ({
+  external_assessment_id: 'exam-1', external_student_id: 'ENR001', candidate_id: '482913',
+  obtained_mark: 42, negative_mark: -3, total_mark: 60, pass_mark: 30, passed: true,
+  evaluated_at: '2026-11-02T10:00:00.000Z', ...overrides,
+});
+
+test('results: GET with assessment and tenant in the query, no body, rows mapped', async () => {
+  const { fn, calls } = portal(() => json({ ok: true, results: [resultRow(), resultRow({ external_student_id: 'ENR002', pass_mark: null, passed: null, negative_mark: null })] }));
+  const { results, skipped } = await fetchAssessmentResults(config, 'exam-1', { fetch: fn });
+  const url = new URL(calls[1].url);
+  assert.equal(url.origin + url.pathname, 'https://portal.example.edu/api/integrations/v1/results');
+  assert.equal(url.searchParams.get('external_assessment_id'), 'exam-1');
+  assert.equal(url.searchParams.get('tenant_id'), 'institution-001');
+  assert.equal(calls[1].init.method, 'GET');
+  assert.equal(calls[1].init.body, undefined);
+  assert.equal(skipped, 0);
+  assert.deepEqual(results[0], {
+    externalStudentId: 'ENR001', candidateId: '482913', obtainedMark: 42, negativeMark: -3, totalMark: 60,
+    passMark: 30, passed: true, evaluatedAt: new Date('2026-11-02T10:00:00.000Z'),
+  });
+  assert.deepEqual([results[1].passMark, results[1].passed, results[1].negativeMark], [null, null, null]);
+});
+
+test('results: malformed rows and rows for another assessment are skipped, not imported', async () => {
+  const rows = [
+    resultRow(),
+    resultRow({ external_assessment_id: 'other-exam' }),
+    resultRow({ external_student_id: '' }),
+    resultRow({ obtained_mark: 'abc' }),
+    resultRow({ total_mark: null }),
+    resultRow({ evaluated_at: 'not a date' }),
+  ];
+  const { results, skipped } = await fetchAssessmentResults(config, 'exam-1', { fetch: portal(() => json({ ok: true, results: rows })).fn });
+  assert.equal(results.length, 1);
+  assert.equal(skipped, 5);
+});
+
+test('results: invalid body, missing scope, unknown assessment and server errors are reported', async () => {
+  const cases: [Response, string][] = [
+    [json({ ok: false }), 'unconfirmed'],
+    [json({ ok: true, results: 'x' }), 'unconfirmed'],
+    [json({}, 403), 'unauthorized'],
+    [json({}, 404), 'not_found'],
+    [json({}, 500), 'remote_error'],
+  ];
+  for (const [response, expected] of cases) {
+    clearTokenCache();
+    assert.equal(await code(fetchAssessmentResults(config, 'exam-1', { fetch: portal(() => response.clone()).fn })), expected);
+  }
 });

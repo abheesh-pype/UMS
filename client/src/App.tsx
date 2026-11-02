@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
@@ -6,12 +6,12 @@ import { PrismaLayout } from '@/components/layout/PrismaLayout';
 import { DataGrid } from '@/components/ui/data-grid';
 import PublicRegisterPage from '@/pages/PublicRegisterPage';
 import PublicStudentApplicationPage from '@/pages/PublicStudentApplicationPage';
-import { getOpsNavItems } from '@/pages/ModernOpsDashboard';
-import { getHRNavItems } from '@/pages/ModernHRDashboard';
-import { getFinanceNavItems } from '@/pages/ModernFinanceDashboard';
-import { getSalesNavItems } from '@/pages/ModernSalesDashboard';
-import { getBranchManagerNavItems } from '@/pages/ModernBranchManagerDashboard';
-import { getUniversityNavItems } from '@/pages/ModernUniversityDashboard';
+import { getOpsNavItems } from '@/pages/navItems';
+import { getHRNavItems } from '@/pages/navItems';
+import { getFinanceNavItems } from '@/pages/navItems';
+import { getSalesNavItems } from '@/pages/navItems';
+import { getBranchManagerNavItems } from '@/pages/navItems';
+import { getUniversityNavItems } from '@/pages/navItems';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -931,11 +931,13 @@ function App() {
       schema="public"
     >
       {viewMode === 'dashboard' ? (
-        <Dashboard 
-          onNavigateToTable={handleTableChange} 
-          useDepartmentDashboard={shouldUseDepartmentDashboard}
-          initialTab={activeTab}
-        />
+        <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
+          <Dashboard 
+            onNavigateToTable={handleTableChange} 
+            useDepartmentDashboard={shouldUseDepartmentDashboard}
+            initialTab={activeTab}
+          />
+        </Suspense>
       ) : (
         <DataGrid
           columns={getColumns()}

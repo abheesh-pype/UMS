@@ -166,17 +166,36 @@ export const getStudentResults = asyncHandler(async (req: AuthRequest, res: Resp
     },
   });
 
+  // Examination results imported from the Exam Portal (only published results are imported)
+  const examResults = await prisma.examinationResult.findMany({
+    where: { organizationId: req.user.organizationId, studentId: student.id },
+    orderBy: { evaluatedAt: 'desc' },
+    include: { examination: { select: { examinationName: true, examinationType: true, semester: { select: { semesterName: true } } } } },
+  });
+
   res.json({
-    results: marks.map(mark => ({
-      assessment_id: mark.id,
-      assessment_name: mark.subject,
-      examination: '',
-      obtained_mark: mark.marks,
-      total_mark: mark.maxMarks,
-      pass_mark: null,
-      passed: null,
-      evaluated_at: mark.updatedAt,
-    })),
+    results: [
+      ...examResults.map(result => ({
+        assessment_id: result.id,
+        assessment_name: result.examination.examinationName,
+        examination: result.examination.semester?.semesterName || result.examination.examinationType,
+        obtained_mark: result.obtainedMark,
+        total_mark: result.totalMark,
+        pass_mark: result.passMark,
+        passed: result.passed,
+        evaluated_at: result.evaluatedAt,
+      })),
+      ...marks.map(mark => ({
+        assessment_id: mark.id,
+        assessment_name: mark.subject,
+        examination: '',
+        obtained_mark: mark.marks,
+        total_mark: mark.maxMarks,
+        pass_mark: null,
+        passed: null,
+        evaluated_at: mark.updatedAt,
+      })),
+    ],
   });
 });
 

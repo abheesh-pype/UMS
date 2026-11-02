@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface Program {
   id: string;
@@ -1318,7 +1319,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                               <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded border">
                                 <span className="truncate max-w-[150px] font-medium">{existingDoc.name}</span>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  <a href={existingDoc.url} target="_blank" rel="noreferrer" className="text-primary hover:underline font-medium">View</a>
+                                  <a href={resolveFileUrl(existingDoc.url)} target="_blank" rel="noreferrer" className="text-primary hover:underline font-medium">View</a>
                                   <button type="button" onClick={() => setDocumentList(documentList.filter(d => d !== existingDoc))} className="text-red-500 hover:text-red-700 px-1 font-medium">Remove</button>
                                 </div>
                               </div>
@@ -1371,7 +1372,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                                 <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded border">
                                   <span className="truncate max-w-[150px] font-medium">{existingDoc.name}</span>
                                   <div className="flex items-center gap-1 shrink-0">
-                                    <a href={existingDoc.url} target="_blank" rel="noreferrer" className="text-primary hover:underline font-medium">View</a>
+                                    <a href={resolveFileUrl(existingDoc.url)} target="_blank" rel="noreferrer" className="text-primary hover:underline font-medium">View</a>
                                     <button type="button" onClick={() => setDocumentList(documentList.filter(d => d !== existingDoc))} className="text-red-500 hover:text-red-700 px-1 font-medium">Remove</button>
                                   </div>
                                 </div>
@@ -1401,7 +1402,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                             <span className="truncate font-medium text-slate-700">{doc.name}</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline px-2 font-medium">View</a>
+                            <a href={resolveFileUrl(doc.url)} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline px-2 font-medium">View</a>
                             <Button variant="ghost" size="sm" onClick={() => setDocumentList(documentList.filter(d => d !== doc))}>
                               <Trash2 className="w-4 h-4 text-red-500" />
                             </Button>
@@ -1480,7 +1481,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                   <div className="flex items-center gap-2 text-xs">
                     <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     <span className="truncate font-medium">{initialPaymentProof.name}</span>
-                    <a href={initialPaymentProof.url} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold flex-shrink-0">View</a>
+                    <a href={resolveFileUrl(initialPaymentProof.url)} target="_blank" rel="noreferrer" className="text-primary hover:underline font-semibold flex-shrink-0">View</a>
                   </div>
                 ) : (
                   <p className="text-xs text-destructive">Upload the payment proof (image or PDF).</p>
@@ -1627,7 +1628,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                           <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="truncate font-medium">{doc.name}</span>
                         </div>
-                        <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold flex-shrink-0">View</a>
+                        <a href={resolveFileUrl(doc.url)} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold flex-shrink-0">View</a>
                       </div>
                     ))}
                   </div>
@@ -1659,7 +1660,7 @@ export function EnrollStudentPanel({ mode = 'center', onSubmitted, onBack, initi
                   {initialPaymentProof && (
                     <div className="flex justify-between items-center gap-4">
                       <span className="text-muted-foreground">Payment Proof</span>
-                      <a href={initialPaymentProof.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold">View</a>
+                      <a href={resolveFileUrl(initialPaymentProof.url)} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline font-semibold">View</a>
                     </div>
                   )}
                   <div className="flex justify-between items-center gap-4 border-t border-primary/20 pt-2.5">

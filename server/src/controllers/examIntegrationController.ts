@@ -5,7 +5,7 @@ import prisma from '../lib/prisma.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
-  buildStudentPayload, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, SyncError, syncStudent,
+  buildStudentPayload, fetchAssessmentResults, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, SyncError, syncStudent,
 } from '../services/examPortalSync.js';
 
 const encryptionKey = () => {
@@ -226,6 +226,101 @@ export const publishExaminationToExamPortal = asyncHandler(async (req: AuthReque
     console.warn('[exam-portal-publish] failed', { by: req.user.id, code: error.code });
     res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
   }
+});
+
+// Imports the published marks of an examination from the Exam Portal. Safe to repeat: each
+// student's row is updated in place. Results for students UMS cannot match are reported, not saved.
+export const importExaminationResultsFromExamPortal = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+
+  const examination = await prisma.examination.findFirst({
+    where: { id: req.params.examinationId, organizationId: req.user.organizationId },
+    select: { id: true, examinationName: true },
+  });
+  if (!examination) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+
+  let fetched;
+  try {
+    fetched = await fetchAssessmentResults(config, examination.id);
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-results] failed', { by: req.user.id, examination: examination.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+    return;
+  }
+
+  const enrollmentNos = [...new Set(fetched.results.map(result => result.externalStudentId))];
+  const students = enrollmentNos.length
+    ? await prisma.student.findMany({
+      where: { organizationId: req.user.organizationId, enrollmentNo: { in: enrollmentNos } },
+      select: { id: true, enrollmentNo: true },
+    })
+    : [];
+  const studentByEnrollmentNo = new Map(students.map(student => [student.enrollmentNo, student.id]));
+  const existing = new Set((await prisma.examinationResult.findMany({
+    where: { examinationId: examination.id, studentId: { in: students.map(student => student.id) } },
+    select: { studentId: true },
+  })).map(row => row.studentId));
+
+  let created = 0;
+  let updated = 0;
+  const unmatched: string[] = [];
+  for (const result of fetched.results) {
+    const studentId = studentByEnrollmentNo.get(result.externalStudentId);
+    if (!studentId) {
+      unmatched.push(result.externalStudentId);
+      continue;
+    }
+    const data = {
+      enrollmentNo: result.externalStudentId,
+      portalCandidateId: result.candidateId,
+      obtainedMark: result.obtainedMark,
+      negativeMark: result.negativeMark,
+      totalMark: result.totalMark,
+      passMark: result.passMark,
+      passed: result.passed,
+      evaluatedAt: result.evaluatedAt,
+      importedBy: req.user.id,
+      importedAt: new Date(),
+    };
+    await prisma.examinationResult.upsert({
+      where: { examinationId_studentId: { examinationId: examination.id, studentId } },
+      create: { organizationId: req.user.organizationId, examinationId: examination.id, studentId, ...data },
+      update: data,
+    });
+    if (existing.has(studentId)) updated++;
+    else {
+      created++;
+      existing.add(studentId);
+    }
+  }
+
+  console.info('[exam-portal-results] ok', { by: req.user.id, examination: examination.id, created, updated, unmatched: unmatched.length, skipped: fetched.skipped });
+  res.json({
+    success: true,
+    data: { received: fetched.results.length, created, updated, unmatched, skipped: fetched.skipped },
+  });
+});
+
+export const getExaminationResults = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const examination = await prisma.examination.findFirst({
+    where: { id: req.params.examinationId, organizationId: req.user.organizationId },
+    select: { id: true },
+  });
+  if (!examination) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+  const results = await prisma.examinationResult.findMany({
+    where: { examinationId: examination.id, organizationId: req.user.organizationId },
+    include: { student: { select: { id: true, name: true, enrollmentNo: true } } },
+    orderBy: { enrollmentNo: 'asc' },
+  });
+  res.json({ success: true, data: results });
 });
 
 const isExamLaunchReady = (examination: any, now: Date) => {

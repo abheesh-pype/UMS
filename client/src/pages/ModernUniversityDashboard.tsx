@@ -40,6 +40,8 @@ import { UniversityEnrollmentReviewPanel } from '@/components/panels/UniversityE
 import { PendingCenterVerificationPanel } from '@/components/panels/PendingCenterVerificationPanel';
 import { TargetsPanel } from '@/components/panels/TargetsPanel';
 import { UniversityTeamPanel } from '@/components/panels/UniversityTeamPanel';
+import { getUniversityNavItems } from './navItems';
+export { getUniversityNavItems };
 
 
 interface Enrollment {
@@ -893,20 +895,3 @@ function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; labe
   );
 }
 
-export function getUniversityNavItems() {
-  return [
-    { id: 'dashboard', label: 'Dashboard' },
-    { id: 'team', label: 'Team' },
-    { id: 'targets', label: 'Targets' },
-    {
-      id: 'students',
-      label: 'Students',
-      children: [
-        { id: 'enrolled_students', label: 'Enrolled Students' },
-      ],
-    },
-    { id: 'pending_center_verification', label: 'Pending Verification' },
-    { id: 'manager_hiring', label: 'Hiring Requests' },
-    { id: 'integration', label: 'Integration' },
-  ];
-}

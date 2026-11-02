@@ -42,6 +42,8 @@ import { ShiftPanel } from '@/components/panels/hr/ShiftPanel';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
 import { AttendanceCalendarPanel } from '@/components/panels/hr/AttendanceCalendarPanel';
 import { MyTeamPanel } from '@/components/panels/MyTeamPanel';
+import { getHRNavItems } from './navItems';
+export { getHRNavItems };
 
 
 export function ModernHRDashboard({ initialTab, onNavigate: _onNavigate }: { initialTab?: string, onNavigate?: (tab: string) => void }) {
@@ -105,43 +107,6 @@ export function ModernHRDashboard({ initialTab, onNavigate: _onNavigate }: { ini
   );
 }
 
-export function getHRNavItems() {
-  return [
-    { id: '__hr_section', label: 'HR Management', isSection: true },
-    { id: 'overview', label: 'Overview' },
-    { id: 'users', label: 'Users' },
-    { id: 'my_team', label: 'My Team' },
-    { id: 'employees', label: 'Employees' },
-    { id: 'leaves', label: 'Leave Requests' },
-    { id: 'attendance', label: 'Attendance' },
-    { id: 'hiring', label: 'Hiring & Recruitment' },
-    { id: 'candidate_pipeline', label: 'Candidate Pipeline' },
-    { id: 'hiring_request', label: 'Hiring Request' },
-    { id: 'vacancies', label: 'Vacancies' },
-    { id: 'holidays', label: 'Holidays' },
-    { id: 'complaints', label: 'Complaints' },
-    { id: 'tasks', label: 'Tasks' },
-    { id: 'payroll', label: 'Payroll' },
-    { id: 'payroll-batches', label: 'Payroll Batches' },
-    { id: 'salary-config', label: 'Salary Config' },
-    { id: 'leave-alloc', label: 'Leave Allocation' },
-    { id: 'announcements', label: 'Announcements' },
-    { id: 'polls', label: 'Polls' },
-    { id: 'org-chart', label: 'Hierarchy' },
-    { id: 'managers', label: 'Managers' },
-    { id: 'att-settings', label: 'Att. Settings' },
-    { id: 'shift-settings', label: 'Shift Settings' },
-    { id: 'activity_report', label: 'Activity Report' },
-    { id: '__portal_section', label: 'My Portal', isSection: true },
-    { id: 'my_leaves', label: 'My Leaves' },
-    { id: 'leave_approvals', label: 'Leave Approvals' },
-    { id: 'my_attendance', label: 'My Attendance' },
-    { id: 'my_payslips', label: 'Pay Slips' },
-    { id: 'my_documents', label: 'My Documents' },
-    { id: 'notice-board', label: 'Notice Board' },
-    { id: 'subdepartments', label: 'Sub-Departments' },
-  ];
-}
 
 function OverviewContent({ metrics, onNavigate }: { metrics: any; onNavigate: (tab: string) => void }) {
   const [vacancies, setVacancies] = useState<any[]>([]);

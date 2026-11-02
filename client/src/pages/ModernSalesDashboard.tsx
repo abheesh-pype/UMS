@@ -47,6 +47,8 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
+import { getSalesNavItems } from './navItems';
+export { getSalesNavItems };
 
 
 export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate }: { initialTab?: string; isSubDeptManager?: boolean; onNavigate?: (tab: string) => void }) {
@@ -140,41 +142,6 @@ export function ModernSalesDashboard({ initialTab, isSubDeptManager, onNavigate 
   );
 }
 
-export function getSalesNavItems(includeStudentEnrollment = true) {
-  return [
-    { id: '__dashboard_section', label: 'Dashboard', isSection: true },
-    { id: 'overview', label: 'Overview' },
-
-    { id: '__sales_team_section', label: 'Sales Team', isSection: true },
-    { id: 'targets', label: 'Target' },
-    { id: 'my_team', label: 'My Team' },
-    { id: 'tasks', label: 'Task' },
-
-    { id: '__admission_section', label: 'Admission', isSection: true },
-    { id: 'invite_links', label: 'Invite Link' },
-    ...(includeStudentEnrollment ? [{ id: 'student_enrollment', label: 'Student Enrollment' }] : []),
-
-    { id: '__study_center_management_section', label: 'Study Center Management', isSection: true },
-    { id: 'study_centre', label: 'Study Center' },
-    { id: 'center_admissions', label: 'Center Admission' },
-    { id: 'center_onboarding', label: 'Center Onboarding Status' },
-
-    { id: '__verification_section', label: 'Verification', isSection: true },
-    { id: 'pending_center_verification', label: 'Pending Verification' },
-
-    { id: '__portal_section', label: 'My Portal', isSection: true },
-    { id: 'my_leaves', label: 'My Leaves' },
-    { id: 'leave_approvals', label: 'Leave Approvals' },
-    { id: 'my_attendance', label: 'Attendance' },
-    { id: 'team_attendance', label: 'Team Attendance' },
-    { id: 'my_payslips', label: 'Pay Slips' },
-    { id: 'my_documents', label: 'My Documents' },
-    { id: 'manager_hiring', label: 'Hiring Requests' },
-    { id: 'holidays', label: 'Holidays' },
-    { id: 'announcements', label: 'Announcements' },
-    { id: 'notice-board', label: 'Notice Board' },
-  ];
-}
 
 function OverviewContent({ metrics, leads, targets, applicationSummary, loading, onNavigate }: any) {
   // Compute live stats

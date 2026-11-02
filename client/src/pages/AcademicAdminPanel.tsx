@@ -1566,6 +1566,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   const [publishingExamId, setPublishingExamId] = useState<string | null>(null);
+  const [importingResultsId, setImportingResultsId] = useState<string | null>(null);
+  const [examResultsView, setExamResultsView] = useState<{ examinationName: string; rows: any[]; loading: boolean } | null>(null);
   const [openingPortalWorkspace, setOpeningPortalWorkspace] = useState(false);
 
   // Single sign-on: opens the Exam Portal (question bank, bulk upload, assessments) already signed in as this user.
@@ -1613,6 +1615,38 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       return false;
     } finally {
       setPublishingExamId(null);
+    }
+  };
+
+  // Results published in the Exam Portal, as imported into UMS
+  const viewExamResults = async (portal: any) => {
+    setExamResultsView({ examinationName: portal.examinationName, rows: [], loading: true });
+    try {
+      const response = await api.get(`/operations/examinations/${portal.examinationId}/results`);
+      setExamResultsView({ examinationName: portal.examinationName, rows: response.data.data || [], loading: false });
+    } catch (error: any) {
+      setExamResultsView(null);
+      toast.error(error.response?.data?.message || 'Could not load results');
+    }
+  };
+
+  // Pulls the published marks from the Exam Portal. Repeating it updates the same rows.
+  const importExamResults = async (portal: any) => {
+    setImportingResultsId(portal.examinationId);
+    try {
+      const response = await api.post(`/operations/examinations/${portal.examinationId}/exam-portal/results`);
+      const { received, created, updated, unmatched, skipped } = response.data.data;
+      if (received === 0) toast.info('No published results in the Exam Portal yet');
+      else toast.success(`Results imported: ${created} new, ${updated} updated`);
+      if (unmatched.length) toast.warning(`${unmatched.length} result(s) skipped: no UMS student with enrollment no. ${unmatched.slice(0, 5).join(', ')}${unmatched.length > 5 ? '…' : ''}`);
+      if (skipped) toast.warning(`${skipped} result(s) from the Exam Portal were incomplete and not imported`);
+      if (received > 0) await viewExamResults(portal);
+    } catch (error: any) {
+      toast.error(error.response?.status === 503
+        ? 'Exam Portal is not connected on the server'
+        : error.response?.data?.message || 'Could not import results from the Exam Portal');
+    } finally {
+      setImportingResultsId(null);
     }
   };
 
@@ -3628,7 +3662,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {initialTab === 'academic-examination-portal' && <Card>
         <CardHeader><CardTitle>Examination Portal</CardTitle><p className="text-sm text-muted-foreground">Examinations available for portal access.</p></CardHeader>
         <CardContent className="space-y-3">
-          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); const isOpen = portal.isOpen !== false; return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold">{portal.examinationName}</p><Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'Opened' : 'Closed'}</Badge></div><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => openExamPortal(portal)}>Open Portal</Button><Button variant="outline" onClick={() => closeExamPortal(portal)}>Close Portal</Button></div></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
+          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); const isOpen = portal.isOpen !== false; return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold">{portal.examinationName}</p><Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'Opened' : 'Closed'}</Badge></div><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openExamPortal(portal)}>Open Portal</Button><Button variant="outline" onClick={() => closeExamPortal(portal)}>Close Portal</Button><Button variant="outline" disabled={importingResultsId === portal.examinationId} onClick={() => importExamResults(portal)}>{importingResultsId === portal.examinationId ? 'Importing...' : 'Import Results'}</Button><Button variant="outline" onClick={() => viewExamResults(portal)}>View Results</Button></div></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
         </CardContent>
       </Card>}
 
@@ -6186,6 +6220,52 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               </>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!examResultsView} onOpenChange={open => { if (!open) setExamResultsView(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Results — {examResultsView?.examinationName}</DialogTitle>
+            <DialogDescription>Published marks imported from the Exam Portal. Students see these on their Result page.</DialogDescription>
+          </DialogHeader>
+          {examResultsView?.loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading results...</p>
+          ) : !examResultsView?.rows.length ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No results imported yet. Use Import Results once the Exam Portal has published them.</p>
+          ) : (
+            <div className="max-h-[60vh] overflow-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left">
+                  <tr>
+                    <th className="p-3 font-medium">Enrollment No.</th>
+                    <th className="p-3 font-medium">Student</th>
+                    <th className="p-3 font-medium">Marks</th>
+                    <th className="p-3 font-medium">Result</th>
+                    <th className="p-3 font-medium">Evaluated On</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {examResultsView.rows.map(row => (
+                    <tr key={row.id} className="border-t">
+                      <td className="p-3 font-mono">{row.enrollmentNo}</td>
+                      <td className="p-3">{row.student?.name || '—'}</td>
+                      <td className="p-3">{row.obtainedMark} / {row.totalMark}{row.passMark != null && <span className="block text-xs text-muted-foreground">Pass mark: {row.passMark}</span>}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className={row.passed === true ? 'border-green-500/40 text-green-700' : row.passed === false ? 'border-red-500/40 text-red-700' : ''}>
+                          {row.passed === true ? 'Passed' : row.passed === false ? 'Failed' : 'Pass mark not set'}
+                        </Badge>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">{new Date(row.evaluatedAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExamResultsView(null)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
