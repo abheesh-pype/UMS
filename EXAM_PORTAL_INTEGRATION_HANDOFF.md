@@ -15,7 +15,7 @@ Two separate apps with separate codebases and databases. UMS is the source of st
 | Student sync | UMS (Integration tab, or automatically on Launch exam) | Student + assigned exams created/updated in the portal. No DOB or password is sent. |
 | Student launch | UMS student dashboard → **Launch exam** | UMS asks the portal for a single-use 60 s link; student lands in the portal signed in. |
 | Examination publish | UMS Academic Admin → Examination → Manage Examination → **Create Exam Portal** → **Open Exam Portal** | Assessment created/updated in the portal (idempotent on the UMS examination id). Result is also saved on the UMS `examinations.portal` column. |
-| Academic Admin sign-in | Same card → **Open Exam Portal (questions & bulk upload)** | Single-use link signs them into the portal with the restricted "UMS Academic Staff" role (questions + assessments only, enforced server-side). |
+| Academic Admin sign-in | Same card → **Open Exam Portal (questions & bulk upload)** | Single-use link signs them into the portal with the full-access "UMS Administrator" role. Org Admins/Super Admins get the same from the Integration tab. Invigilators and evaluators have no UMS role: they sign in to the portal directly. |
 
 Authentication between servers is OAuth 2.0 client-credentials. The Exam Portal has its own token issuer (RS256 JWT, JWKS at `/.well-known/jwks.json`). UMS never sends credentials to the browser.
 
