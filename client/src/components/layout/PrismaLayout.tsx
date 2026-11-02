@@ -125,6 +125,7 @@ export function PrismaLayout({
     const iconClass = "w-4 h-4";
     switch (tableId) {
       case 'dashboard':
+      case 'academic-overview':
       case 'overview': return <LayoutDashboard className={iconClass} />;
       case 'users':
       case 'managers': return <Users className={iconClass} />;

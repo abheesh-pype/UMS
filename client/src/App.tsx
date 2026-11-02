@@ -378,15 +378,25 @@ function App() {
 
     if (user.role === 'academic_admin') {
       return [
-        { id: 'dashboard', label: 'Dashboard' },
+        { id: '__academic_dashboard_section', label: 'Dashboard', isSection: true },
+        { id: 'academic-overview', label: 'Overview' },
+
+        { id: '__academic_structure_section', label: 'Academic Structure', isSection: true },
         { id: 'academic-session', label: 'Academic Session' },
         { id: 'academic-programs', label: 'Programs' },
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
+        { id: 'dashboard', label: 'Add Study Notes' },
+
+        { id: '__academic_content_section', label: 'Study Content', isSection: true },
         { id: 'academic-ebooks', label: 'E-Book' },
         { id: 'academic-video-classes', label: 'Video Classes' },
+
+        { id: '__academic_schedule_section', label: 'Schedule', isSection: true },
         { id: 'academic-scheduled-classes', label: 'Schedule Class' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
+
+        { id: '__academic_examination_section', label: 'Examination', isSection: true },
         {
           id: 'academic-examination',
           label: 'Examination',
@@ -398,6 +408,8 @@ function App() {
         },
         { id: 'academic-examination-registered', label: 'Registered Students' },
         { id: 'academic-examination-portal', label: 'Examination Portal' },
+
+        { id: '__academic_portal_section', label: 'My Portal', isSection: true },
         { id: 'manager_hiring', label: 'Hiring Requests' },
       ];
     }
