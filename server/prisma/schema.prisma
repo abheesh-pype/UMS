@@ -517,6 +517,7 @@ model Examination {
   status            String           @default("draft")
   moduleIds         Json             @default("[]")
   schedule          Json             @default("[]")
+  portal            Json? // Exam Portal publication: { assessmentId, examDate, examTime, examSession, startsAt, durationMinutes, code, isOpen, publishedAt, publishedBy }
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
