@@ -204,8 +204,23 @@ export const publishExaminationToExamPortal = asyncHandler(async (req: AuthReque
       totalTimeMinutes: durationMinutes,
       active: req.body?.active !== false,
     });
+    // Keep the publication on the server so every browser/environment sees the same Examination Portal list.
+    const text = (value: unknown, pattern: RegExp) => (typeof value === 'string' && pattern.test(value) ? value : null);
+    const portal = {
+      assessmentId: result.assessmentId,
+      examDate: text(req.body?.examDate, /^\d{4}-\d{2}-\d{2}$/),
+      examTime: text(req.body?.examTime, /^\d{2}:\d{2}$/),
+      examSession: text(req.body?.examSession, /^[A-Za-z ]{1,20}$/),
+      code: text(req.body?.code, /^[A-Za-z0-9._-]{1,100}$/) ?? (examination.portal as any)?.code ?? null,
+      startsAt: startsAt.toISOString(),
+      durationMinutes,
+      isOpen: req.body?.active !== false,
+      publishedAt: new Date().toISOString(),
+      publishedBy: req.user.id,
+    };
+    await prisma.examination.update({ where: { id: examination.id }, data: { portal } });
     console.info('[exam-portal-publish] ok', { by: req.user.id, examination: examination.id, outcome: result.outcome });
-    res.json({ success: true, data: { ...result, startsAt, durationMinutes } });
+    res.json({ success: true, data: { ...result, startsAt, durationMinutes, portal } });
   } catch (error) {
     if (!(error instanceof SyncError)) throw error;
     console.warn('[exam-portal-publish] failed', { by: req.user.id, code: error.code });

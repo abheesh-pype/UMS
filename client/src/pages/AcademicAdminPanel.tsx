@@ -1429,7 +1429,30 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setExaminationLoading(true);
     try {
       const response = await api.get('/operations/examinations');
-      setExaminations(response.data.data || []);
+      const loaded = response.data.data || [];
+      setExaminations(loaded);
+      // The server record is the source of truth for the Examination Portal list; localStorage only covers
+      // portals created while the Exam Portal was not connected.
+      const fromServer: Record<string, any> = {};
+      for (const exam of loaded) {
+        if (!exam.portal) continue;
+        const portal = exam.portal;
+        const params = new URLSearchParams({ code: portal.code || '', date: portal.examDate || '', session: portal.examSession || '', time: portal.examTime || '' });
+        fromServer[exam.id] = {
+          examinationId: exam.id,
+          examinationName: exam.examinationName,
+          examinationType: exam.examinationType,
+          academicSessionId: exam.academicSessionId,
+          programName: exam.program?.name || 'Program',
+          examDate: portal.examDate || (portal.startsAt ? String(portal.startsAt).slice(0, 10) : ''),
+          examSession: portal.examSession || '',
+          examTime: portal.examTime || '',
+          isOpen: portal.isOpen !== false,
+          code: portal.code || '',
+          link: `${window.location.origin}/student/examinations/${exam.id}?${params.toString()}`,
+        };
+      }
+      setCreatedExamPortals(current => ({ ...current, ...fromServer }));
     } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to load examinations'); }
     finally { setExaminationLoading(false); }
   };
@@ -1548,8 +1571,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [openingPortalWorkspace, setOpeningPortalWorkspace] = useState(false);
 
   // Single sign-on: opens the Exam Portal (question bank, bulk upload, assessments) already signed in as this user.
-  const openExamPortalWorkspace = async () => {
-    const win = window.open('about:blank', '_blank');
+  // `preOpened` lets a caller open the tab synchronously inside the click (pop-up blockers reject windows opened after an await).
+  const openExamPortalWorkspace = async (preOpened?: Window | null) => {
+    const win = preOpened || window.open('about:blank', '_blank');
     if (!win) { toast.error('Allow pop-ups to open the Exam Portal'); return; }
     setOpeningPortalWorkspace(true);
     try {
@@ -1565,7 +1589,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   // Creates/updates the examination in the connected Exam Portal. Returns false when it must not continue.
-  const publishToExamPortal = async (examination: any) => {
+  const publishToExamPortal = async (examination: any, code: string) => {
     if (!examPortalForm.examDate || !examPortalForm.examTime) {
       toast.error('Select the exam date and time first');
       return false;
@@ -1574,7 +1598,13 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     if (Number.isNaN(startsAt.getTime())) { toast.error('Exam date or time is invalid'); return false; }
     setPublishingExamId(examination.id);
     try {
-      const response = await api.post(`/operations/examinations/${examination.id}/exam-portal`, { startsAt: startsAt.toISOString() });
+      const response = await api.post(`/operations/examinations/${examination.id}/exam-portal`, {
+        startsAt: startsAt.toISOString(),
+        examDate: examPortalForm.examDate,
+        examTime: examPortalForm.examTime,
+        examSession: examPortalForm.examSession,
+        code,
+      });
       toast.success(`Exam Portal confirmed: assessment ${response.data.data.outcome}`);
       return true;
     } catch (error: any) {
@@ -1623,12 +1653,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const generateExamLink = async (examination: any) => {
     if (!examination) return;
-    if (!(await publishToExamPortal(examination))) return;
     const programName = programs.find(program => program.id === examination.programId)?.name || 'PROGRAM';
     const clean = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'EXAM';
     const date = examPortalForm.examDate.replace(/-/g, '');
     const time = examPortalForm.examTime.replace(':', '') || '0000';
-    const code = examPortalCodes[examination.id] || `${clean(programName)}-${clean(examination.examinationName)}-${date}-${clean(examPortalForm.examSession)}-${time}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const code = examPortalCodes[examination.id] || examination.portal?.code || `${clean(programName)}-${clean(examination.examinationName)}-${date}-${clean(examPortalForm.examSession)}-${time}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    if (!(await publishToExamPortal(examination, code))) return;
     setExamPortalCodes(current => ({ ...current, [examination.id]: code }));
     const params = new URLSearchParams({
       code,
@@ -1673,7 +1703,21 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }));
   };
 
-  const setExamPortalStatus = (portal: any, isOpen: boolean) => {
+  const setExamPortalStatus = async (portal: any, isOpen: boolean): Promise<boolean> => {
+    // Persist on the server (and in the Exam Portal) so every browser sees the same state.
+    const startsAt = new Date(`${portal.examDate}T${portal.examTime}`);
+    if (!Number.isNaN(startsAt.getTime())) {
+      try {
+        await api.post(`/operations/examinations/${portal.examinationId}/exam-portal`, {
+          startsAt: startsAt.toISOString(), examDate: portal.examDate, examTime: portal.examTime, examSession: portal.examSession, code: portal.code, active: isOpen,
+        });
+      } catch (error: any) {
+        if (error.response?.status !== 503) {
+          toast.error(error.response?.data?.message || 'The Exam Portal status could not be updated');
+          return false;
+        }
+      }
+    }
     const updatedPortal = { ...portal, isOpen };
     setCreatedExamPortals(current => ({ ...current, [portal.examinationId]: updatedPortal }));
     try {
@@ -1695,14 +1739,19 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
     }
     toast.success(`Exam portal ${isOpen ? 'opened' : 'closed'}`);
+    return true;
   };
 
   const closeExamPortal = (portal: any) => {
     setExamPortalStatus(portal, false);
   };
 
-  const openExamPortal = (portal: any) => {
-    setExamPortalStatus(portal, true);
+  // Marks the exam open for students and takes the admin into the Exam Portal, signed in.
+  const openExamPortal = async (portal: any) => {
+    const win = window.open('about:blank', '_blank');
+    const updated = await setExamPortalStatus(portal, true);
+    if (!updated) { win?.close(); return; }
+    await openExamPortalWorkspace(win);
   };
 
   const selectSessionForPortal = (academicSessionId: string) => {
@@ -3630,7 +3679,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <CardTitle>Create Exam Portal</CardTitle>
               <p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal. Opening it creates the examination in the connected Exam Portal.</p>
             </div>
-            <Button type="button" variant="outline" onClick={openExamPortalWorkspace} disabled={openingPortalWorkspace}>
+            <Button type="button" variant="outline" onClick={() => openExamPortalWorkspace()} disabled={openingPortalWorkspace}>
               {openingPortalWorkspace ? 'Opening...' : 'Open Exam Portal (questions & bulk upload)'}
             </Button>
           </div>
