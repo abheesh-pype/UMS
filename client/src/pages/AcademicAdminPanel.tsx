@@ -1571,8 +1571,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [openingPortalWorkspace, setOpeningPortalWorkspace] = useState(false);
 
   // Single sign-on: opens the Exam Portal (question bank, bulk upload, assessments) already signed in as this user.
-  const openExamPortalWorkspace = async () => {
-    const win = window.open('about:blank', '_blank');
+  // `preOpened` lets a caller open the tab synchronously inside the click (pop-up blockers reject windows opened after an await).
+  const openExamPortalWorkspace = async (preOpened?: Window | null) => {
+    const win = preOpened || window.open('about:blank', '_blank');
     if (!win) { toast.error('Allow pop-ups to open the Exam Portal'); return; }
     setOpeningPortalWorkspace(true);
     try {
@@ -1702,7 +1703,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }));
   };
 
-  const setExamPortalStatus = async (portal: any, isOpen: boolean) => {
+  const setExamPortalStatus = async (portal: any, isOpen: boolean): Promise<boolean> => {
     // Persist on the server (and in the Exam Portal) so every browser sees the same state.
     const startsAt = new Date(`${portal.examDate}T${portal.examTime}`);
     if (!Number.isNaN(startsAt.getTime())) {
@@ -1713,7 +1714,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       } catch (error: any) {
         if (error.response?.status !== 503) {
           toast.error(error.response?.data?.message || 'The Exam Portal status could not be updated');
-          return;
+          return false;
         }
       }
     }
@@ -1738,14 +1739,19 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
     }
     toast.success(`Exam portal ${isOpen ? 'opened' : 'closed'}`);
+    return true;
   };
 
   const closeExamPortal = (portal: any) => {
     setExamPortalStatus(portal, false);
   };
 
-  const openExamPortal = (portal: any) => {
-    setExamPortalStatus(portal, true);
+  // Marks the exam open for students and takes the admin into the Exam Portal, signed in.
+  const openExamPortal = async (portal: any) => {
+    const win = window.open('about:blank', '_blank');
+    const updated = await setExamPortalStatus(portal, true);
+    if (!updated) { win?.close(); return; }
+    await openExamPortalWorkspace(win);
   };
 
   const selectSessionForPortal = (academicSessionId: string) => {
@@ -3673,7 +3679,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <CardTitle>Create Exam Portal</CardTitle>
               <p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal. Opening it creates the examination in the connected Exam Portal.</p>
             </div>
-            <Button type="button" variant="outline" onClick={openExamPortalWorkspace} disabled={openingPortalWorkspace}>
+            <Button type="button" variant="outline" onClick={() => openExamPortalWorkspace()} disabled={openingPortalWorkspace}>
               {openingPortalWorkspace ? 'Opening...' : 'Open Exam Portal (questions & bulk upload)'}
             </Button>
           </div>
