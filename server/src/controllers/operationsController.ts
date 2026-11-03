@@ -8,6 +8,7 @@ import { mapFrontendToPrismaCourseType, mapPrismaToFrontendCourseType } from '..
 import { getOnboardingStatusByCode } from '../services/onboardingStatusService.js';
 import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { savePaymentProofFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 import { upsertStudyCenterAdmissionInvoice } from '../services/invoiceService.js';
 
 // Universities
@@ -558,6 +559,39 @@ const normalizeSemesterDate = (value: unknown, fieldName: string) => {
   return date;
 };
 
+// A semester must sit inside its academic session's period, and each program
+// can only have one semester per number.
+const getSemesterPeriodError = async (params: {
+  organizationId: string;
+  programId: string;
+  academicSessionId: string;
+  semesterNumber: number;
+  startDate: Date;
+  endDate: Date;
+  excludeSemesterId?: string;
+}) => {
+  if (params.endDate < params.startDate) return 'End date cannot be earlier than start date';
+  const session = await prisma.admissionSession.findFirst({
+    where: { id: params.academicSessionId, organizationId: params.organizationId },
+    select: { startDate: true, endDate: true },
+  });
+  if (!session) return 'Academic session not found';
+  if (params.startDate < session.startDate || params.endDate > session.endDate) {
+    const day = (date: Date) => date.toISOString().slice(0, 10);
+    return `Semester dates must be within the academic session period (${day(session.startDate)} to ${day(session.endDate)})`;
+  }
+  const duplicate = await prisma.semester.findFirst({
+    where: {
+      programId: params.programId,
+      semesterNumber: params.semesterNumber,
+      ...(params.excludeSemesterId ? { id: { not: params.excludeSemesterId } } : {}),
+    },
+    select: { id: true },
+  });
+  if (duplicate) return `Semester ${params.semesterNumber} already exists for this program`;
+  return null;
+};
+
 export const getProgramSemesters = asyncHandler(async (req: AuthRequest, res: Response) => {
   const program = await prisma.program.findFirst({
     where: {
@@ -595,14 +629,28 @@ export const createProgramSemester = asyncHandler(async (req: AuthRequest, res: 
     res.status(404).json({ success: false, message: 'Program not found' });
     return;
   }
+  const startDate = normalizeSemesterDate(req.body.startDate, 'Start Date');
+  const endDate = normalizeSemesterDate(req.body.endDate, 'End Date');
+  const periodError = await getSemesterPeriodError({
+    organizationId: req.user.organizationId,
+    programId: program.id,
+    academicSessionId,
+    semesterNumber: Number(semesterNumber),
+    startDate,
+    endDate,
+  });
+  if (periodError) {
+    res.status(400).json({ success: false, message: periodError });
+    return;
+  }
   const semester = await prisma.semester.create({ data: {
     organizationId: req.user.organizationId,
     programId: program.id,
     academicSessionId,
     semesterName: semesterName.trim(),
     semesterNumber: Number(semesterNumber),
-    startDate: normalizeSemesterDate(req.body.startDate, 'Start Date'),
-    endDate: normalizeSemesterDate(req.body.endDate, 'End Date'),
+    startDate,
+    endDate,
     status: req.body.status || 'active',
   } });
   res.status(201).json({ success: true, data: semester });
@@ -612,12 +660,27 @@ export const updateProgramSemester = asyncHandler(async (req: AuthRequest, res: 
   const existing = await prisma.semester.findFirst({ where: { id: req.params.semesterId, programId: req.params.programId, organizationId: req.user.organizationId } });
   if (!existing) { res.status(404).json({ success: false, message: 'Semester not found' }); return; }
   const { semesterName, semesterNumber, academicSessionId, startDate, endDate, status } = req.body;
+  const parsedStartDate = normalizeSemesterDate(startDate, 'Start Date');
+  const parsedEndDate = normalizeSemesterDate(endDate, 'End Date');
+  const periodError = await getSemesterPeriodError({
+    organizationId: req.user.organizationId,
+    programId: existing.programId,
+    academicSessionId: academicSessionId || existing.academicSessionId,
+    semesterNumber: Number(semesterNumber),
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
+    excludeSemesterId: existing.id,
+  });
+  if (periodError) {
+    res.status(400).json({ success: false, message: periodError });
+    return;
+  }
   const semester = await prisma.semester.update({ where: { id: existing.id }, data: {
     semesterName: semesterName.trim(),
     semesterNumber: Number(semesterNumber),
     ...(academicSessionId ? { academicSessionId } : {}),
-    startDate: normalizeSemesterDate(startDate, 'Start Date'),
-    endDate: normalizeSemesterDate(endDate, 'End Date'),
+    startDate: parsedStartDate,
+    endDate: parsedEndDate,
     status,
   } });
   res.json({ success: true, data: semester });
@@ -1829,7 +1892,7 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
 
   if (req.file) {
     updateData.paymentProof = {
-      url: getPaymentProofDataUrl(req.file),
+      ...(await savePaymentProofFile(req.file, req.user.organizationId)),
       uploadedAt: new Date().toISOString(),
       remarks: remarks?.trim() || ''
     };
@@ -1844,6 +1907,7 @@ export const verifyCenter = asyncHandler(async (req: AuthRequest, res: Response)
       assignedOperationsUser: { select: { id: true, name: true, email: true, role: true } },
     }
   });
+  if (req.file) await deleteStoredFileByUrl((existingCenter.paymentProof as any)?.url);
 
   // Operations approval raises the centre's onboarding invoice (unpaid) for Finance to collect.
   if (targetStatusCode === 'pending_payment' || targetStatusCode === 'finance_resubmitted') {

@@ -407,7 +407,7 @@ export function OrgHierarchyPanel() {
         api.get('/org/branches'),
       ]);
       setNodes(nodesRes.data.data || []);
-      setAllUsers(usersRes.data.data?.filter((u: any) => !['ceo', 'superadmin', 'org_admin', 'center_admin', 'student'].includes(u.role)) || []);
+      setAllUsers(usersRes.data.data?.filter((u: any) => !['ceo', 'superadmin', 'center_admin', 'student'].includes(u.role)) || []);
       setAllDepts(deptsRes.data.data || []);
       setAllSubDepts(subDeptsRes.data.data || []);
       setAllBranches(branchRes.data.data || []);

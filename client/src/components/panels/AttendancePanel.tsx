@@ -16,12 +16,26 @@ import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
-export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: boolean }) {
+const formatTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+
+// Report rows carry a plain YYYY-MM-DD date; personal records carry a timestamp
+const parseRecordDate = (value: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+
+const formatRecordDate = (value: string) => parseRecordDate(value).toLocaleDateString();
+
+const formatDuration = (hours?: number | null) => {
+  const totalMinutes = Math.max(0, Math.round((hours || 0) * 60));
+  return `${Math.floor(totalMinutes / 60)}h ${String(totalMinutes % 60).padStart(2, '0')}m`;
+};
+
+export function AttendancePanel({ isPersonalView = false, isTeamView = false }: { isPersonalView?: boolean; isTeamView?: boolean }) {
   const { user } = useAuth();
   const DEPT_MANAGER_ROLES = ['ops_admin', 'finance_admin', 'sales_admin', 'center_admin', 'ops_sub_admin'];
   const isBranchManager = Boolean((user as any)?.branchId);
   const isHR = ['hr_admin', 'org_admin', 'superadmin', 'ceo'].includes(user?.role || '') && !isPersonalView;
-  const isDeptManager = (DEPT_MANAGER_ROLES.includes(user?.role || '') || isBranchManager || isHR) && !isPersonalView;
+  const isDeptManager = (DEPT_MANAGER_ROLES.includes(user?.role || '') || isBranchManager || isHR || isTeamView) && !isPersonalView;
   const canViewAll = isDeptManager;
   
   const [attendance, setAttendance] = useState<any[]>([]);
@@ -31,8 +45,10 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
   // Date Filtering & View Mode States
   const [dateFilter, setDateFilter] = useState<Date | undefined>(new Date());
   const today = format(new Date(), 'yyyy-MM-dd');
-  const [startDate, setStartDate] = useState(isHR ? today : '');
-  const [endDate, setEndDate] = useState(isHR ? today : '');
+  const [startDate, setStartDate] = useState(canViewAll ? today : '');
+  const [endDate, setEndDate] = useState(canViewAll ? today : '');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -58,7 +74,8 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
   const fetchAttendance = async () => {
     setLoading(true);
     try {
-      const endpoint = canViewAll ? '/hr/attendance' : '/hr/attendance/my';
+      // Team / organization view: every employee for every day, unmarked days reported as absent
+      const endpoint = canViewAll ? '/hr/attendance/report' : '/hr/attendance/my';
       const response = await api.get(endpoint, {
         params: canViewAll
           ? { startDate: startDate || undefined, endDate: endDate || undefined }
@@ -146,6 +163,19 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
     });
   };
 
+  const handleMarkUnmarked = (record: any) => {
+    setEditingId(null);
+    setFormData({
+      employeeId: record.userId || record.employeeId?.id || '',
+      date: record.date,
+      status: 'present',
+      checkIn: '09:00',
+      checkOut: '18:00',
+      notes: ''
+    });
+    setDialogOpen(true);
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: any = {
       present: 'bg-green-100 text-green-800',
@@ -160,9 +190,15 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
 
   const filteredAttendance = attendance.filter(rec => {
     if (!rec || (!rec.id && !rec.id)) return false;
-    if (isHR) return true;
+    if (canViewAll) {
+      const name = (rec.employeeId?.name || '').toLowerCase();
+      if (search.trim() && !name.includes(search.trim().toLowerCase())) return false;
+      if (statusFilter === 'absent') return rec.status === 'absent';
+      if (statusFilter === 'present') return rec.status !== 'absent';
+      return true;
+    }
     if (!dateFilter) return true;
-    const recDate = new Date(rec.date);
+    const recDate = parseRecordDate(rec.date);
     return recDate.getDate() === dateFilter.getDate() && 
            recDate.getMonth() === dateFilter.getMonth() && 
            recDate.getFullYear() === dateFilter.getFullYear();
@@ -170,14 +206,14 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
 
   const handleDateSelect = (date: Date | undefined) => {
     setDateFilter(date);
-    if (isHR && date) {
+    if (canViewAll && date) {
       const selectedDate = format(date, 'yyyy-MM-dd');
       setStartDate(selectedDate);
       setEndDate(selectedDate);
     }
   };
 
-  const recordsTitle = isHR
+  const recordsTitle = canViewAll
     ? startDate && endDate
       ? `${format(new Date(`${startDate}T00:00:00`), 'PPP')} - ${format(new Date(`${endDate}T00:00:00`), 'PPP')}`
       : startDate
@@ -191,27 +227,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
 
   const renderRecordsList = () => {
     if (loading) return <div className="text-center py-8">Loading...</div>;
-    const recordsToDisplay = isHR && startDate && startDate === endDate
-      ? [
-          ...filteredAttendance.sort((first, second) => {
-            const firstName = first.employeeId?.name || first.user?.name || '';
-            const secondName = second.employeeId?.name || second.user?.name || '';
-            return firstName.localeCompare(secondName);
-          }),
-          ...employees
-            .filter(employee => !filteredAttendance.some(record => {
-              const recordUserId = record.userId || record.employeeId?.id || record.employeeId;
-              return recordUserId === employee.id;
-            }))
-            .map(employee => ({
-              id: `not-marked-${employee.id}`,
-              employeeId: employee,
-              date: `${startDate}T00:00:00`,
-              status: 'not_marked',
-              isUnmarked: true,
-            })),
-        ]
-      : filteredAttendance;
+    const recordsToDisplay = filteredAttendance;
     if (recordsToDisplay.length === 0) return <div className="text-center py-8 text-muted-foreground">No attendance records found for this date range.</div>;
     
     return (
@@ -224,13 +240,27 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
                 <div className="font-medium">
                   {record.employeeId?.name || record.employee?.name || record.user?.name || 'Unknown'}
                 </div>
+                {canViewAll && (record.employeeId?.department?.name || record.employeeId?.designation) && (
+                  <div className="text-xs text-muted-foreground">
+                    {[record.employeeId?.designation, record.employeeId?.subDepartment?.name || record.employeeId?.department?.name].filter(Boolean).join(' · ')}
+                  </div>
+                )}
                 <div className="text-sm text-muted-foreground">
-                  {record.isUnmarked ? 'No attendance recorded' : `${new Date(record.date).toLocaleDateString()} • ${record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'} - ${record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}`}
+                  {formatRecordDate(record.date)}
+                  {record.isUnmarked
+                    ? ' • Attendance not marked'
+                    : ` • In ${formatTime(record.checkIn)} - Out ${record.checkOut ? formatTime(record.checkOut) : (record.checkIn ? 'Not punched out' : '--')}`}
+                  {!record.isUnmarked && record.checkIn && ` • Total ${formatDuration(record.workingHours)}`}
                 </div>
                 {record.notes && <div className="text-xs text-muted-foreground mt-1">{record.notes}</div>}
               </div>
               <div className="flex items-center gap-2">
                 {getStatusBadge(record.status)}
+                {isHR && record.isUnmarked && (
+                  <Button variant="outline" size="sm" onClick={() => handleMarkUnmarked(record)}>
+                    Mark
+                  </Button>
+                )}
                 {isHR && !record.isUnmarked && (
                   <>
                     <Button variant="ghost" size="sm" onClick={() => handleEdit(record)}>
@@ -266,7 +296,7 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
             </ToggleGroupItem>
           </ToggleGroup>
           
-          {isHR ? (
+          {canViewAll ? (
             <div className="flex items-center gap-2">
               <Label htmlFor="attendance-start-date" className="sr-only">Start date</Label>
               <Input
@@ -381,6 +411,44 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
         </div>
       </div>
 
+      {canViewAll && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card><CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Employees</p>
+              <p className="text-2xl font-bold">{new Set(attendance.map(rec => rec.userId)).size}</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Present</p>
+              <p className="text-2xl font-bold text-green-600">{attendance.filter(rec => rec.status !== 'absent').length}</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Absent</p>
+              <p className="text-2xl font-bold text-red-600">{attendance.filter(rec => rec.status === 'absent').length}</p>
+            </CardContent></Card>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Search employee"
+              aria-label="Search employee"
+              className="sm:max-w-xs"
+            />
+            <Select value={statusFilter} onValueChange={value => setStatusFilter(value as 'all' | 'present' | 'absent')}>
+              <SelectTrigger className="sm:w-40" aria-label="Attendance status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="absent">Absent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       {viewMode === 'calendar' ? (
         <div className="grid md:grid-cols-[auto_1fr] gap-6">
           <Card className="h-fit">
@@ -394,11 +462,11 @@ export function AttendancePanel({ isPersonalView = false }: { isPersonalView?: b
                 onSelect={handleDateSelect}
                 className="rounded-md border shadow-sm"
                 modifiers={{
-                  present: attendance.filter(a => a.status === 'present').map(a => new Date(a.date)),
-                  absent: attendance.filter(a => a.status === 'absent').map(a => new Date(a.date)),
-                  late: attendance.filter(a => a.status === 'late').map(a => new Date(a.date)),
-                  half_day: attendance.filter(a => a.status === 'half_day').map(a => new Date(a.date)),
-                  leave: attendance.filter(a => a.status === 'leave').map(a => new Date(a.date)),
+                  present: attendance.filter(a => a.status === 'present').map(a => parseRecordDate(a.date)),
+                  absent: attendance.filter(a => a.status === 'absent').map(a => parseRecordDate(a.date)),
+                  late: attendance.filter(a => a.status === 'late').map(a => parseRecordDate(a.date)),
+                  half_day: attendance.filter(a => a.status === 'half_day').map(a => parseRecordDate(a.date)),
+                  leave: attendance.filter(a => a.status === 'leave').map(a => parseRecordDate(a.date)),
                 }}
                 modifiersClassNames={{
                   present: 'bg-green-100 text-green-900 font-bold',

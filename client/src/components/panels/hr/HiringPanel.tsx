@@ -21,7 +21,8 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [candidateForm, setCandidateForm] = useState({ name: '', email: '', phone: '', offerLetterUrl: '' });
   const [submittingCandidate, setSubmittingCandidate] = useState(false);
-  
+  const [savingId, setSavingId] = useState<string | null>(null);
+
   const fetchRequests = async () => {
     try {
       const res = await api.get('/hiring/requests');
@@ -43,6 +44,9 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
   }, []);
 
   const handleUpdateReqStatus = async (id: string, status: string) => {
+    // A second click while the first is saving would be refused as no longer pending.
+    if (savingId) return;
+    setSavingId(id);
     try {
       await api.put(`/hiring/requests/${id}/status`, {
         status,
@@ -51,9 +55,12 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
       toast.success(status === 'approved'
         ? 'Request approved and vacancy opened'
         : 'Hiring request rejected');
-      fetchRequests();
+      await fetchRequests();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to update request');
+      await fetchRequests();
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -84,12 +91,17 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
   };
 
   const handleUpdateCandidate = async (id: string, status: string, options: any = {}) => {
+    if (savingId) return;
+    setSavingId(id);
     try {
       await api.put(`/hiring/candidates/${id}/status`, { status, ...options });
       toast.success(`Candidate status updated to ${status}`);
-      fetchRequests();
+      await fetchRequests();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to update candidate');
+      await fetchRequests();
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -110,8 +122,10 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
         <div className="flex gap-2 flex-wrap">
           {r.status === 'pending_hr_approval' && (
             <>
-              <Button size="sm" onClick={() => handleUpdateReqStatus(r.id, 'approved')}>Approve</Button>
-              <Button size="sm" variant="destructive" onClick={() => handleUpdateReqStatus(r.id, 'rejected')}>Reject</Button>
+              <Button size="sm" disabled={!!savingId} onClick={() => handleUpdateReqStatus(r.id, 'approved')}>
+                {savingId === r.id ? 'Saving...' : 'Approve'}
+              </Button>
+              <Button size="sm" variant="destructive" disabled={!!savingId} onClick={() => handleUpdateReqStatus(r.id, 'rejected')}>Reject</Button>
             </>
           )}
           {r.status === 'approved' && (r.candidates || []).filter((c: any) => c.status !== 'rejected').length < r.count && (
@@ -190,18 +204,20 @@ export function HiringPanel({ initialTab = 'requests' }: { initialTab?: 'request
         <div className="flex gap-2 flex-wrap">
           {r.status === 'offer_sent' && (
             <>
-              <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'joined', { joinDate: new Date().toISOString() })}>Mark Joined</Button>
-              <Button size="sm" variant="destructive" onClick={() => handleUpdateCandidate(r.id, 'rejected')}>Reject</Button>
+              <Button size="sm" disabled={!!savingId} onClick={() => handleUpdateCandidate(r.id, 'joined', { joinDate: new Date().toISOString() })}>
+                {savingId === r.id ? 'Saving...' : 'Mark Joined'}
+              </Button>
+              <Button size="sm" variant="destructive" disabled={!!savingId} onClick={() => handleUpdateCandidate(r.id, 'rejected')}>Reject</Button>
             </>
           )}
           {r.status === 'joined' && (
-             <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'appointment_sent')}>Send Appointment</Button>
+             <Button size="sm" disabled={!!savingId} onClick={() => handleUpdateCandidate(r.id, 'appointment_sent')}>Send Appointment</Button>
           )}
           {r.status === 'appointment_sent' && (
-             <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'induction_pending')}>Schedule Induction</Button>
+             <Button size="sm" disabled={!!savingId} onClick={() => handleUpdateCandidate(r.id, 'induction_pending')}>Schedule Induction</Button>
           )}
           {r.status === 'induction_pending' && (
-             <Button size="sm" onClick={() => handleUpdateCandidate(r.id, 'induction_completed')}>Complete Induction</Button>
+             <Button size="sm" disabled={!!savingId} onClick={() => handleUpdateCandidate(r.id, 'induction_completed')}>Complete Induction</Button>
           )}
         </div>
       ) 

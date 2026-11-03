@@ -331,7 +331,8 @@ export const approveFinanceEnrollment = asyncHandler(async (req: AuthRequest, re
 
   // Use the totalFee calculated at enrollment time (which respects paymentMethod), or fallback
   const totalFee = (dbEnrollment as any).totalFee || (subtotal + gstAmount);
-  if (totalFee > 0 && !hasEnrollmentPaymentProof(dbEnrollment.documents)) {
+  // The proof can be the one taken with the payment info on the enrollment form, or an uploaded payment proof document
+  if (totalFee > 0 && !dbEnrollment.initialPaymentProof && !hasEnrollmentPaymentProof(dbEnrollment.documents)) {
     res.status(400).json({ success: false, message: 'Payment proof must be submitted before Finance can give final approval' });
     return;
   }

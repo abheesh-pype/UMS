@@ -12,6 +12,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
     --primary: 8 84% 60%;
+    --viz-series-1: #ef5a43;
+    --viz-series-2: #2a78d6;
     --primary-foreground: 0 0% 100%;
     --secondary: 246 58% 63%;
     --secondary-foreground: 0 0% 100%;
@@ -51,6 +53,8 @@
     --popover: 222 28% 12%;
     --popover-foreground: 210 20% 96%;
     --primary: 8 84% 64%;
+    --viz-series-1: #e8573f;
+    --viz-series-2: #3987e5;
     --primary-foreground: 222 30% 9%;
     --secondary: 246 58% 68%;
     --secondary-foreground: 222 30% 9%;

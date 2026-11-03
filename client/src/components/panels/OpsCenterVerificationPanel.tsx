@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface University { id: string; name: string; code: string; }
 interface AssignableOpsUser {
@@ -323,7 +324,7 @@ export function OpsCenterVerificationPanel() {
                         <div className="mt-2.5 flex items-center gap-2 text-xs">
                           <span className="text-muted-foreground font-medium">Payment Proof:</span>
                           <a
-                            href={rawProofUrl}
+                            href={resolveFileUrl(rawProofUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
@@ -344,7 +345,7 @@ export function OpsCenterVerificationPanel() {
                           {(c.pendingDocuments || []).map((doc, i) => (
                             <a
                               key={i}
-                              href={doc.url}
+                              href={resolveFileUrl(doc.url)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs text-primary hover:underline"

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { resolveFileUrl } from '@/lib/fileUrl';
 
 interface StudentFeeReceipt {
   id: string;
@@ -308,13 +309,19 @@ export function FinanceStudentPaymentLogsPanel() {
                                     </div>
                                     <div className="text-right">
                                       <p className="font-semibold text-slate-800">₹{Number(periodPayment.amount || 0).toLocaleString()}</p>
+                                      {/* Status from the student's payments, applied to the periods in order */}
                                       <Badge variant="outline" className={
-                                        periodPayment.status?.toLowerCase() === 'paid'
+                                        (periodPayment.studentStatus || periodPayment.status)?.toLowerCase() === 'paid'
                                           ? 'mt-1 bg-green-50 text-green-700 border-green-200'
                                           : 'mt-1 bg-amber-50 text-amber-700 border-amber-200'
                                       }>
-                                        {periodPayment.status || 'Pending'}
+                                        {periodPayment.studentStatus || periodPayment.status || 'Pending'}
                                       </Badge>
+                                      {periodPayment.studentStatus === 'pending' && Number(periodPayment.studentPaid) > 0 && (
+                                        <p className="mt-1 text-[10px] text-slate-500">
+                                          ₹{Number(periodPayment.studentPaid).toLocaleString()} of ₹{Number(periodPayment.amount || 0).toLocaleString()} paid
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -335,6 +342,25 @@ export function FinanceStudentPaymentLogsPanel() {
                               <div className="space-y-2 text-sm">
                                 <div className="flex justify-between"><span className="text-slate-500">Received:</span><span className="font-semibold text-blue-700">₹{log.walletPayment.amount?.toLocaleString()}</span></div>
                                 <div className="text-xs text-slate-600">Paid by study centre wallet</div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Payment taken in "Payment Info" on the enrollment form, recorded automatically */}
+                          {log.enrollmentPayment && (
+                            <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4 shadow-sm">
+                              <div className="flex justify-between items-start mb-3">
+                                <Badge variant="outline" className="bg-white text-emerald-700 uppercase text-[10px] tracking-wider border-emerald-200">Paid at Enrollment</Badge>
+                                <span className="text-[10px] text-slate-400">{new Date(log.enrollmentPayment.date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between"><span className="text-slate-500">Received:</span><span className="font-semibold text-emerald-700">₹{Number(log.enrollmentPayment.amount).toLocaleString()}</span></div>
+                                <div className="text-xs text-slate-600">Recorded automatically from the enrollment form</div>
+                                {log.enrollmentPayment.proof && (
+                                  <a href={resolveFileUrl(log.enrollmentPayment.proof)} target="_blank" rel="noreferrer" className="block text-xs font-semibold text-primary hover:underline">
+                                    View payment proof
+                                  </a>
+                                )}
                               </div>
                             </div>
                           )}
@@ -376,7 +402,7 @@ export function FinanceStudentPaymentLogsPanel() {
                               </div>
                             </div>
                           ))}
-                          {(!log.receipts || log.receipts.length === 0) && (
+                          {(!log.receipts || log.receipts.length === 0) && !log.enrollmentPayment && (
                             <div className="bg-white border border-dashed rounded-xl p-4 text-sm text-slate-500 flex items-center justify-center">
                               No recorded receipts yet
                             </div>

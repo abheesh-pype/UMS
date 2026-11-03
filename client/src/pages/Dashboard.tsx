@@ -1,22 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
-import { ModernCEODashboard } from './ModernCEODashboard';
-import { ModernFinanceDashboard } from './ModernFinanceDashboard';
-import { ModernOpsDashboard } from './ModernOpsDashboard';
-import { ModernHRDashboard } from './ModernHRDashboard';
-import { ModernSalesDashboard } from './ModernSalesDashboard';
-import { ModernSuperadminDashboard } from './ModernSuperadminDashboard';
-import { ModernOrgAdminDashboard } from './ModernOrgAdminDashboard';
-import { ModernStudyCenterDashboard } from './ModernStudyCenterDashboard';
-import { ModernEmployeeDashboard } from './ModernEmployeeDashboard';
-import { ModernStaffPortal } from './ModernStaffPortal';
-import { ModernBranchManagerDashboard } from './ModernBranchManagerDashboard';
 import { CenterOnboardingGate } from '@/components/CenterOnboardingGate';
-import { ModernStudentDashboard } from './ModernStudentDashboard';
-import { AcademicAdminPanel } from './AcademicAdminPanel';
-import { ModernUniversityDashboard } from './ModernUniversityDashboard';
 import { ComplaintsPanel } from '@/components/panels/ComplaintsPanel';
+import { ManagerHiringPanel } from '@/components/panels/hr/ManagerHiringPanel';
+
+// Each role only downloads its own dashboard (the whole app used to ship as one 5.5 MB bundle).
+const ModernCEODashboard = lazy(() => import('./ModernCEODashboard').then(module => ({ default: module.ModernCEODashboard })));
+const ModernFinanceDashboard = lazy(() => import('./ModernFinanceDashboard').then(module => ({ default: module.ModernFinanceDashboard })));
+const ModernOpsDashboard = lazy(() => import('./ModernOpsDashboard').then(module => ({ default: module.ModernOpsDashboard })));
+const ModernHRDashboard = lazy(() => import('./ModernHRDashboard').then(module => ({ default: module.ModernHRDashboard })));
+const ModernSalesDashboard = lazy(() => import('./ModernSalesDashboard').then(module => ({ default: module.ModernSalesDashboard })));
+const ModernSuperadminDashboard = lazy(() => import('./ModernSuperadminDashboard').then(module => ({ default: module.ModernSuperadminDashboard })));
+const ModernOrgAdminDashboard = lazy(() => import('./ModernOrgAdminDashboard').then(module => ({ default: module.ModernOrgAdminDashboard })));
+const ModernStudyCenterDashboard = lazy(() => import('./ModernStudyCenterDashboard').then(module => ({ default: module.ModernStudyCenterDashboard })));
+const ModernEmployeeDashboard = lazy(() => import('./ModernEmployeeDashboard').then(module => ({ default: module.ModernEmployeeDashboard })));
+const ModernStaffPortal = lazy(() => import('./ModernStaffPortal').then(module => ({ default: module.ModernStaffPortal })));
+const ModernBranchManagerDashboard = lazy(() => import('./ModernBranchManagerDashboard').then(module => ({ default: module.ModernBranchManagerDashboard })));
+const ModernStudentDashboard = lazy(() => import('./ModernStudentDashboard').then(module => ({ default: module.ModernStudentDashboard })));
+const AcademicAdminPanel = lazy(() => import('./AcademicAdminPanel').then(module => ({ default: module.AcademicAdminPanel })));
+const AcademicOverviewPanel = lazy(() => import('@/components/panels/AcademicOverviewPanel').then(module => ({ default: module.AcademicOverviewPanel })));
+const AssignExaminationAdminPanel = lazy(() => import('@/components/panels/AssignExaminationAdminPanel').then(module => ({ default: module.AssignExaminationAdminPanel })));
+const ExamPortalAccessPanel = lazy(() => import('@/components/panels/ExamPortalAccessPanel').then(module => ({ default: module.ExamPortalAccessPanel })));
+const ModernUniversityDashboard = lazy(() => import('./ModernUniversityDashboard').then(module => ({ default: module.ModernUniversityDashboard })));
 
 interface DashboardProps {
   onNavigateToTable?: (table: string) => void;
@@ -111,6 +117,25 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
 
   if (initialTab === 'complaints') {
     return <ComplaintsPanel />;
+  }
+
+  if (initialTab === 'academic-overview' && user?.role === 'academic_admin') {
+    return <AcademicOverviewPanel onNavigate={tab => onNavigateToTable?.(tab)} />;
+  }
+
+  if ((initialTab === 'academic-settings' && user?.role === 'academic_admin')
+    || (initialTab === 'exam-portal-users' && ['academic_admin', 'org_admin', 'superadmin'].includes(user?.role || ''))) {
+    return <AssignExaminationAdminPanel />;
+  }
+
+  // Any user who may sign in to the Exam Portal (admins, or staff an admin gave a portal role)
+  if (initialTab === 'exam-portal-access') {
+    return <ExamPortalAccessPanel />;
+  }
+
+  // Admin panels without their own Hiring Requests tab
+  if (initialTab === 'manager_hiring' && ['academic_admin', 'university_admin'].includes(user?.role || '')) {
+    return <ManagerHiringPanel />;
   }
 
   // Branch managers always get the branch dashboard — skip all other routing

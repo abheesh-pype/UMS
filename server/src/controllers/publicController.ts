@@ -6,10 +6,11 @@ import { getOnboardingStatusByCode } from '../services/onboardingStatusService.j
 import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getSingleTenantContext } from '../utils/contextHelper.js';
+import { saveEnrollmentUpload } from '../services/fileStorage.js';
 import { getStudentPortalPassword } from '../utils/studentPortalAccess.js';
 import { parseInitialPayment, parseInitialPaymentProof } from '../utils/initialPayment.js';
 import { upsertInitialPaymentInvoice } from '../services/invoiceService.js';
-import { filterProgramsWithActiveSessions } from '../services/activeSessionPrograms.js';
+import { filterProgramsWithActiveSessions, getAdmissionSessionsWhere } from '../services/activeSessionPrograms.js';
 import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
 
 export const validateInviteToken = asyncHandler(async (req: Request, res: Response) => {
@@ -167,15 +168,11 @@ const getPublicProgramAndSession = async (organizationId: string, programId: str
   });
   if (!program) return { program: null, session: null };
 
+  // The active session or an upcoming session for this program
   const session = await prisma.admissionSession.findFirst({
     where: {
       id: sessionId,
-      organizationId,
-      status: 'active',
-      AND: [
-        { OR: [{ programId }, { programId: null }] },
-        { OR: [{ universityId: program.universityId }, { universityId: null }] },
-      ],
+      ...await getAdmissionSessionsWhere(organizationId, { id: programId, universityId: program.universityId }),
     },
     select: { id: true, name: true, programId: true, universityId: true },
   });
@@ -270,17 +267,11 @@ export const getPublicStudentEnrollmentSessions = asyncHandler(async (req: Reque
     res.status(404).json({ success: false, message: 'Active program not found' });
     return;
   }
+  // The active session and the upcoming sessions for this program
   const sessions = await prisma.admissionSession.findMany({
-    where: {
-      organizationId,
-      status: 'active',
-      AND: [
-        { OR: [{ programId: program.id }, { programId: null }] },
-        { OR: [{ universityId: program.universityId }, { universityId: null }] },
-      ],
-    },
+    where: await getAdmissionSessionsWhere(organizationId, program),
     select: { id: true, name: true, programId: true },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { startDate: 'asc' },
   });
   res.json({ success: true, data: sessions });
 });
@@ -318,9 +309,10 @@ export const uploadPublicEnrollmentFile = asyncHandler(async (req: Request, res:
     res.status(400).json({ success: false, message: 'No file uploaded' });
     return;
   }
+  const { organizationId } = await getSingleTenantContext();
   res.json({
     success: true,
-    url: getPaymentProofDataUrl(req.file),
+    url: await saveEnrollmentUpload(req.file, organizationId),
     filename: req.file.originalname,
   });
 });

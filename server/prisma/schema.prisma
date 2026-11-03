@@ -66,6 +66,8 @@ model Organization {
   semesters             Semester[]
   examinations          Examination[]
   examinationRegistrations ExaminationRegistration[]
+  examinationResults       ExaminationResult[]
+  examinationAdminAssignments ExaminationAdminAssignment[]
   programMaterials      ProgramMaterial[]
   scheduledClasses     ScheduledClass[]
   academicCalendarEvents AcademicCalendar[]
@@ -179,6 +181,8 @@ model User {
   approvedSessions              AdmissionSession[]     @relation("SessionApprovedBy")
   createdSessions               AdmissionSession[]     @relation("SessionCreatedBy")
   createdScheduledClasses      ScheduledClass[]      @relation("ScheduledClassCreator")
+  examinationAdminAssignment   ExaminationAdminAssignment? @relation("ExaminationAdminUser")
+  assignedExaminationAdmins    ExaminationAdminAssignment[] @relation("ExaminationAdminAssignedBy")
   postedAnnouncements           Announcement[]
   attendances                   Attendance[]
   auditLogs                     AuditLog[]
@@ -517,6 +521,7 @@ model Examination {
   status            String           @default("draft")
   moduleIds         Json             @default("[]")
   schedule          Json             @default("[]")
+  portal            Json? // Exam Portal publication: { assessmentId, examDate, examTime, examSession, startsAt, durationMinutes, code, isOpen, publishedAt, publishedBy }
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -524,10 +529,55 @@ model Examination {
   program           Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
   semester          Semester         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   registrations     ExaminationRegistration[]
+  results           ExaminationResult[]
 
   @@index([organizationId])
   @@index([academicSessionId, programId, semesterId])
   @@map("examinations")
+}
+
+// Published marks imported from the Exam Portal, one row per student per examination.
+model ExaminationResult {
+  id                String       @id @default(uuid())
+  organizationId    String
+  examinationId     String
+  studentId         String
+  enrollmentNo      String
+  portalCandidateId String?
+  obtainedMark      Float
+  negativeMark      Float?
+  totalMark         Float
+  passMark          Float?
+  passed            Boolean?
+  evaluatedAt       DateTime
+  source            String       @default("exam_portal")
+  importedBy        String?
+  importedAt        DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  examination       Examination  @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  student           Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examinationId, studentId])
+  @@index([organizationId, studentId])
+  @@map("examination_results")
+}
+
+model ExaminationAdminAssignment {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String       @unique
+  assignedById   String?
+  /// Exam Portal role the user signs in with (null = the portal's administrator role)
+  portalRole     String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation("ExaminationAdminUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy     User?        @relation("ExaminationAdminAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("examination_admin_assignments")
 }
 
 model ExaminationRegistration {
@@ -681,6 +731,7 @@ model Student {
   referrer              User?                  @relation("StudentReferredBy", fields: [referredBy], references: [id])
   statusRequests        StudentStatusRequest[]
   examinationRegistrations ExaminationRegistration[]
+  examinationResults       ExaminationResult[]
   scheduledClasses     ScheduledClassStudent[]
 
   @@index([organizationId, status])
@@ -1799,6 +1850,21 @@ model ProgramMaterial {
 
   @@index([programId])
   @@index([organizationId])
+}
+
+// File contents kept in the database so every machine sharing it can serve the
+// file (E-Books, module videos, video classes). Served at /api/v1/files/:id.
+model StoredFile {
+  id             String   @id @default(uuid())
+  organizationId String?
+  fileName       String
+  mimeType       String
+  size           Int
+  data           Bytes
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@map("stored_files")
 }
 
 model ScheduledClass {

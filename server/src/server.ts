@@ -54,6 +54,7 @@ import debugRoutes from './routes/debugRoutes.js';
 import enrollmentRoutes from './routes/enrollmentRoutes.js';
 // import commissionRoutes from './routes/commissionRoutes.js';
 import onboardingStatusRoutes from './routes/onboardingStatusRoutes.js';
+import fileRoutes from './routes/fileRoutes.js';
 
 const app: Application = express();
 app.set('trust proxy', 1);
@@ -115,6 +116,10 @@ const limiter = rateLimit({
     }
   },
 });
+
+// Stored study files (E-Books, videos) are mounted before the rate limiter:
+// a video player fetches many byte ranges and would quickly exhaust the limit.
+app.use(`/api/${process.env.API_VERSION || 'v1'}/files`, fileRoutes);
 
 app.use('/api', limiter);
 

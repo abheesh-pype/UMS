@@ -6,6 +6,7 @@ import {
   getTopUpHistory,
   getWalletTransactions,
   getEnrollablePrograms,
+  getAllocatedPrograms,
   createEnrollment,
   updateEnrollment,
   getMyEnrollments,
@@ -31,9 +32,10 @@ import {
   approveUniversityEnrollment,
   rejectUniversityEnrollment,
 } from '../controllers/universityEnrollmentController.js';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect, authorize, AuthRequest } from '../middleware/auth.js';
 import { uploadDocument, uploadPaymentProof } from '../middleware/upload.js';
-import { getPaymentProofDataUrl } from '../utils/paymentProof.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { saveEnrollmentUpload } from '../services/fileStorage.js';
 
 const router = express.Router();
 
@@ -47,6 +49,7 @@ router.get('/wallet/transactions', authorize('center_admin'), getWalletTransacti
 
 // Study Center enrollment routes
 router.get('/programs', authorize('center_admin'), getEnrollablePrograms);
+router.get('/allocated-programs', authorize('center_admin'), getAllocatedPrograms);
 router.get('/sessions', authorize('center_admin'), getActiveSessions);
 router.post('/check-email', authorize('center_admin'), checkEmailUniqueness);
 router.post('/enroll', authorize('center_admin'), createEnrollment);
@@ -60,12 +63,13 @@ router.post('/submit-payment', authorize('center_admin'), uploadPaymentProof.sin
 router.post('/payment-proof-upload', uploadPaymentProof.single('file'), uploadEnrollmentPaymentProof);
 
 // Dedicated file upload for enrollment documents
-router.post('/upload', uploadDocument.single('file'), (req, res) => {
+router.post('/upload', uploadDocument.single('file'), asyncHandler(async (req: AuthRequest, res) => {
   if (!req.file) {
-    return res.status(400).json({ success: false, message: 'No file uploaded' });
+    res.status(400).json({ success: false, message: 'No file uploaded' });
+    return;
   }
-  res.json({ success: true, url: getPaymentProofDataUrl(req.file), filename: req.file.originalname });
-});
+  res.json({ success: true, url: await saveEnrollmentUpload(req.file, req.user.organizationId), filename: req.file.originalname });
+}));
 
 // Global enrollment list (for admins/staff)
 router.get('/all', authorize('superadmin', 'org_admin', 'ceo', 'ops_admin', 'finance_admin', 'sales_admin', 'bde', 'employee'), getAllEnrollments);

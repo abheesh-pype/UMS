@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { saveUploadedFile, deleteStoredFileByUrl } from '../services/fileStorage.js';
 
 export const getProgramMaterials = asyncHandler(async (req: AuthRequest, res: Response) => {
   const materials = await prisma.programMaterial.findMany({
@@ -109,12 +110,12 @@ export const uploadProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
     res.status(400).json({ success: false, message: 'Please upload a file' });
     return;
   }
-  const fileUrl = `/uploads/${req.file.filename}`;
+  const fileUrl = await saveUploadedFile(req.file, req.user.organizationId);
   const fileName = req.file.originalname;
 
   const material = await prisma.programMaterial.create({
     data: {
-      title: req.body.title || 'Untitled',
+      title: req.body.title?.trim() || req.file.originalname,
       description: req.body.description,
       category: req.body.category || 'study_material',
       semesterNumber: req.body.semesterNumber ? String(req.body.semesterNumber) : null,
@@ -130,8 +131,19 @@ export const uploadProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
 });
 
 export const uploadProgramVideo = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.file) {
-    res.status(400).json({ success: false, message: 'Please upload a video file' });
+  // A module video is either an uploaded file or a link (YouTube or a direct video URL).
+  const videoUrl = typeof req.body?.videoUrl === 'string' ? req.body.videoUrl.trim() : '';
+  if (!req.file && !videoUrl) {
+    res.status(400).json({ success: false, message: 'Please upload a video file or provide a video link' });
+    return;
+  }
+  if (!req.file && !/^https?:\/\/\S+$/i.test(videoUrl)) {
+    res.status(400).json({ success: false, message: 'Video link must start with http:// or https://' });
+    return;
+  }
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+  if (!title) {
+    res.status(400).json({ success: false, message: 'Video name is required' });
     return;
   }
   if (typeof req.body?.moduleId !== 'string' || !req.body.moduleId.trim()) {
@@ -154,11 +166,11 @@ export const uploadProgramVideo = asyncHandler(async (req: AuthRequest, res: Res
 
   const material = await prisma.programMaterial.create({
     data: {
-      title: req.file.originalname,
+      title,
       description: `Module: ${module.id} - ${module.moduleName}`,
       category: 'video',
-      fileUrl: `/uploads/${req.file.filename}`,
-      fileName: req.file.originalname,
+      fileUrl: req.file ? await saveUploadedFile(req.file, req.user.organizationId) : videoUrl,
+      fileName: req.file ? req.file.originalname : 'Video Link',
       isActive: true,
       program: { connect: { id: req.params.programId } },
       organization: { connect: { id: req.user.organizationId } },
@@ -176,7 +188,7 @@ export const updateProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
       organizationId: req.user.organizationId,
       isActive: true,
     },
-    select: { id: true },
+    select: { id: true, fileUrl: true },
   });
   if (!existingMaterial) {
     res.status(404).json({ success: false, message: 'Material not found' });
@@ -192,14 +204,16 @@ export const updateProgramMaterial = asyncHandler(async (req: AuthRequest, res: 
   }
 
   if (req.file) {
-    data.fileUrl = `/uploads/${req.file.filename}`;
+    data.fileUrl = await saveUploadedFile(req.file, req.user.organizationId);
     data.fileName = req.file.originalname;
   }
 
-  const material = await prisma.programMaterial.update({ 
-    where: { id: req.params.materialId }, 
-    data 
+  const material = await prisma.programMaterial.update({
+    where: { id: req.params.materialId },
+    data
   });
+  // The replaced file is no longer referenced.
+  if (req.file) await deleteStoredFileByUrl(existingMaterial.fileUrl);
   res.json({ success: true, data: material });
 });
 
@@ -297,7 +311,7 @@ export const createVideoClass = asyncHandler(async (req: AuthRequest, res: Respo
   let fileName = '';
 
   if (req.file) {
-    fileUrl = `/uploads/${req.file.filename}`;
+    fileUrl = await saveUploadedFile(req.file, req.user.organizationId);
     fileName = req.file.originalname;
   } else if (youtubeUrl?.trim()) {
     fileUrl = youtubeUrl.trim();
@@ -372,7 +386,7 @@ export const updateVideoClass = asyncHandler(async (req: AuthRequest, res: Respo
   let fileName = existing.fileName;
 
   if (req.file) {
-    fileUrl = `/uploads/${req.file.filename}`;
+    fileUrl = await saveUploadedFile(req.file, req.user.organizationId);
     fileName = req.file.originalname;
   } else if (youtubeUrl !== undefined && youtubeUrl.trim()) {
     fileUrl = youtubeUrl.trim();
@@ -410,6 +424,8 @@ export const updateVideoClass = asyncHandler(async (req: AuthRequest, res: Respo
       ...(semesterId !== undefined ? { semesterNumber: semesterId || null } : {}),
     },
   });
+  // The previous stored file is no longer referenced once replaced by a new upload or a link.
+  if (fileUrl !== existing.fileUrl) await deleteStoredFileByUrl(existing.fileUrl);
 
   res.json({ success: true, data: updated });
 });

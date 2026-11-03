@@ -4,7 +4,9 @@ import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, Clock, XCircle, Upload, CreditCard, Building2, AlertCircle, Eye } from 'lucide-react';
+import { CheckCircle, Clock, XCircle, Upload, CreditCard, Building2, AlertCircle, Eye, Copy } from 'lucide-react';
+import { toast } from 'sonner';
+import { ProofPreview } from '@/components/ProofPreview';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface CenterStatus {
@@ -16,6 +18,17 @@ interface CenterStatus {
   paymentRemarks: string | null;
   universities: { id: string; name: string; code: string; fee: number | null }[];
   totalFee: number;
+  bankDetails: BankDetails | null;
+}
+
+interface BankDetails {
+  bankName: string;
+  accountHolder: string;
+  accountNumber: string;
+  ifscCode: string;
+  branch: string;
+  upiId: string;
+  instructions: string;
 }
 
 interface Props {
@@ -208,13 +221,7 @@ export function CenterOnboardingGate({ children }: Props) {
                           <DialogHeader>
                             <DialogTitle>Payment Proof</DialogTitle>
                           </DialogHeader>
-                          <img
-                            src={data.paymentProof.url.startsWith('http') || data.paymentProof.url.startsWith('data:')
-                              ? data.paymentProof.url
-                              : `${window.location.origin}${data.paymentProof.url}`}
-                            alt="Uploaded payment proof"
-                            className="max-h-[75vh] w-full rounded-md border object-contain bg-muted"
-                          />
+                          {showProofPreview && <ProofPreview url={data.paymentProof.url} />}
                         </DialogContent>
                       </Dialog>
                     </>
@@ -255,16 +262,13 @@ export function CenterOnboardingGate({ children }: Props) {
                       </table>
                     </div>
                   </div>
-
-                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm space-y-1">
-                    <p className="font-medium text-blue-800 dark:text-blue-300">Bank Transfer Details</p>
-                    <p className="text-muted-foreground">Please transfer the total amount to the university's bank account and upload the payment screenshot below.</p>
-                  </div>
                 </>
               )}
 
               {(showReuploadForm || !data?.paymentProof || centerStatus === 'finance_rejected' || centerStatus === 'rejected_from_finance' || centerStatus === 'finance_resubmitted') && (
                 <form onSubmit={(e) => handlePaymentSubmit(e, !!data?.paymentProof)} className="space-y-3">
+                  <BankTransferDetails bankDetails={data?.bankDetails || null} totalFee={data?.totalFee || 0} />
+
                   <div>
                     <label className="text-sm font-medium block mb-1">Payment Screenshot / Proof *</label>
                     <div
@@ -344,6 +348,67 @@ export function CenterOnboardingGate({ children }: Props) {
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function BankTransferDetails({ bankDetails, totalFee }: { bankDetails: BankDetails | null; totalFee: number }) {
+  const rows = bankDetails
+    ? [
+      { label: 'Account Holder', value: bankDetails.accountHolder },
+      { label: 'Bank Name', value: bankDetails.bankName },
+      { label: 'Account Number', value: bankDetails.accountNumber, copy: true },
+      { label: 'IFSC Code', value: bankDetails.ifscCode, copy: true },
+      { label: 'Branch', value: bankDetails.branch },
+      { label: 'UPI ID', value: bankDetails.upiId, copy: true },
+    ].filter(row => row.value)
+    : [];
+
+  const copyValue = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error('Could not copy');
+    }
+  };
+
+  return (
+    <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm space-y-3">
+      <div className="space-y-1">
+        <p className="font-medium text-blue-800 dark:text-blue-300">Bank Transfer Details</p>
+        <p className="text-muted-foreground">
+          Please transfer the total amount of <span className="font-semibold text-foreground">₹{totalFee.toLocaleString()}</span> to the account below and upload the payment screenshot.
+        </p>
+      </div>
+      {rows.length > 0 ? (
+        <div className="rounded-md border border-blue-200 dark:border-blue-800 bg-background divide-y divide-border">
+          {rows.map(row => (
+            <div key={row.label} className="flex items-center justify-between gap-3 px-3 py-2">
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="flex items-center gap-2 font-medium text-right break-all">
+                {row.value}
+                {row.copy && (
+                  <button
+                    type="button"
+                    onClick={() => copyValue(row.label, row.value)}
+                    className="text-muted-foreground hover:text-primary shrink-0"
+                    aria-label={`Copy ${row.label}`}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-amber-700 dark:text-amber-400">Bank details have not been configured yet. Please contact the finance team for the account details.</p>
+      )}
+      {bankDetails?.instructions && (
+        <p className="text-xs text-muted-foreground whitespace-pre-line">{bankDetails.instructions}</p>
+      )}
+      <p className="text-xs text-muted-foreground">Mention the transaction / UTR number in the remarks after paying.</p>
     </div>
   );
 }

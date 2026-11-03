@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, UserPlus, Eye, ShieldAlert, Clock, CheckCircle, XCircle, Pencil } from 'lucide-react';
+import { RefreshCw, UserPlus, Eye, ShieldAlert, Clock, CheckCircle, XCircle, Pencil, UserCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { EnrollStudentPanel } from '@/components/panels/EnrollStudentPanel';
@@ -39,6 +42,40 @@ export function SalesStudentEnrollmentPanel() {
   const [editingEnrollment, setEditingEnrollment] = useState<SalesEnrollment | null>(null);
   const [viewingEnrollment, setViewingEnrollment] = useState<SalesEnrollment | null>(null);
   const [updatingEnrollment, setUpdatingEnrollment] = useState<SalesEnrollment | null>(null);
+  // Only a sales manager can reassign a student, and only within their own team.
+  const { user } = useAuth();
+  const isSalesManager = user?.role === 'sales_admin';
+  const [reassigningEnrollment, setReassigningEnrollment] = useState<SalesEnrollment | null>(null);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; email: string; role: string; designation?: string }[]>([]);
+  const [reassignTo, setReassignTo] = useState('');
+  const [reassignSaving, setReassignSaving] = useState(false);
+
+  const openReassign = async (enrollment: SalesEnrollment) => {
+    setReassigningEnrollment(enrollment);
+    setReassignTo('');
+    try {
+      const response = await api.get('/sales/student-applications/reassign-targets');
+      setTeamMembers(response.data.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to load your sales team');
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!reassigningEnrollment || !reassignTo || reassignSaving) return;
+    setReassignSaving(true);
+    try {
+      await api.put(`/sales/student-applications/${reassigningEnrollment.id}/reassign`, { salesUserId: reassignTo });
+      const newOwner = teamMembers.find(member => member.id === reassignTo);
+      toast.success(`${reassigningEnrollment.studentName} reassigned to ${newOwner?.name || 'the selected staff member'}`);
+      setReassigningEnrollment(null);
+      fetchEnrollments();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to reassign student');
+    } finally {
+      setReassignSaving(false);
+    }
+  };
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -220,6 +257,17 @@ export function SalesStudentEnrollmentPanel() {
                               </Button>
                             </span>
                           )}
+                          {isSalesManager && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs font-medium"
+                              onClick={() => openReassign(enrollment)}
+                            >
+                              <UserCheck className="mr-1 h-3.5 w-3.5" />
+                              Reassign
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -324,6 +372,57 @@ export function SalesStudentEnrollmentPanel() {
                     Edit &amp; Re-submit
                   </Button>
                 )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reassign a student to another member of the manager's team */}
+      <Dialog open={!!reassigningEnrollment} onOpenChange={(open) => { if (!open && !reassignSaving) setReassigningEnrollment(null); }}>
+        <DialogContent className="max-w-md">
+          {reassigningEnrollment && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Reassign Student</DialogTitle>
+                <DialogDescription>
+                  Move {reassigningEnrollment.studentName} ({reassigningEnrollment.program?.name || 'Program'}) to another member of your sales team.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 text-sm">
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <span className="block text-xs text-muted-foreground">Currently assigned to</span>
+                  <span className="font-medium">{reassigningEnrollment.salesUser?.name || '—'}</span>
+                  {reassigningEnrollment.salesUser?.email && (
+                    <span className="block text-xs text-muted-foreground">{reassigningEnrollment.salesUser.email}</span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reassignTo">Reassign to *</Label>
+                  <Select value={reassignTo} onValueChange={setReassignTo}>
+                    <SelectTrigger id="reassignTo"><SelectValue placeholder="Select a sales staff member" /></SelectTrigger>
+                    <SelectContent>
+                      {teamMembers
+                        .filter(member => member.id !== reassigningEnrollment.salesUser?.id)
+                        .map(member => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.name}{member.id === user?.id ? ' (You)' : ''} — {member.designation || member.role.replace(/_/g, ' ')}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {teamMembers.filter(member => member.id !== reassigningEnrollment.salesUser?.id).length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No one else is in your team. Sales staff join your team when they report to you in the organization hierarchy.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setReassigningEnrollment(null)} disabled={reassignSaving}>Cancel</Button>
+                <Button onClick={handleReassign} disabled={!reassignTo || reassignSaving}>
+                  {reassignSaving ? 'Reassigning...' : 'Reassign'}
+                </Button>
               </DialogFooter>
             </>
           )}

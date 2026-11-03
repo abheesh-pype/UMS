@@ -8,6 +8,44 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
+// A page fires several API calls at once and each one authenticates. Loading the user with its
+// relations takes several round trips to the remote database, so concurrent and back-to-back
+// requests from the same user share one lookup for a few seconds.
+const AUTH_USER_CACHE_MS = 5000;
+const authUserCache = new Map<string, { expiresAt: number; user: Promise<any> }>();
+
+const loadAuthUser = (id: string, organizationId: string) => {
+  const key = `${organizationId}:${id}`;
+  const now = Date.now();
+  const cached = authUserCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.user;
+
+  if (authUserCache.size > 1000) {
+    for (const [cacheKey, entry] of authUserCache) {
+      if (entry.expiresAt <= now) authUserCache.delete(cacheKey);
+    }
+  }
+  // Same result as `include: { organization, department, branch, studyCenter, subDepartment: { include: { parentDept } } }`,
+  // but the related rows are fetched in parallel instead of one after another.
+  const user = prisma.user.findFirst({ where: { id, organizationId } }).then(async found => {
+    if (!found) return null;
+    const [organization, department, branch, studyCenter, subDepartment] = await Promise.all([
+      found.organizationId ? prisma.organization.findUnique({ where: { id: found.organizationId } }) : null,
+      found.departmentId ? prisma.department.findUnique({ where: { id: found.departmentId } }) : null,
+      found.branchId ? prisma.branch.findUnique({ where: { id: found.branchId } }) : null,
+      found.studyCenterId ? prisma.studyCenter.findUnique({ where: { id: found.studyCenterId } }) : null,
+      found.subDepartmentId
+        ? prisma.subDepartment.findUnique({ where: { id: found.subDepartmentId }, include: { parentDept: true } })
+        : null,
+    ]);
+    return { ...found, organization, department, branch, studyCenter, subDepartment };
+  });
+  authUserCache.set(key, { expiresAt: now + AUTH_USER_CACHE_MS, user });
+  // Never keep a failed or missing lookup
+  user.then(found => { if (!found) authUserCache.delete(key); }, () => authUserCache.delete(key));
+  return user;
+};
+
 export const protect = async (
   req: AuthRequest,
   res: Response,
@@ -37,16 +75,7 @@ export const protect = async (
     }
 
     const { organizationId, universityId } = await getSingleTenantContext();
-    const user = await prisma.user.findFirst({
-      where: { id: decoded.id, organizationId },
-      include: {
-        organization: true,
-        department: true,
-        branch: true,
-        studyCenter: true,
-        subDepartment: { include: { parentDept: true } },
-      }
-    });
+    const user = await loadAuthUser(decoded.id, organizationId);
 
     if (!user) {
       res.status(401).json({ success: false, message: 'User not found' });

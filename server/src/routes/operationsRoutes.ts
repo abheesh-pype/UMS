@@ -85,15 +85,21 @@ import {
   deleteProgramMaterial,
 } from '../controllers/programMaterialController.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { upload, uploadPaymentProof, uploadVideo } from '../middleware/upload.js';
+import { upload, uploadPaymentProof, uploadVideo, uploadMaterial } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
-import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, publishExaminationToExamPortal } from '../controllers/examIntegrationController.js';
+import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, publishExaminationToExamPortal, importExaminationResultsFromExamPortal, getExaminationResults } from '../controllers/examIntegrationController.js';
 import {
   getAcademicCalendarEvents,
   createAcademicCalendarEvent,
   updateAcademicCalendarEvent,
   deleteAcademicCalendarEvent,
 } from '../controllers/academicCalendarController.js';
+import {
+  getExaminationAdmins,
+  assignExaminationAdmin,
+  removeExaminationAdmin,
+  getMyExamPortalAccess,
+} from '../controllers/examinationAdminController.js';
 
 const router = express.Router();
 
@@ -103,8 +109,16 @@ router.get('/universities/:universityId/exam-portal-integration', authorize('uni
 router.put('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), saveExamPortalIntegration);
 router.get('/universities/:universityId/exam-portal-sync', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalSyncStatus);
 router.post('/universities/:universityId/exam-portal-sync/students', authorize('university_admin', 'org_admin', 'superadmin'), syncExamPortalStudent);
-router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin'), openExamPortalAsStaff);
+// Staff/employees may call these too; the handlers check that an admin assigned them a portal role.
+router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), openExamPortalAsStaff);
+router.get('/exam-portal/my-access', getMyExamPortalAccess);
 router.post('/examinations/:examinationId/exam-portal', authorize('academic_admin', 'org_admin', 'superadmin'), publishExaminationToExamPortal);
+router.post('/examinations/:examinationId/exam-portal/results', authorize('academic_admin', 'org_admin', 'superadmin'), importExaminationResultsFromExamPortal);
+router.get('/examinations/:examinationId/results', authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationResults);
+router.route('/examination-admins')
+  .get(authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationAdmins)
+  .post(authorize('academic_admin', 'org_admin', 'superadmin'), assignExaminationAdmin);
+router.delete('/examination-admins/:id', authorize('academic_admin', 'org_admin', 'superadmin'), removeExaminationAdmin);
 router.get('/universities/:universityId/students', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityStudents);
 router.get('/universities/:universityId/metrics', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityMetrics);
 
@@ -205,8 +219,8 @@ router.delete('/centers/:id/uni-allocations/:allocId', authorize('ops_admin', 'o
 // Program detail & materials
 router.get('/ebooks', authorize('academic_admin'), getAllProgramEbooks);
 router.get('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), getAllVideoClasses);
-router.post('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), createVideoClass);
-router.put('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), upload.single('file'), updateVideoClass);
+router.post('/video-classes', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), uploadMaterial.single('file'), createVideoClass);
+router.put('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), uploadMaterial.single('file'), updateVideoClass);
 router.delete('/video-classes/:id', authorize('academic_admin', 'ops_admin', 'superadmin', 'org_admin'), deleteVideoClass);
 router.route('/scheduled-classes')
   .get(authorize('academic_admin'), getScheduledClasses)
@@ -214,9 +228,9 @@ router.route('/scheduled-classes')
 router.get('/scheduled-classes/students', authorize('academic_admin'), getSchedulableStudents);
 router.get('/programs/:programId/detail', getProgramDetail);
 router.get('/programs/:programId/materials', getProgramMaterials);
-router.post('/programs/:programId/materials', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), uploadProgramMaterial);
+router.post('/programs/:programId/materials', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), uploadMaterial.single('file'), uploadProgramMaterial);
 router.post('/programs/:programId/videos', authorize('academic_admin'), uploadVideo.single('file'), uploadProgramVideo);
-router.put('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), upload.single('file'), updateProgramMaterial);
+router.put('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), uploadMaterial.single('file'), updateProgramMaterial);
 router.delete('/programs/:programId/materials/:materialId', authorize('ops_admin', 'ops_sub_admin', 'employee', 'org_admin', 'superadmin', 'academic_admin'), deleteProgramMaterial);
 
 // Enrollment Uni Enrollment Number Updates

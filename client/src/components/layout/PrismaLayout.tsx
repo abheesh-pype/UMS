@@ -125,6 +125,7 @@ export function PrismaLayout({
     const iconClass = "w-4 h-4";
     switch (tableId) {
       case 'dashboard':
+      case 'academic-overview':
       case 'overview': return <LayoutDashboard className={iconClass} />;
       case 'users':
       case 'managers': return <Users className={iconClass} />;
@@ -167,6 +168,7 @@ export function PrismaLayout({
       case 'wallet_topups':
       case 'center_wallet': return <Wallet className={iconClass} />;
       case 'attendance':
+      case 'team_attendance':
       case 'my_attendance':
       case 'pending_payment':
       case 'center_rereg_report':
@@ -176,6 +178,7 @@ export function PrismaLayout({
       case 'sub_departments':
       case 'subdepartments': return <GitBranch className={iconClass} />;
       case 'announcements': return <Bell className={iconClass} />;
+      case 'center_allocated_programs':
       case 'programs':
       case 'academic-study-material':
       case 'academic-ebooks':
@@ -209,6 +212,7 @@ export function PrismaLayout({
       case 'polls':
       case 'my_team': return <Users className={iconClass} />;
       case 'salary-config':
+      case 'academic-settings':
       case 'att-settings': return <Settings className={iconClass} />;
       case 'org-chart': return <GitBranch className={iconClass} />;
       case 'invite_links': return <TrendingUp className={iconClass} />;

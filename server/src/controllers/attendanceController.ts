@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getSalesTeamUserIds } from './salesEnrollmentController.js';
 
 const getOfficeHoursForDate = (settings: any, date: Date, useUTC = false) => {
   const officeHours = settings?.officeHours && typeof settings.officeHours === 'object'
@@ -340,6 +341,106 @@ export const getAttendances = asyncHandler(async (req: AuthRequest, res: Respons
   res.json({ success: true, count: mapped.length, data: mapped });
 });
 export const getAttendance = getAttendances;
+
+const ORG_WIDE_ATTENDANCE_ROLES = ['hr_admin', 'org_admin', 'ceo', 'superadmin'];
+const MAX_REPORT_DAYS = 62;
+
+const toDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const parseDateKey = (value: unknown) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return parsed.getMonth() === month - 1 && parsed.getDate() === day ? parsed : null;
+};
+
+// Day-by-day attendance of the employees a viewer may see: HR, org admin and CEO see every
+// employee; a department head sees their subordinates. A day without a punch is reported as absent.
+export const getAttendanceReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const organizationId = req.user.organizationId;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = req.query.startDate ? parseDateKey(req.query.startDate) : new Date(today);
+  const requestedEnd = req.query.endDate ? parseDateKey(req.query.endDate) : new Date(today);
+  if (!start || !requestedEnd) {
+    res.status(400).json({ success: false, message: 'Invalid date' });
+    return;
+  }
+  // Days that have not happened yet are not reported
+  const end = requestedEnd > today ? new Date(today) : requestedEnd;
+  if (start > end) {
+    res.status(400).json({ success: false, message: 'Start date must be on or before end date (and not in the future)' });
+    return;
+  }
+  const days: Date[] = [];
+  for (const day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) days.push(new Date(day));
+  if (days.length > MAX_REPORT_DAYS) {
+    res.status(400).json({ success: false, message: `Choose a range of at most ${MAX_REPORT_DAYS} days` });
+    return;
+  }
+
+  const isOrgWide = ORG_WIDE_ATTENDANCE_ROLES.includes(req.user.role);
+  const teamIds = isOrgWide ? null : [...await getSalesTeamUserIds(req.user.id, organizationId)].filter(id => id !== req.user.id);
+  const employees = await prisma.user.findMany({
+    where: {
+      organizationId,
+      role: { notIn: ['student', 'center_admin', 'superadmin'] },
+      OR: [{ status: 'active' }, { status: null }],
+      ...(teamIds ? { id: { in: teamIds } } : {}),
+    },
+    select: {
+      id: true, name: true, email: true, designation: true, role: true,
+      department: { select: { name: true } },
+      subDepartment: { select: { name: true } },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  const dayEnd = new Date(end);
+  dayEnd.setHours(23, 59, 59, 999);
+  const records = employees.length
+    ? await prisma.attendance.findMany({
+      where: { organizationId, userId: { in: employees.map(employee => employee.id) }, date: { gte: start, lte: dayEnd } },
+    })
+    : [];
+  const recordByUserDay = new Map(records.map(record => [`${record.userId}|${toDateKey(record.date)}`, record]));
+
+  const now = new Date();
+  const rows = [];
+  for (const day of [...days].reverse()) {
+    const dateKey = toDateKey(day);
+    for (const employee of employees) {
+      const record = recordByUserDay.get(`${employee.id}|${dateKey}`);
+      // Still punched in: count the time worked so far
+      const workingHours = record?.checkIn && !record.checkOut && dateKey === toDateKey(now)
+        ? Number(((now.getTime() - record.checkIn.getTime()) / 3_600_000).toFixed(2))
+        : record?.workingHours || 0;
+      rows.push({
+        id: record?.id || `absent-${employee.id}-${dateKey}`,
+        recordId: record?.id || null,
+        userId: employee.id,
+        employeeId: employee,
+        date: dateKey,
+        status: record?.status || 'absent',
+        isUnmarked: !record,
+        checkIn: record?.checkIn || null,
+        checkOut: record?.checkOut || null,
+        workingHours,
+        isLate: record?.isLate || false,
+        notes: record?.notes || null,
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    scope: isOrgWide ? 'organization' : 'team',
+    employeeCount: employees.length,
+    count: rows.length,
+    data: rows,
+  });
+});
 
 export const getAttendanceById = asyncHandler(async (req: AuthRequest, res: Response) => {
   const attendance = await prisma.attendance.findUnique({ where: { id: req.params.id }, include: { user: true } });

@@ -162,11 +162,17 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [ebookModule, setEbookModule] = useState<any | null>(null);
   const [ebookMaterials, setEbookMaterials] = useState<any[]>([]);
   const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const [ebookName, setEbookName] = useState('');
   const [ebookLoading, setEbookLoading] = useState(false);
   const [ebookUploading, setEbookUploading] = useState(false);
   const [ebookEditingMaterialId, setEbookEditingMaterialId] = useState<string | null>(null);
   const [allEbooks, setAllEbooks] = useState<any[]>([]);
   const [allEbooksLoading, setAllEbooksLoading] = useState(false);
+  const [ebookFilterSession, setEbookFilterSession] = useState('all');
+  const [ebookFilterProgram, setEbookFilterProgram] = useState('all');
+  const [ebookFilterModule, setEbookFilterModule] = useState('all');
+  const [ebookSearch, setEbookSearch] = useState('');
+  const [ebookVisibleCount, setEbookVisibleCount] = useState(100);
   const [addNoteModalOpen, setAddNoteModalOpen] = useState(false);
   const [addNoteSaving, setAddNoteSaving] = useState(false);
   const [addNoteSessionId, setAddNoteSessionId] = useState('');
@@ -182,6 +188,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [videoModule, setVideoModule] = useState<any | null>(null);
   const [videoMaterials, setVideoMaterials] = useState<any[]>([]);
   const [moduleVideoFile, setModuleVideoFile] = useState<File | null>(null);
+  const [moduleVideoName, setModuleVideoName] = useState('');
+  const [moduleVideoUrl, setModuleVideoUrl] = useState('');
   const [moduleVideoLoading, setModuleVideoLoading] = useState(false);
   const [moduleVideoUploading, setModuleVideoUploading] = useState(false);
   const [videoClasses, setVideoClasses] = useState<any[]>([]);
@@ -208,6 +216,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [videoFilterProgram, setVideoFilterProgram] = useState('all');
   const [videoFilterSemester, setVideoFilterSemester] = useState('all');
   const [videoFilterModule, setVideoFilterModule] = useState('all');
+  // Each card embeds a player, so only a page of cards is rendered at a time.
+  const [videoVisibleCount, setVideoVisibleCount] = useState(12);
+  useEffect(() => { setVideoVisibleCount(12); }, [videoSearch, videoFilterSession, videoFilterProgram, videoFilterSemester, videoFilterModule]);
   const [scheduledClassForm, setScheduledClassForm] = useState({
     academicSessionId: '',
     programId: '',
@@ -315,6 +326,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const openVideoDialog = async (module: any) => {
     setVideoModule(module);
     setModuleVideoFile(null);
+    setModuleVideoName('');
+    setModuleVideoUrl('');
     setVideoMaterials([]);
     setModuleVideoLoading(true);
     try {
@@ -332,19 +345,30 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const uploadModuleVideo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!videoModule || !moduleVideoFile) {
-      toast.error('Select a video file to upload');
+    if (!videoModule) return;
+    const videoUrl = moduleVideoUrl.trim();
+    if (!moduleVideoName.trim()) {
+      toast.error('Enter a name for the video');
       return;
     }
-    if (moduleVideoFile.size > 10 * 1024 * 1024) {
-      toast.error('Video must be 10 MB or smaller');
+    if (!moduleVideoFile && !videoUrl) {
+      toast.error('Select a video file or paste a video link');
       return;
     }
-    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
-    const allowedVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v'];
-    const extension = moduleVideoFile.name.slice(moduleVideoFile.name.lastIndexOf('.')).toLowerCase();
-    if (!allowedVideoTypes.includes(moduleVideoFile.type) || !allowedVideoExtensions.includes(extension)) {
-      toast.error('Only MP4, WebM, MOV, or M4V videos are allowed');
+    if (moduleVideoFile) {
+      if (moduleVideoFile.size > 10 * 1024 * 1024) {
+        toast.error('Video must be 10 MB or smaller');
+        return;
+      }
+      const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
+      const allowedVideoExtensions = ['.mp4', '.webm', '.mov', '.m4v'];
+      const extension = moduleVideoFile.name.slice(moduleVideoFile.name.lastIndexOf('.')).toLowerCase();
+      if (!allowedVideoTypes.includes(moduleVideoFile.type) || !allowedVideoExtensions.includes(extension)) {
+        toast.error('Only MP4, WebM, MOV, or M4V videos are allowed');
+        return;
+      }
+    } else if (!/^https?:\/\/\S+$/i.test(videoUrl)) {
+      toast.error('Video link must start with http:// or https://');
       return;
     }
 
@@ -352,7 +376,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     try {
       const formData = new FormData();
       formData.append('moduleId', videoModule.id);
-      formData.append('file', moduleVideoFile);
+      formData.append('title', moduleVideoName.trim());
+      if (moduleVideoFile) {
+        formData.append('file', moduleVideoFile);
+      } else {
+        formData.append('videoUrl', videoUrl);
+      }
       const response = await api.post(
         `/operations/programs/${videoModule.programId}/videos`,
         formData,
@@ -360,7 +389,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       );
       setVideoMaterials(current => [response.data.data, ...current]);
       setModuleVideoFile(null);
-      toast.success('Video uploaded successfully');
+      setModuleVideoName('');
+      setModuleVideoUrl('');
+      toast.success(moduleVideoFile ? 'Video uploaded successfully' : 'Video link saved successfully');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to upload video');
     } finally {
@@ -369,7 +400,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   const deleteModuleVideo = async (material: any) => {
-    if (!videoModule || !window.confirm(`Delete "${material.fileName}"?`)) return;
+    if (!videoModule || !window.confirm(`Delete "${material.title || material.fileName}"?`)) return;
     try {
       await api.delete(`/operations/programs/${videoModule.programId}/materials/${material.id}`);
       setVideoMaterials(current => current.filter(item => item.id !== material.id));
@@ -382,6 +413,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const openEbookDialog = async (module: any) => {
     setEbookModule(module);
     setEbookFile(null);
+    setEbookName('');
     setEbookEditingMaterialId(null);
     setEbookMaterials([]);
     setEbookLoading(true);
@@ -1107,11 +1139,17 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const uploadModuleEbook = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!ebookModule || !ebookFile) {
+    if (!ebookModule) return;
+    if (!ebookName.trim()) {
+      toast.error('Enter a name for the E-Book');
+      return;
+    }
+    // A new E-Book needs a PDF; an update may change only the name.
+    if (!ebookEditingMaterialId && !ebookFile) {
       toast.error('Select a PDF document to upload');
       return;
     }
-    if (ebookFile.type !== 'application/pdf' && !ebookFile.name.toLowerCase().endsWith('.pdf')) {
+    if (ebookFile && ebookFile.type !== 'application/pdf' && !ebookFile.name.toLowerCase().endsWith('.pdf')) {
       toast.error('Only PDF documents are allowed');
       return;
     }
@@ -1119,10 +1157,10 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setEbookUploading(true);
     try {
       const formData = new FormData();
-      formData.append('title', ebookFile.name);
+      formData.append('title', ebookName.trim());
       formData.append('description', moduleEbookTag(ebookModule));
       formData.append('category', 'ebook');
-      formData.append('file', ebookFile);
+      if (ebookFile) formData.append('file', ebookFile);
       const endpoint = `/operations/programs/${ebookModule.programId}/materials`;
       const response = ebookEditingMaterialId
         ? await api.put(`${endpoint}/${ebookEditingMaterialId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -1136,6 +1174,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
       setEbookEditingMaterialId(null);
       setEbookFile(null);
+      setEbookName('');
       if (initialTab === 'academic-ebooks') fetchAllEbooks();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to save E-Book');
@@ -1146,7 +1185,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const deleteModuleEbook = async (material: any) => {
     const programId = ebookModule?.programId || material.programId;
-    if (!programId || !window.confirm(`Delete "${material.fileName}"?`)) return;
+    if (!programId || !window.confirm(`Delete "${material.title || material.fileName}"?`)) return;
     try {
       await api.delete(`/operations/programs/${programId}/materials/${material.id}`);
       setEbookMaterials(current => current.filter(item => item.id !== material.id));
@@ -1162,6 +1201,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     if (!material.module) return;
     await openEbookDialog({ ...material.module, programId: material.programId });
     setEbookEditingMaterialId(material.id);
+    setEbookName(material.title || material.fileName || '');
   };
 
   const openAddNoteModal = () => {
@@ -1303,6 +1343,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       setSessions(loadedSessions);
       const activeSession = loadedSessions.find((session: any) => session.status === 'active');
       const defaultSessionId = activeSession?.id || loadedSessions[0]?.id || null;
+      if (activeSession) {
+        setSemesterSessionFilter(current => (current === 'all' ? activeSession.id : current));
+      }
       if (initialTab !== 'academic-programs') {
         setSelectedSessionId(current => current || defaultSessionId);
         if (defaultSessionId) {
@@ -1386,7 +1429,30 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     setExaminationLoading(true);
     try {
       const response = await api.get('/operations/examinations');
-      setExaminations(response.data.data || []);
+      const loaded = response.data.data || [];
+      setExaminations(loaded);
+      // The server record is the source of truth for the Examination Portal list; localStorage only covers
+      // portals created while the Exam Portal was not connected.
+      const fromServer: Record<string, any> = {};
+      for (const exam of loaded) {
+        if (!exam.portal) continue;
+        const portal = exam.portal;
+        const params = new URLSearchParams({ code: portal.code || '', date: portal.examDate || '', session: portal.examSession || '', time: portal.examTime || '' });
+        fromServer[exam.id] = {
+          examinationId: exam.id,
+          examinationName: exam.examinationName,
+          examinationType: exam.examinationType,
+          academicSessionId: exam.academicSessionId,
+          programName: exam.program?.name || 'Program',
+          examDate: portal.examDate || (portal.startsAt ? String(portal.startsAt).slice(0, 10) : ''),
+          examSession: portal.examSession || '',
+          examTime: portal.examTime || '',
+          isOpen: portal.isOpen !== false,
+          code: portal.code || '',
+          link: `${window.location.origin}/student/examinations/${exam.id}?${params.toString()}`,
+        };
+      }
+      setCreatedExamPortals(current => ({ ...current, ...fromServer }));
     } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to load examinations'); }
     finally { setExaminationLoading(false); }
   };
@@ -1500,11 +1566,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   const [publishingExamId, setPublishingExamId] = useState<string | null>(null);
+  const [importingResultsId, setImportingResultsId] = useState<string | null>(null);
+  const [examResultsView, setExamResultsView] = useState<{ examinationName: string; rows: any[]; loading: boolean } | null>(null);
   const [openingPortalWorkspace, setOpeningPortalWorkspace] = useState(false);
 
   // Single sign-on: opens the Exam Portal (question bank, bulk upload, assessments) already signed in as this user.
-  const openExamPortalWorkspace = async () => {
-    const win = window.open('about:blank', '_blank');
+  // `preOpened` lets a caller open the tab synchronously inside the click (pop-up blockers reject windows opened after an await).
+  const openExamPortalWorkspace = async (preOpened?: Window | null) => {
+    const win = preOpened || window.open('about:blank', '_blank');
     if (!win) { toast.error('Allow pop-ups to open the Exam Portal'); return; }
     setOpeningPortalWorkspace(true);
     try {
@@ -1520,7 +1589,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   // Creates/updates the examination in the connected Exam Portal. Returns false when it must not continue.
-  const publishToExamPortal = async (examination: any) => {
+  const publishToExamPortal = async (examination: any, code: string) => {
     if (!examPortalForm.examDate || !examPortalForm.examTime) {
       toast.error('Select the exam date and time first');
       return false;
@@ -1529,7 +1598,13 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     if (Number.isNaN(startsAt.getTime())) { toast.error('Exam date or time is invalid'); return false; }
     setPublishingExamId(examination.id);
     try {
-      const response = await api.post(`/operations/examinations/${examination.id}/exam-portal`, { startsAt: startsAt.toISOString() });
+      const response = await api.post(`/operations/examinations/${examination.id}/exam-portal`, {
+        startsAt: startsAt.toISOString(),
+        examDate: examPortalForm.examDate,
+        examTime: examPortalForm.examTime,
+        examSession: examPortalForm.examSession,
+        code,
+      });
       toast.success(`Exam Portal confirmed: assessment ${response.data.data.outcome}`);
       return true;
     } catch (error: any) {
@@ -1544,14 +1619,46 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }
   };
 
+  // Results published in the Exam Portal, as imported into UMS
+  const viewExamResults = async (portal: any) => {
+    setExamResultsView({ examinationName: portal.examinationName, rows: [], loading: true });
+    try {
+      const response = await api.get(`/operations/examinations/${portal.examinationId}/results`);
+      setExamResultsView({ examinationName: portal.examinationName, rows: response.data.data || [], loading: false });
+    } catch (error: any) {
+      setExamResultsView(null);
+      toast.error(error.response?.data?.message || 'Could not load results');
+    }
+  };
+
+  // Pulls the published marks from the Exam Portal. Repeating it updates the same rows.
+  const importExamResults = async (portal: any) => {
+    setImportingResultsId(portal.examinationId);
+    try {
+      const response = await api.post(`/operations/examinations/${portal.examinationId}/exam-portal/results`);
+      const { received, created, updated, unmatched, skipped } = response.data.data;
+      if (received === 0) toast.info('No published results in the Exam Portal yet');
+      else toast.success(`Results imported: ${created} new, ${updated} updated`);
+      if (unmatched.length) toast.warning(`${unmatched.length} result(s) skipped: no UMS student with enrollment no. ${unmatched.slice(0, 5).join(', ')}${unmatched.length > 5 ? '…' : ''}`);
+      if (skipped) toast.warning(`${skipped} result(s) from the Exam Portal were incomplete and not imported`);
+      if (received > 0) await viewExamResults(portal);
+    } catch (error: any) {
+      toast.error(error.response?.status === 503
+        ? 'Exam Portal is not connected on the server'
+        : error.response?.data?.message || 'Could not import results from the Exam Portal');
+    } finally {
+      setImportingResultsId(null);
+    }
+  };
+
   const generateExamLink = async (examination: any) => {
     if (!examination) return;
-    if (!(await publishToExamPortal(examination))) return;
     const programName = programs.find(program => program.id === examination.programId)?.name || 'PROGRAM';
     const clean = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 8) || 'EXAM';
     const date = examPortalForm.examDate.replace(/-/g, '');
     const time = examPortalForm.examTime.replace(':', '') || '0000';
-    const code = examPortalCodes[examination.id] || `${clean(programName)}-${clean(examination.examinationName)}-${date}-${clean(examPortalForm.examSession)}-${time}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const code = examPortalCodes[examination.id] || examination.portal?.code || `${clean(programName)}-${clean(examination.examinationName)}-${date}-${clean(examPortalForm.examSession)}-${time}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    if (!(await publishToExamPortal(examination, code))) return;
     setExamPortalCodes(current => ({ ...current, [examination.id]: code }));
     const params = new URLSearchParams({
       code,
@@ -1596,7 +1703,21 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
     }));
   };
 
-  const setExamPortalStatus = (portal: any, isOpen: boolean) => {
+  const setExamPortalStatus = async (portal: any, isOpen: boolean): Promise<boolean> => {
+    // Persist on the server (and in the Exam Portal) so every browser sees the same state.
+    const startsAt = new Date(`${portal.examDate}T${portal.examTime}`);
+    if (!Number.isNaN(startsAt.getTime())) {
+      try {
+        await api.post(`/operations/examinations/${portal.examinationId}/exam-portal`, {
+          startsAt: startsAt.toISOString(), examDate: portal.examDate, examTime: portal.examTime, examSession: portal.examSession, code: portal.code, active: isOpen,
+        });
+      } catch (error: any) {
+        if (error.response?.status !== 503) {
+          toast.error(error.response?.data?.message || 'The Exam Portal status could not be updated');
+          return false;
+        }
+      }
+    }
     const updatedPortal = { ...portal, isOpen };
     setCreatedExamPortals(current => ({ ...current, [portal.examinationId]: updatedPortal }));
     try {
@@ -1618,14 +1739,19 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       }
     }
     toast.success(`Exam portal ${isOpen ? 'opened' : 'closed'}`);
+    return true;
   };
 
   const closeExamPortal = (portal: any) => {
     setExamPortalStatus(portal, false);
   };
 
-  const openExamPortal = (portal: any) => {
-    setExamPortalStatus(portal, true);
+  // Marks the exam open for students and takes the admin into the Exam Portal, signed in.
+  const openExamPortal = async (portal: any) => {
+    const win = window.open('about:blank', '_blank');
+    const updated = await setExamPortalStatus(portal, true);
+    if (!updated) { win?.close(); return; }
+    await openExamPortalWorkspace(win);
   };
 
   const selectSessionForPortal = (academicSessionId: string) => {
@@ -1782,7 +1908,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const openCreateProgram = (templateProg?: any) => {
     setEditingId(null);
-    setProgramFormSessionId(selectedSessionId || (sessions[0]?.id || ''));
+    const activeSessionId = sessions.find(s => s.status === 'active')?.id;
+    setProgramFormSessionId(activeSessionId || selectedSessionId || (sessions[0]?.id || ''));
     if (templateProg) {
       setProgramTemplateId(templateProg.id);
       setProgramCopySemesters(true);
@@ -2034,6 +2161,26 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
         status: 'active',
       });
     }
+  };
+
+  // Semesters split a session's period into 6-month slots: semester N covers slot N.
+  const SEMESTER_MONTHS = 6;
+  const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+  const getSessionBounds = (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session?.startDate || !session?.endDate) return null;
+    return { start: toDateInput(new Date(session.startDate)), end: toDateInput(new Date(session.endDate)) };
+  };
+  const getSemesterPeriod = (sessionId: string, semesterNumber: number) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session?.startDate || !session?.endDate || !Number.isInteger(semesterNumber) || semesterNumber < 1) return null;
+    const sessionStart = new Date(session.startDate);
+    const year = sessionStart.getUTCFullYear();
+    const month = sessionStart.getUTCMonth();
+    const start = new Date(Date.UTC(year, month + SEMESTER_MONTHS * (semesterNumber - 1), 1));
+    const end = new Date(Date.UTC(year, month + SEMESTER_MONTHS * semesterNumber, 0));
+    if (end > new Date(session.endDate)) return null;
+    return { startDate: toDateInput(start), endDate: toDateInput(end) };
   };
 
   const openCreateSemester = (defaultProgId?: string) => {
@@ -2697,8 +2844,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     : 'No video classes match your search and filter criteria.'}
                 </div>
               ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-                  {filteredVideoClasses.map(item => {
+                  {filteredVideoClasses.slice(0, videoVisibleCount).map(item => {
                     const embedUrl = getYouTubeEmbedUrl(item.youtubeUrl);
                     const resolvedFileUrl = item.fileUrl
                       ? (item.fileUrl.startsWith('http')
@@ -2802,23 +2950,88 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     );
                   })}
                 </div>
+                {filteredVideoClasses.length > videoVisibleCount && (
+                  <div className="flex items-center justify-between gap-3 pt-4 text-sm text-muted-foreground">
+                    <span>Showing {videoVisibleCount} of {filteredVideoClasses.length}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setVideoVisibleCount(count => count + 12)}>Show more</Button>
+                  </div>
+                )}
+                </>
               )}
             </CardContent>
           </Card>
         </div>
       )}
 
-      {initialTab === 'academic-ebooks' && (
+      {initialTab === 'academic-ebooks' && (() => {
+        // Filter options narrow each other: session -> program -> module.
+        const uniqueBy = (items: any[]) => Array.from(new Map(items.filter(item => item?.id).map(item => [item.id, item])).values());
+        const ebookSessionOptions = uniqueBy(allEbooks.map(material => material.session))
+          .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+        const ebookProgramOptions = uniqueBy(allEbooks
+          .filter(material => ebookFilterSession === 'all' || material.session?.id === ebookFilterSession)
+          .map(material => material.program))
+          .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+        const ebookModuleOptions = uniqueBy(allEbooks
+          .filter(material => ebookFilterProgram !== 'all' && material.program?.id === ebookFilterProgram)
+          .map(material => material.module))
+          .sort((a: any, b: any) => String(a.moduleName).localeCompare(String(b.moduleName)));
+        const searchText = ebookSearch.trim().toLowerCase();
+        const filteredEbooks = allEbooks.filter(material =>
+          (ebookFilterSession === 'all' || material.session?.id === ebookFilterSession)
+          && (ebookFilterProgram === 'all' || material.program?.id === ebookFilterProgram)
+          && (ebookFilterModule === 'all' || material.module?.id === ebookFilterModule)
+          && (!searchText || String(material.title || material.fileName || '').toLowerCase().includes(searchText))
+        );
+        const hasEbookFilters = ebookFilterSession !== 'all' || ebookFilterProgram !== 'all' || ebookFilterModule !== 'all' || Boolean(searchText);
+        const resetEbookPaging = () => setEbookVisibleCount(100);
+        return (
         <Card>
           <CardHeader>
-            <CardTitle>All E-Books & Notes ({allEbooks.length})</CardTitle>
+            <CardTitle>All E-Books & Notes ({hasEbookFilters ? `${filteredEbooks.length} of ${allEbooks.length}` : allEbooks.length})</CardTitle>
             <CardDescription>Manage uploaded E-Books, study notes, and reading materials across modules</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.2fr_auto]">
+              <Select value={ebookFilterSession} onValueChange={value => { setEbookFilterSession(value); setEbookFilterProgram('all'); setEbookFilterModule('all'); resetEbookPaging(); }}>
+                <SelectTrigger><SelectValue placeholder="All Sessions" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sessions</SelectItem>
+                  {ebookSessionOptions.map((session: any) => (
+                    <SelectItem key={session.id} value={session.id}>
+                      {session.name}{sessions.find(s => s.id === session.id)?.status === 'active' ? ' (Active)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={ebookFilterProgram} onValueChange={value => { setEbookFilterProgram(value); setEbookFilterModule('all'); resetEbookPaging(); }}>
+                <SelectTrigger><SelectValue placeholder="All Programs" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Programs</SelectItem>
+                  {ebookProgramOptions.map((program: any) => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={ebookFilterModule} onValueChange={value => { setEbookFilterModule(value); resetEbookPaging(); }} disabled={ebookFilterProgram === 'all'}>
+                <SelectTrigger><SelectValue placeholder={ebookFilterProgram === 'all' ? 'Select a program first' : 'All Modules'} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{ebookFilterProgram === 'all' ? 'Select a program first' : 'All Modules'}</SelectItem>
+                  {ebookModuleOptions.map((module: any) => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Search by E-Book name..." value={ebookSearch} onChange={event => { setEbookSearch(event.target.value); resetEbookPaging(); }} />
+              </div>
+              <Button type="button" variant="outline" disabled={!hasEbookFilters} onClick={() => { setEbookFilterSession('all'); setEbookFilterProgram('all'); setEbookFilterModule('all'); setEbookSearch(''); resetEbookPaging(); }}>
+                Clear
+              </Button>
+            </div>
             {allEbooksLoading ? (
               <p className="py-8 text-center text-muted-foreground">Loading E-Books...</p>
             ) : allEbooks.length === 0 ? (
               <p className="py-8 text-center text-muted-foreground">No E-Books uploaded.</p>
+            ) : filteredEbooks.length === 0 ? (
+              <p className="py-8 text-center text-muted-foreground">No E-Books match the selected filters.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -2833,7 +3046,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     </tr>
                   </thead>
                   <tbody>
-                    {allEbooks.map(material => {
+                    {filteredEbooks.slice(0, ebookVisibleCount).map(material => {
                       const fileUrl = material.fileUrl.startsWith('http')
                         ? material.fileUrl
                         : `${(import.meta.env.VITE_API_URL || '/api/v1').replace('/api/v1', '')}${material.fileUrl}`;
@@ -2859,11 +3072,18 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     })}
                   </tbody>
                 </table>
+                {filteredEbooks.length > ebookVisibleCount && (
+                  <div className="flex items-center justify-between gap-3 border-t p-3 text-sm text-muted-foreground">
+                    <span>Showing {ebookVisibleCount} of {filteredEbooks.length}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEbookVisibleCount(count => count + 100)}>Show more</Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {initialTab === 'academic-study-material' && (
         <Card>
@@ -3448,7 +3668,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       {initialTab === 'academic-examination-portal' && <Card>
         <CardHeader><CardTitle>Examination Portal</CardTitle><p className="text-sm text-muted-foreground">Examinations available for portal access.</p></CardHeader>
         <CardContent className="space-y-3">
-          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); const isOpen = portal.isOpen !== false; return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold">{portal.examinationName}</p><Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'Opened' : 'Closed'}</Badge></div><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => openExamPortal(portal)}>Open Portal</Button><Button variant="outline" onClick={() => closeExamPortal(portal)}>Close Portal</Button></div></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
+          {Object.keys(createdExamPortals).length === 0 ? <p className="py-8 text-center text-muted-foreground">No exam portals created yet. Create one from Create Exam Portal.</p> : Object.values(createdExamPortals).map((portal: any) => { const session = sessions.find(item => item.id === portal.academicSessionId); const isOpen = portal.isOpen !== false; return <div key={portal.examinationId} className="rounded-lg border p-4 space-y-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold">{portal.examinationName}</p><Badge variant={isOpen ? 'default' : 'secondary'}>{isOpen ? 'Opened' : 'Closed'}</Badge></div><p className="text-sm text-muted-foreground">{portal.examinationType} · {portal.programName}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openExamPortal(portal)}>Open Portal</Button><Button variant="outline" onClick={() => closeExamPortal(portal)}>Close Portal</Button><Button variant="outline" disabled={importingResultsId === portal.examinationId} onClick={() => importExamResults(portal)}>{importingResultsId === portal.examinationId ? 'Importing...' : 'Import Results'}</Button><Button variant="outline" onClick={() => viewExamResults(portal)}>View Results</Button></div></div><div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3"><span><strong>Academic Session:</strong> {session?.name || (session ? `${new Date(session.startDate).getFullYear()} - ${new Date(session.endDate).getFullYear()}` : 'N/A')}</span><span><strong>Examination Date:</strong> {portal.examDate}</span><span><strong>Exam Session:</strong> {portal.examSession}</span><span><strong>Exam Time:</strong> {portal.examTime}</span><span className="font-mono"><strong>Exam Code:</strong> {portal.code}</span></div></div>; })}
         </CardContent>
       </Card>}
 
@@ -3459,7 +3679,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <CardTitle>Create Exam Portal</CardTitle>
               <p className="text-sm text-muted-foreground">Select the examination details before opening the student exam portal. Opening it creates the examination in the connected Exam Portal.</p>
             </div>
-            <Button type="button" variant="outline" onClick={openExamPortalWorkspace} disabled={openingPortalWorkspace}>
+            <Button type="button" variant="outline" onClick={() => openExamPortalWorkspace()} disabled={openingPortalWorkspace}>
               {openingPortalWorkspace ? 'Opening...' : 'Open Exam Portal (questions & bulk upload)'}
             </Button>
           </div>
@@ -3523,7 +3743,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
             </div>
           ) : (
             <div ref={sessionScrollerRef} className="flex gap-3 overflow-x-auto pb-3 scroll-smooth snap-x snap-mandatory">
-                {sessions.map(session => {
+                {/* Active session first so it is visible without scrolling; the rest keep date order. */}
+                {[...sessions].sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active')).map(session => {
                   const sessionProgramCount = programs.filter(p => p.academicSessionId === session.id).length;
                   const isSelected = selectedSessionId === session.id;
 
@@ -3891,7 +4112,16 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
           <CardContent>
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <div className="flex items-center gap-2">
-                <Select value={semesterSessionFilter} onValueChange={setSemesterSessionFilter}>
+                <Select
+                  value={semesterSessionFilter}
+                  onValueChange={sessionId => {
+                    setSemesterSessionFilter(sessionId);
+                    // Keep the program filter only if that program belongs to the new session.
+                    setSemesterProgramFilter(current => (
+                      sessionId === 'all' || programs.some(p => p.id === current && p.academicSessionId === sessionId) ? current : 'all'
+                    ));
+                  }}
+                >
                   <SelectTrigger className="w-60">
                     <SelectValue placeholder="Filter by Session" />
                   </SelectTrigger>
@@ -3925,7 +4155,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 <SelectTrigger className="w-56"><SelectValue placeholder="All Programs" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Programs</SelectItem>
-                  {programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}
+                  {programs
+                    .filter(program => semesterSessionFilter === 'all' || program.academicSessionId === semesterSessionFilter)
+                    .map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -3951,28 +4183,62 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   </div>
                 );
               }
+              // Group semesters under their program, the way sessions group programs.
+              // Active-session programs come first, then by session date and program name.
+              const sessionOrder = (sessionId: string) => {
+                const session = sessions.find(s => s.id === sessionId);
+                return session?.status === 'active' ? -Infinity : new Date(session?.startDate || 0).getTime();
+              };
+              const programGroups = Object.values(filteredList.reduce((groups: Record<string, any>, semester) => {
+                const group = groups[semester.programId] ||= {
+                  programId: semester.programId,
+                  programName: semester.programName,
+                  academicSessionId: semester.academicSessionId,
+                  semesters: [] as any[],
+                };
+                group.semesters.push(semester);
+                return groups;
+              }, {})).sort((a: any, b: any) =>
+                sessionOrder(a.academicSessionId) - sessionOrder(b.academicSessionId) || a.programName.localeCompare(b.programName)
+              );
+              const formatDate = (value: string) => value ? new Date(value).toLocaleDateString() : '—';
               return (
-                <div className="space-y-2">
-                  {filteredList.map(semester => {
-                    const isSessionActive = sessions.find(s => s.id === semester.academicSessionId)?.status === 'active';
+                <div className="space-y-4">
+                  {programGroups.map((group: any) => {
+                    const isSessionActive = sessions.find(s => s.id === group.academicSessionId)?.status === 'active';
                     return (
-                      <div key={semester.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center border rounded-lg p-4">
-                        <div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div>
-                        <div className="text-sm">{semester.programName}</div>
-                        <div className="text-sm">
-                          <div>{displaySession(semester.academicSessionId)}</div>
-                          {isSessionActive && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-green-600 font-medium">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              Active Session
-                            </span>
-                          )}
+                      <div key={group.programId} className="rounded-lg border">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b bg-muted/30 px-4 py-3">
+                          <div>
+                            <p className="font-semibold">{group.programName}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{displaySession(group.academicSessionId)}</span>
+                              {isSessionActive && (
+                                <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                  Active Session
+                                </span>
+                              )}
+                              <span>· {group.semesters.length} {group.semesters.length === 1 ? 'Semester' : 'Semesters'}</span>
+                            </div>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => openCreateSemester(group.programId)}>
+                            <Plus className="w-3.5 h-3.5 mr-1" />Add Semester
+                          </Button>
                         </div>
-                        <Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge>
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button>
-                          <Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button>
-                          <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button>
+                        <div className="divide-y">
+                          {[...group.semesters].sort((a, b) => a.semesterNumber - b.semesterNumber).map(semester => (
+                            <div key={semester.id} className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto_auto] gap-3 items-center px-4 py-3">
+                              <div className="font-medium">{semester.semesterName}<div className="text-xs text-muted-foreground">No. {semester.semesterNumber}</div></div>
+                              <div className="text-sm text-muted-foreground">{formatDate(semester.startDate)} – {formatDate(semester.endDate)}</div>
+                              <Badge variant={semester.status === 'active' ? 'default' : 'outline'}>{semester.status}</Badge>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => { setSelectedProgramId(semester.programId); openSemesterModules(semester.id); }}>Open</Button>
+                                <Button size="sm" variant="outline" onClick={() => handleEditSemester(semester)}>Edit</Button>
+                                <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleDeleteSemester(semester)}>Delete</Button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
@@ -4175,7 +4441,7 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <Button type="button" variant="outline" size="sm" onClick={() => setActiveSection('programs')}>
                 <ChevronLeft className="w-4 h-4 mr-1" />Back to Programs
               </Button>
-              <Button type="button" onClick={openCreateSemester} disabled={!selectedProgramId}><Plus className="w-4 h-4 mr-2" />Create Semester</Button>
+              <Button type="button" onClick={() => openCreateSemester()} disabled={!selectedProgramId}><Plus className="w-4 h-4 mr-2" />Create Semester</Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -4782,10 +5048,24 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   type="number"
                   min="1"
                   value={semesterForm.semesterNumber}
-                  onChange={event => setSemesterForm({ ...semesterForm, semesterNumber: event.target.value })}
+                  onChange={event => {
+                    const semesterNumber = event.target.value;
+                    const period = editingSemesterId ? null : getSemesterPeriod(semesterForm.academicSessionId, Number(semesterNumber));
+                    setSemesterForm({
+                      ...semesterForm,
+                      semesterNumber,
+                      ...(period || {}),
+                      semesterName: !editingSemesterId && (!semesterForm.semesterName || /^Semester \d+$/.test(semesterForm.semesterName))
+                        ? (semesterNumber ? `Semester ${semesterNumber}` : '')
+                        : semesterForm.semesterName,
+                    });
+                  }}
                   placeholder="e.g. 1"
                   required
                 />
+                {semesterForm.academicSessionId && semesterForm.semesterNumber && !getSemesterPeriod(semesterForm.academicSessionId, Number(semesterForm.semesterNumber)) && (
+                  <p className="text-xs text-destructive">This semester number falls outside the session period.</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -4793,6 +5073,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 <Input
                   id="semesterStartDate"
                   type="date"
+                  min={getSessionBounds(semesterForm.academicSessionId)?.start}
+                  max={getSessionBounds(semesterForm.academicSessionId)?.end}
                   value={semesterForm.startDate}
                   onChange={event => setSemesterForm({ ...semesterForm, startDate: event.target.value })}
                   required
@@ -4804,7 +5086,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                 <Input
                   id="semesterEndDate"
                   type="date"
-                  min={semesterForm.startDate || undefined}
+                  min={semesterForm.startDate || getSessionBounds(semesterForm.academicSessionId)?.start}
+                  max={getSessionBounds(semesterForm.academicSessionId)?.end}
                   value={semesterForm.endDate}
                   onChange={event => setSemesterForm({ ...semesterForm, endDate: event.target.value })}
                   required
@@ -4935,21 +5218,37 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
           </DialogHeader>
           <form onSubmit={uploadModuleEbook} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="ebookPdf">{ebookEditingMaterialId ? 'Replacement PDF document' : 'PDF document'}</Label>
+              <Label htmlFor="ebookName">E-Book Name *</Label>
+              <Input
+                id="ebookName"
+                value={ebookName}
+                onChange={event => setEbookName(event.target.value)}
+                placeholder="e.g. Introduction to Programming - Unit 1"
+                maxLength={200}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ebookPdf">{ebookEditingMaterialId ? 'Replacement PDF document (optional)' : 'PDF document *'}</Label>
               <Input
                 key={ebookEditingMaterialId || 'new-ebook'}
                 id="ebookPdf"
                 type="file"
                 accept="application/pdf,.pdf"
-                onChange={event => setEbookFile(event.target.files?.[0] || null)}
-                required
+                onChange={event => {
+                  const file = event.target.files?.[0] || null;
+                  setEbookFile(file);
+                  // Suggest the file name when no name has been typed yet.
+                  if (file && !ebookName.trim()) setEbookName(file.name.replace(/\.pdf$/i, ''));
+                }}
+                required={!ebookEditingMaterialId}
               />
             </div>
             <div className="flex gap-2">
-              <Button type="submit" disabled={!ebookFile || ebookUploading}>
+              <Button type="submit" disabled={!ebookName.trim() || (!ebookEditingMaterialId && !ebookFile) || ebookUploading}>
                 {ebookUploading ? 'Saving...' : ebookEditingMaterialId ? 'Update E-Book' : 'Upload E-Book'}
               </Button>
-              {ebookEditingMaterialId && <Button type="button" variant="outline" onClick={() => { setEbookEditingMaterialId(null); setEbookFile(null); }}>Cancel Update</Button>}
+              {ebookEditingMaterialId && <Button type="button" variant="outline" onClick={() => { setEbookEditingMaterialId(null); setEbookFile(null); setEbookName(''); }}>Cancel Update</Button>}
               <Button type="button" variant="outline" onClick={() => setEbookModule(null)} disabled={ebookUploading}>Close</Button>
             </div>
           </form>
@@ -4968,13 +5267,18 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                   return (
                     <div key={material.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <a href={fileUrl} target="_blank" rel="noreferrer" className="truncate text-sm font-medium text-primary hover:underline">
-                          {material.fileName}
-                        </a>
+                        <div className="min-w-0">
+                          <a href={fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-primary hover:underline">
+                            {material.title || material.fileName}
+                          </a>
+                          {material.title && material.title !== material.fileName && (
+                            <p className="truncate text-xs text-muted-foreground">{material.fileName}</p>
+                          )}
+                        </div>
                         <Badge variant="outline">{ebookModule?.moduleName}</Badge>
                       </div>
                       <div className="flex shrink-0 gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => { setEbookEditingMaterialId(material.id); setEbookFile(null); }}>Update</Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setEbookEditingMaterialId(material.id); setEbookFile(null); setEbookName(material.title || material.fileName || ''); }}>Update</Button>
                         <Button type="button" size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => deleteModuleEbook(material)}>Delete</Button>
                       </div>
                     </div>
@@ -4993,18 +5297,46 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
           </DialogHeader>
           <form onSubmit={uploadModuleVideo} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="moduleVideo">Video file (10 MB maximum)</Label>
+              <Label htmlFor="moduleVideoName">Video Name *</Label>
               <Input
-                id="moduleVideo"
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
-                onChange={event => setModuleVideoFile(event.target.files?.[0] || null)}
+                id="moduleVideoName"
+                value={moduleVideoName}
+                onChange={event => setModuleVideoName(event.target.value)}
+                placeholder="e.g. Lecture 1 - Introduction"
+                maxLength={200}
                 required
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="moduleVideo">Upload Video File (10 MB maximum)</Label>
+              <Input
+                key={videoMaterials.length}
+                id="moduleVideo"
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
+                disabled={Boolean(moduleVideoUrl.trim())}
+                onChange={event => {
+                  const file = event.target.files?.[0] || null;
+                  setModuleVideoFile(file);
+                  if (file && !moduleVideoName.trim()) setModuleVideoName(file.name.replace(/\.[^.]+$/, ''));
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="moduleVideoUrl">Or Video Link</Label>
+              <Input
+                id="moduleVideoUrl"
+                type="url"
+                placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                value={moduleVideoUrl}
+                disabled={Boolean(moduleVideoFile)}
+                onChange={event => setModuleVideoUrl(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Paste a YouTube link or a direct link to a video file. Use either a file or a link, not both.</p>
+            </div>
             <div className="flex gap-2">
-              <Button type="submit" disabled={!moduleVideoFile || moduleVideoUploading}>
-                {moduleVideoUploading ? 'Uploading...' : 'Upload Video'}
+              <Button type="submit" disabled={!moduleVideoName.trim() || (!moduleVideoFile && !moduleVideoUrl.trim()) || moduleVideoUploading}>
+                {moduleVideoUploading ? 'Saving...' : moduleVideoUrl.trim() ? 'Save Video Link' : 'Upload Video'}
               </Button>
               <Button type="button" variant="outline" onClick={() => setVideoModule(null)} disabled={moduleVideoUploading}>Close</Button>
             </div>
@@ -5025,9 +5357,14 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
                     <div key={material.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
                       <div className="flex min-w-0 items-center gap-3">
                         <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <a href={fileUrl} target="_blank" rel="noreferrer" className="truncate text-sm font-medium text-primary hover:underline">
-                          {material.fileName}
-                        </a>
+                        <div className="min-w-0">
+                          <a href={fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-primary hover:underline">
+                            {material.title || material.fileName}
+                          </a>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {material.fileUrl.startsWith('http') && !material.fileUrl.includes('/uploads/') ? material.fileUrl : material.fileName}
+                          </p>
+                        </div>
                         <Badge variant="outline">{videoModule?.moduleName}</Badge>
                       </div>
                       <Button type="button" size="sm" variant="outline" className="shrink-0 text-destructive hover:text-destructive" onClick={() => deleteModuleVideo(material)}>Delete</Button>
@@ -5889,6 +6226,52 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               </>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!examResultsView} onOpenChange={open => { if (!open) setExamResultsView(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Results — {examResultsView?.examinationName}</DialogTitle>
+            <DialogDescription>Published marks imported from the Exam Portal. Students see these on their Result page.</DialogDescription>
+          </DialogHeader>
+          {examResultsView?.loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading results...</p>
+          ) : !examResultsView?.rows.length ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No results imported yet. Use Import Results once the Exam Portal has published them.</p>
+          ) : (
+            <div className="max-h-[60vh] overflow-auto rounded-lg border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left">
+                  <tr>
+                    <th className="p-3 font-medium">Enrollment No.</th>
+                    <th className="p-3 font-medium">Student</th>
+                    <th className="p-3 font-medium">Marks</th>
+                    <th className="p-3 font-medium">Result</th>
+                    <th className="p-3 font-medium">Evaluated On</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {examResultsView.rows.map(row => (
+                    <tr key={row.id} className="border-t">
+                      <td className="p-3 font-mono">{row.enrollmentNo}</td>
+                      <td className="p-3">{row.student?.name || '—'}</td>
+                      <td className="p-3">{row.obtainedMark} / {row.totalMark}{row.passMark != null && <span className="block text-xs text-muted-foreground">Pass mark: {row.passMark}</span>}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className={row.passed === true ? 'border-green-500/40 text-green-700' : row.passed === false ? 'border-red-500/40 text-red-700' : ''}>
+                          {row.passed === true ? 'Passed' : row.passed === false ? 'Failed' : 'Pass mark not set'}
+                        </Badge>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">{new Date(row.evaluatedAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExamResultsView(null)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

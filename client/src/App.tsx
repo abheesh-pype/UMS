@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
@@ -6,12 +6,12 @@ import { PrismaLayout } from '@/components/layout/PrismaLayout';
 import { DataGrid } from '@/components/ui/data-grid';
 import PublicRegisterPage from '@/pages/PublicRegisterPage';
 import PublicStudentApplicationPage from '@/pages/PublicStudentApplicationPage';
-import { getOpsNavItems } from '@/pages/ModernOpsDashboard';
-import { getHRNavItems } from '@/pages/ModernHRDashboard';
-import { getFinanceNavItems } from '@/pages/ModernFinanceDashboard';
-import { getSalesNavItems } from '@/pages/ModernSalesDashboard';
-import { getBranchManagerNavItems } from '@/pages/ModernBranchManagerDashboard';
-import { getUniversityNavItems } from '@/pages/ModernUniversityDashboard';
+import { getOpsNavItems } from '@/pages/navItems';
+import { getHRNavItems } from '@/pages/navItems';
+import { getFinanceNavItems } from '@/pages/navItems';
+import { getSalesNavItems } from '@/pages/navItems';
+import { getBranchManagerNavItems } from '@/pages/navItems';
+import { getUniversityNavItems } from '@/pages/navItems';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -100,6 +100,7 @@ const TABLE_TO_TAB: Record<string, string> = {
   center_wallet: 'wallet',
   enroll_student: 'enroll',
   center_enrollments: 'enrollments',
+  center_allocated_programs: 'allocated-programs',
   center_programs: 'programs',
   center_rereg_report: 'rereg-report',
   // Student portal
@@ -169,6 +170,17 @@ function App() {
   const [loading, setLoading] = useState(false);
   // For employee / staff: track their department type to show correct nav
   const [deptType, setDeptType] = useState<string | null>(() => getInitialDeptType(user));
+  // Whether this user may open the Exam Portal (admins always; staff only when an admin assigned them a portal role)
+  const [examPortalAccess, setExamPortalAccess] = useState<{ allowed: boolean; canManage: boolean }>({ allowed: false, canManage: false });
+
+  useEffect(() => {
+    if (!user?.id) { setExamPortalAccess({ allowed: false, canManage: false }); return; }
+    let active = true;
+    api.get('/operations/exam-portal/my-access')
+      .then(response => { if (active) setExamPortalAccess({ allowed: Boolean(response.data.data?.allowed), canManage: Boolean(response.data.data?.canManage) }); })
+      .catch(() => { if (active) setExamPortalAccess({ allowed: false, canManage: false }); });
+    return () => { active = false; };
+  }, [user?.id, user?.role]);
 
   // When user loads/changes, reset activeTable to the correct default
   useEffect(() => {
@@ -350,6 +362,7 @@ function App() {
         { id: 'center_enrollments', label: 'My Enrollments' },
         { id: 'students', label: 'Students' },
         { id: 'center_rereg_report', label: 'Re-Registration Report' },
+        { id: 'center_allocated_programs', label: 'Allocated Programs' },
         { id: 'center_programs', label: 'Programs & Materials' },
         { id: 'tasks', label: 'Tasks' },
       ];
@@ -376,15 +389,25 @@ function App() {
 
     if (user.role === 'academic_admin') {
       return [
-        { id: 'dashboard', label: 'Dashboard' },
+        { id: '__academic_dashboard_section', label: 'Dashboard', isSection: true },
+        { id: 'academic-overview', label: 'Overview' },
+
+        { id: '__academic_structure_section', label: 'Academic Structure', isSection: true },
         { id: 'academic-session', label: 'Academic Session' },
         { id: 'academic-programs', label: 'Programs' },
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
+        { id: 'dashboard', label: 'Add Study Notes' },
+
+        { id: '__academic_content_section', label: 'Study Content', isSection: true },
         { id: 'academic-ebooks', label: 'E-Book' },
         { id: 'academic-video-classes', label: 'Video Classes' },
+
+        { id: '__academic_schedule_section', label: 'Schedule', isSection: true },
         { id: 'academic-scheduled-classes', label: 'Schedule Class' },
         { id: 'academic-calendar', label: 'Academic Calendar' },
+
+        { id: '__academic_examination_section', label: 'Examination', isSection: true },
         {
           id: 'academic-examination',
           label: 'Examination',
@@ -396,6 +419,10 @@ function App() {
         },
         { id: 'academic-examination-registered', label: 'Registered Students' },
         { id: 'academic-examination-portal', label: 'Examination Portal' },
+
+        { id: '__academic_portal_section', label: 'My Portal', isSection: true },
+        { id: 'manager_hiring', label: 'Hiring Requests' },
+        { id: 'academic-settings', label: 'Settings' },
       ];
     }
 
@@ -410,13 +437,13 @@ function App() {
             case 'sales': return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
           }
         } else if (deptType === 'sales') {
-          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
+          return getSalesNavItems().filter(item => !['my_team', 'leave_approvals', 'manager_hiring', 'team_attendance'].includes(item.id));
         } else if (deptType === 'operations') {
-          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals', 'manager_hiring'].includes(item.id));
+          return getOpsNavItems(false).filter(item => !['my_team', 'leave_approvals', 'manager_hiring', 'team_attendance'].includes(item.id));
         } else if (deptType === 'hr') {
           return getHRNavItems();
         } else if (deptType === 'finance') {
-          return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals'].includes(item.id));
+          return getFinanceNavItems().filter(item => !['my_team', 'leave_approvals', 'team_attendance'].includes(item.id));
         }
       }
       return EMPLOYEE_NAV_ITEMS;
@@ -428,9 +455,16 @@ function App() {
   const tables = useMemo(() => {
     if (isRegisterPage) return [];
     const availableTables = getAvailableTables();
-    const rawTables = availableTables.some(item => typeof item !== 'string' && item.id === 'complaints')
+    const withComplaints = availableTables.some(item => typeof item !== 'string' && item.id === 'complaints')
       ? availableTables
       : [...availableTables, { id: 'complaints', label: 'Complaints' }];
+    // Exam Portal entries: everyone with access gets the sign-in button; admins can also assign portal roles.
+    // (The Academic Admin already manages this under its own Settings tab.)
+    const rawTables = [
+      ...withComplaints,
+      ...(examPortalAccess.allowed ? [{ id: 'exam-portal-access', label: 'Exam Portal' }] : []),
+      ...(examPortalAccess.canManage && user?.role !== 'academic_admin' ? [{ id: 'exam-portal-users', label: 'Exam Portal Users' }] : []),
+    ];
     const seen = new Set<string>();
     return rawTables.filter(item => {
       const id = typeof item === 'string' ? item : item.id;
@@ -439,7 +473,7 @@ function App() {
       seen.add(id);
       return true;
     });
-  }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType]);
+  }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType, examPortalAccess]);
 
   // Fetch data for active table — only when in table view mode
   useEffect(() => {
@@ -471,7 +505,7 @@ function App() {
 
     // For role-specific dashboards (ops, hr, finance, sales), the nav item IDs
     // are already the correct tab IDs — pass them directly
-    if (table === 'study-centre-customisation') {
+    if (table === 'study-centre-customisation' || table === 'exam-portal-access' || table === 'exam-portal-users') {
       setViewMode('dashboard');
       setActiveTable(table);
       setActiveTab(table);
@@ -928,11 +962,13 @@ function App() {
       schema="public"
     >
       {viewMode === 'dashboard' ? (
-        <Dashboard 
-          onNavigateToTable={handleTableChange} 
-          useDepartmentDashboard={shouldUseDepartmentDashboard}
-          initialTab={activeTab}
-        />
+        <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>}>
+          <Dashboard 
+            onNavigateToTable={handleTableChange} 
+            useDepartmentDashboard={shouldUseDepartmentDashboard}
+            initialTab={activeTab}
+          />
+        </Suspense>
       ) : (
         <DataGrid
           columns={getColumns()}

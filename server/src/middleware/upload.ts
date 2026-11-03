@@ -114,8 +114,18 @@ const videoFileFilter = (
   cb(new Error('Invalid video type. Upload an MP4, WebM, MOV, or M4V video.'));
 };
 
+// Module videos are stored in the database (see services/fileStorage.ts)
 export const uploadVideo = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: videoFileFilter,
+});
+
+// Study materials (E-Books, video classes) are stored in the database, so they are kept in memory
+export const uploadMaterial = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: parseInt(process.env.MAX_MATERIAL_FILE_SIZE || '26214400'), // 25MB default
+  },
+  fileFilter,
 });

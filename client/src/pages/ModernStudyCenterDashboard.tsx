@@ -9,6 +9,7 @@ import { StudentsPanel } from '@/components/panels/StudentsPanel';
 import { TasksPanel } from '@/components/panels/TasksPanel';
 import { InternalMarksPanel } from '@/components/panels/InternalMarksPanel';
 import { ProgramsPanel } from '@/components/panels/ProgramsPanel';
+import { CenterAllocatedProgramsPanel } from '@/components/panels/CenterAllocatedProgramsPanel';
 import { FinanceReregReportWrapper } from '@/components/panels/FinanceReregReportWrapper';
 import api from '@/lib/api';
 import { MyDocumentsPanel } from '@/components/panels/hr/MyDocumentsPanel';
@@ -53,6 +54,7 @@ export function ModernStudyCenterDashboard({ initialTab, onNavigate }: { initial
           {centerConfig?.allowInternalMarks && (
             <TabsTrigger value="marks">Internal Marks</TabsTrigger>
           )}
+          <TabsTrigger value="allocated-programs">Allocated Programs</TabsTrigger>
           <TabsTrigger value="programs">Programs & Materials</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
         </TabsList>
@@ -109,6 +111,7 @@ export function ModernStudyCenterDashboard({ initialTab, onNavigate }: { initial
         {centerConfig?.allowInternalMarks && (
           <TabsContent value="marks"><InternalMarksPanel /></TabsContent>
         )}
+        <TabsContent value="allocated-programs"><CenterAllocatedProgramsPanel /></TabsContent>
         <TabsContent value="programs"><ProgramsPanel /></TabsContent>
         <TabsContent value="tasks"><TasksPanel /></TabsContent>
       </Tabs>

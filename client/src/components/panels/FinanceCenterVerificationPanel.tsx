@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, DollarSign, FileText, ExternalLink, Key, Copy, ArrowLeft, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw, DollarSign, FileText, ExternalLink, Key, Copy, ArrowLeft, Eye, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { ProofPreview } from '@/components/ProofPreview';
 
 interface AuthFeeEntry { universityId: string; universityName: string; amount: number | null; }
 interface AssignableFinanceUser {
@@ -55,9 +56,6 @@ const normalizeProofUrl = (url?: string) => {
 const getPaymentProofUrl = (paymentProof?: PaymentProof | string | null) =>
   typeof paymentProof === 'string' ? paymentProof : paymentProof?.url || '';
 
-const isImageProofUrl = (url: string) =>
-  url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url);
-
 const hasPaymentProof = (paymentProof?: PaymentProof | string | null) => {
   const url = getPaymentProofUrl(paymentProof);
   return typeof url === 'string' && url.trim().length > 0;
@@ -75,11 +73,10 @@ export function FinanceCenterVerificationPanel() {
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [selectedCenter, setSelectedCenter] = useState<Center | null>(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
-  const [proofImageFailed, setProofImageFailed] = useState(false);
-  const [previewImageFailed, setPreviewImageFailed] = useState(false);
   const [replacementPaymentProof, setReplacementPaymentProof] = useState<File | null>(null);
   const [uploadingPaymentProof, setUploadingPaymentProof] = useState(false);
   const [proofRemarks, setProofRemarks] = useState('');
+  const [proofUpdateCenter, setProofUpdateCenter] = useState<Center | null>(null);
 
   const loadCenters = async () => {
     setLoading(true);
@@ -234,7 +231,8 @@ export function FinanceCenterVerificationPanel() {
 
   const handleReplacePaymentProof = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedCenter || !replacementPaymentProof) {
+    const targetCenter = proofUpdateCenter || selectedCenter;
+    if (!targetCenter || !replacementPaymentProof) {
       toast.error('Select a replacement payment proof file');
       return;
     }
@@ -244,15 +242,15 @@ export function FinanceCenterVerificationPanel() {
     formData.append('remarks', proofRemarks.trim());
     setUploadingPaymentProof(true);
     try {
-      const res = await api.put(`/finance/centers/${selectedCenter.id}/payment-proof`, formData, {
+      const res = await api.put(`/finance/centers/${targetCenter.id}/payment-proof`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       const updatedCenter = res.data.data as Center;
-      setSelectedCenter(updatedCenter);
-      setCenters(current => current.map(center => center.id === updatedCenter.id ? updatedCenter : center));
-      setProofImageFailed(false);
+      if (selectedCenter) setSelectedCenter({ ...selectedCenter, ...updatedCenter, authFees: selectedCenter.authFees });
+      setCenters(current => current.map(center => center.id === updatedCenter.id ? { ...center, ...updatedCenter, authFees: center.authFees } : center));
       setReplacementPaymentProof(null);
       setProofRemarks('');
+      setProofUpdateCenter(null);
       toast.success('Payment proof updated');
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to update payment proof');
@@ -265,21 +263,16 @@ export function FinanceCenterVerificationPanel() {
     fees.reduce((sum, f) => sum + (f.amount || 0), 0);
 
   const openReview = (center: Center) => {
-    setProofImageFailed(false);
-    setPreviewImageFailed(false);
     setSelectedCenter(center);
   };
 
   const closeReview = () => {
-    setProofImageFailed(false);
-    setPreviewImageFailed(false);
     setSelectedCenter(null);
   };
 
   if (selectedCenter) {
     const rawProofUrl = getPaymentProofUrl(selectedCenter.paymentProof);
     const proofUrl = normalizeProofUrl(rawProofUrl);
-    const isImageProof = !!proofUrl && isImageProofUrl(proofUrl);
     const proofDetails = typeof selectedCenter.paymentProof === 'string' ? null : selectedCenter.paymentProof;
     const fees = selectedCenter.authFees || [];
 
@@ -289,24 +282,7 @@ export function FinanceCenterVerificationPanel() {
           <Dialog open={!!proofPreviewUrl} onOpenChange={(open) => !open && setProofPreviewUrl(null)}>
             <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 bg-transparent shadow-none">
               <div className="rounded-2xl border bg-background p-2 shadow-2xl">
-                {isImageProofUrl(proofPreviewUrl) ? (
-                  previewImageFailed ? (
-                    <p role="alert" className="p-3 text-sm text-destructive">
-                      Unable to load the saved payment proof image. Check that the uploaded file is available on the server.
-                    </p>
-                  ) : (
-                    <img
-                      src={proofPreviewUrl}
-                      alt="Payment proof preview"
-                      className="max-h-[80vh] w-full rounded-xl object-contain bg-muted"
-                      onError={() => setPreviewImageFailed(true)}
-                    />
-                  )
-                ) : (
-                  <a href={proofPreviewUrl} target="_blank" rel="noreferrer" className="block p-6 text-center text-primary underline">
-                    Open uploaded payment proof
-                  </a>
-                )}
+                <ProofPreview url={proofPreviewUrl} alt="Payment proof preview" />
               </div>
             </DialogContent>
           </Dialog>
@@ -353,45 +329,7 @@ export function FinanceCenterVerificationPanel() {
               <h3 className="font-semibold">Uploaded Payment Proof</h3>
               {proofUrl ? (
                 <>
-                  {isImageProof && (
-                    proofImageFailed ? (
-                      <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                        Unable to load the saved payment proof image. Check that the uploaded file is available on the server.
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewImageFailed(false);
-                          setProofPreviewUrl(proofUrl);
-                        }}
-                        className="block w-full text-left"
-                      >
-                        <img
-                          src={proofUrl}
-                          alt={`Payment proof for ${selectedCenter.name}`}
-                          className="w-full max-h-80 object-contain rounded-lg border bg-muted"
-                          onError={() => setProofImageFailed(true)}
-                        />
-                      </button>
-                    )
-                  )}
-                  {isImageProof ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPreviewImageFailed(false);
-                        setProofPreviewUrl(proofUrl);
-                      }}
-                      className="text-sm text-primary hover:underline inline-flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4" />Open uploaded proof<ExternalLink className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <a href={proofUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline inline-flex items-center gap-2">
-                      <FileText className="w-4 h-4" />Open uploaded proof<ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
+                  <ProofPreview url={proofUrl} alt={`Payment proof for ${selectedCenter.name}`} className="max-h-80 h-80" />
                   {proofDetails?.uploadedAt && (
                     <p className="text-xs text-muted-foreground">Uploaded: {new Date(proofDetails.uploadedAt).toLocaleString()}</p>
                   )}
@@ -473,24 +411,7 @@ export function FinanceCenterVerificationPanel() {
         <Dialog open onOpenChange={open => !open && setProofPreviewUrl(null)}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden border-0 bg-transparent shadow-none">
             <div className="rounded-2xl border bg-background p-2 shadow-2xl">
-              {isImageProofUrl(proofPreviewUrl) ? (
-                previewImageFailed ? (
-                  <p role="alert" className="p-3 text-sm text-destructive">
-                    Unable to load the saved payment proof image. Check that the uploaded file is available on the server.
-                  </p>
-                ) : (
-                  <img
-                    src={proofPreviewUrl}
-                    alt="Payment proof preview"
-                    className="max-h-[80vh] w-full rounded-xl object-contain bg-muted"
-                    onError={() => setPreviewImageFailed(true)}
-                  />
-                )
-              ) : (
-                <a href={proofPreviewUrl} target="_blank" rel="noreferrer" className="block p-6 text-center text-primary underline">
-                  Open uploaded payment proof
-                </a>
-              )}
+              <ProofPreview url={proofPreviewUrl} alt="Payment proof preview" />
             </div>
           </DialogContent>
         </Dialog>
@@ -561,7 +482,6 @@ export function FinanceCenterVerificationPanel() {
                         <button
                           type="button"
                           onClick={() => {
-                            setPreviewImageFailed(false);
                             setProofPreviewUrl(normalizeProofUrl(getPaymentProofUrl(c.paymentProof)));
                           }}
                           className="text-xs text-primary flex items-center gap-1 hover:underline"
@@ -602,6 +522,11 @@ export function FinanceCenterVerificationPanel() {
                         </SelectContent>
                       </Select>
                     )}
+                    {!['finance_rejected', 'rejected_from_finance'].includes(c.status) && (
+                      <Button size="sm" variant="outline" onClick={() => { setProofUpdateCenter(c); setReplacementPaymentProof(null); setProofRemarks(''); }}>
+                        <Upload className="w-4 h-4 mr-1" />Update
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={() => { setDialog({ center: c, action: 'reject' }); setRemarks(''); }}>
                       <XCircle className="w-4 h-4 mr-1" />Reject
@@ -616,6 +541,59 @@ export function FinanceCenterVerificationPanel() {
           ))}
         </div>
       )}
+
+      {/* Update payment proof dialog */}
+      <Dialog open={!!proofUpdateCenter} onOpenChange={open => { if (!open && !uploadingPaymentProof) { setProofUpdateCenter(null); setReplacementPaymentProof(null); setProofRemarks(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Payment Proof — {proofUpdateCenter?.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleReplacePaymentProof} className="space-y-3">
+            {proofUpdateCenter && hasPaymentProof(proofUpdateCenter.paymentProof) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setProofPreviewUrl(normalizeProofUrl(getPaymentProofUrl(proofUpdateCenter.paymentProof)));
+                }}
+                className="text-sm text-primary flex items-center gap-1 hover:underline"
+              >
+                View current payment proof <ExternalLink className="w-3 h-3" />
+              </button>
+            ) : (
+              <p className="text-sm text-muted-foreground">No payment proof uploaded yet.</p>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="finance-update-payment-proof">New payment proof *</Label>
+              <Input
+                id="finance-update-payment-proof"
+                type="file"
+                accept="image/*,.pdf"
+                onChange={event => setReplacementPaymentProof(event.target.files?.[0] || null)}
+              />
+              {replacementPaymentProof && (
+                <p className="text-xs text-muted-foreground">{replacementPaymentProof.name}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="finance-update-proof-remarks">Remarks (optional)</Label>
+              <Input
+                id="finance-update-proof-remarks"
+                value={proofRemarks}
+                onChange={event => setProofRemarks(event.target.value)}
+                placeholder="Transaction ID, bank name, etc."
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={uploadingPaymentProof} onClick={() => { setProofUpdateCenter(null); setReplacementPaymentProof(null); setProofRemarks(''); }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!replacementPaymentProof || uploadingPaymentProof}>
+                {uploadingPaymentProof ? 'Uploading...' : 'Save Payment Proof'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Approve / Reject dialog */}
       <Dialog open={!!dialog} onOpenChange={() => { setDialog(null); setRemarks(''); }}>

@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { parseInitialPaymentProof } from '../utils/initialPayment.js';
 
 export const getPendingReviews = asyncHandler(async (req: AuthRequest, res: Response) => {
   const isHistory = req.query.history === 'true';
@@ -172,6 +173,15 @@ export const updateDeptEnrollment = asyncHandler(async (req: AuthRequest, res: R
     data.educationalDetails = typeof req.body.educationalDetails === 'string'
       ? JSON.parse(req.body.educationalDetails)
       : req.body.educationalDetails;
+  }
+  // Operations can replace a wrong payment proof submitted with the enrollment form
+  if (req.body.initialPaymentProof !== undefined) {
+    const parsedProof = parseInitialPaymentProof(req.body.initialPaymentProof);
+    if ('error' in parsedProof) {
+      res.status(400).json({ success: false, message: parsedProof.error });
+      return;
+    }
+    data.initialPaymentProof = parsedProof.proof;
   }
 
   const now = new Date();
