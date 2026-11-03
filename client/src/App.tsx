@@ -155,6 +155,17 @@ function App() {
   const [loading, setLoading] = useState(false);
   // For employee / staff: track their department type to show correct nav
   const [deptType, setDeptType] = useState<string | null>(() => getInitialDeptType(user));
+  // Whether this user may open the Exam Portal (admins always; staff only when an admin assigned them a portal role)
+  const [examPortalAccess, setExamPortalAccess] = useState<{ allowed: boolean; canManage: boolean }>({ allowed: false, canManage: false });
+
+  useEffect(() => {
+    if (!user?.id) { setExamPortalAccess({ allowed: false, canManage: false }); return; }
+    let active = true;
+    api.get('/operations/exam-portal/my-access')
+      .then(response => { if (active) setExamPortalAccess({ allowed: Boolean(response.data.data?.allowed), canManage: Boolean(response.data.data?.canManage) }); })
+      .catch(() => { if (active) setExamPortalAccess({ allowed: false, canManage: false }); });
+    return () => { active = false; };
+  }, [user?.id, user?.role]);
 
   // When user loads/changes, go back to the dashboard view (the default link is set further down)
   useEffect(() => {
@@ -427,9 +438,16 @@ function App() {
   const tables = useMemo(() => {
     if (isRegisterPage) return [];
     const availableTables = getAvailableTables();
-    const rawTables = availableTables.some(item => typeof item !== 'string' && item.id === 'complaints')
+    const withComplaints = availableTables.some(item => typeof item !== 'string' && item.id === 'complaints')
       ? availableTables
       : [...availableTables, { id: 'complaints', label: 'Complaints' }];
+    // Exam Portal entries: everyone with access gets the sign-in button; admins can also assign portal roles.
+    // (The Academic Admin already manages this under its own Settings tab.)
+    const rawTables = [
+      ...withComplaints,
+      ...(examPortalAccess.allowed ? [{ id: 'exam-portal-access', label: 'Exam Portal' }] : []),
+      ...(examPortalAccess.canManage && user?.role !== 'academic_admin' ? [{ id: 'exam-portal-users', label: 'Exam Portal Users' }] : []),
+    ];
     const seen = new Set<string>();
     return rawTables.filter(item => {
       const id = typeof item === 'string' ? item : item.id;
@@ -438,7 +456,7 @@ function App() {
       seen.add(id);
       return true;
     });
-  }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType]);
+  }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType, examPortalAccess]);
 
   // Every panel opens on its own Overview / Dashboard link: the first such link in its menu
   const homeLink = tables
@@ -482,7 +500,7 @@ function App() {
 
     // For role-specific dashboards (ops, hr, finance, sales), the nav item IDs
     // are already the correct tab IDs — pass them directly
-    if (table === 'study-centre-customisation') {
+    if (table === 'study-centre-customisation' || table === 'exam-portal-access' || table === 'exam-portal-users') {
       setViewMode('dashboard');
       setActiveTable(table);
       setActiveTab(table);

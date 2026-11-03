@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fetchAssessmentResults, publishAssessment, requestStaffLaunch, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
+  fetchAssessmentResults, publishAssessment, requestStaffLaunch, listPortalRoles, revokeStaffAccess, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
 } from './examPortalSync.js';
 
 const env = {
@@ -222,6 +222,32 @@ test('staff launch: derived URL, identity sent, trusted URL returned; conflicts 
   assert.equal(await code(requestStaffLaunch(config, { id: 'u1', name: 'A', email: 'a@x.edu' }, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
   clearTokenCache();
   assert.equal(await code(requestStaffLaunch(config, { id: 'u1', name: 'A', email: 'a@x.edu' }, { fetch: portal(() => json({ ok: true, launch_url: 'https://evil.example/x' })).fn })), 'unconfirmed');
+});
+
+test('staff launch with a portal role: role sent, unknown role surfaced; roles listed from the portal', async () => {
+  const ok = portal(() => json({ ok: true, launch_url: 'https://portal.example.edu/api/auth/launch?ticket=abc' }));
+  await requestStaffLaunch(config, { id: 'u2', name: 'Eve', email: 'e@x.edu', portalRole: 'Evaluator' }, { fetch: ok.fn });
+  assert.equal(JSON.parse(String(ok.calls[1].init.body)).role, 'Evaluator');
+  clearTokenCache();
+  assert.equal(await code(requestStaffLaunch(config, { id: 'u2', name: 'Eve', email: 'e@x.edu', portalRole: 'Gone' }, { fetch: portal(() => json({ error: 'unknown_role' }, 400)).fn })), 'unknown_role');
+  clearTokenCache();
+  const roles = portal(() => json({ ok: true, roles: [{ name: 'Evaluator', administrator_access: false }, { name: 'UMS Administrator', administrator_access: true }, { nope: 1 }] }));
+  assert.deepEqual(await listPortalRoles(config, { fetch: roles.fn }), [{ name: 'Evaluator', administratorAccess: false }, { name: 'UMS Administrator', administratorAccess: true }]);
+  assert.equal(roles.calls[1].url, 'https://portal.example.edu/api/integrations/v1/roles?tenant_id=institution-001');
+  assert.equal(roles.calls[1].init.method, 'GET');
+  clearTokenCache();
+  assert.equal(await code(listPortalRoles(config, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
+});
+
+test('revoke staff access: identity sent, confirmation required', async () => {
+  const ok = portal(() => json({ ok: true, revoked: true }));
+  assert.equal(await revokeStaffAccess(config, 'u9', { fetch: ok.fn }), true);
+  assert.equal(ok.calls[1].url, 'https://portal.example.edu/api/integrations/v1/staff-revocations');
+  assert.deepEqual(JSON.parse(String(ok.calls[1].init.body)), { tenant_id: 'institution-001', external_user_id: 'ums-user:u9' });
+  clearTokenCache();
+  assert.equal(await code(revokeStaffAccess(config, 'u9', { fetch: portal(() => json({}, 200)).fn })), 'unconfirmed');
+  clearTokenCache();
+  assert.equal(await code(revokeStaffAccess(config, 'u9', { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
 });
 
 const assessment = { externalAssessmentId: 'exam-1', name: 'Midterm', examination: 'Semester 1', startDate: new Date('2026-11-01T04:00:00Z'), endDate: new Date('2026-11-01T06:30:00Z'), totalTimeMinutes: 120, active: true };

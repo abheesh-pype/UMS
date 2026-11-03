@@ -98,6 +98,7 @@ import {
   getExaminationAdmins,
   assignExaminationAdmin,
   removeExaminationAdmin,
+  getMyExamPortalAccess,
 } from '../controllers/examinationAdminController.js';
 
 const router = express.Router();
@@ -108,14 +109,16 @@ router.get('/universities/:universityId/exam-portal-integration', authorize('uni
 router.put('/universities/:universityId/exam-portal-integration', authorize('university_admin', 'org_admin', 'superadmin'), saveExamPortalIntegration);
 router.get('/universities/:universityId/exam-portal-sync', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalSyncStatus);
 router.post('/universities/:universityId/exam-portal-sync/students', authorize('university_admin', 'org_admin', 'superadmin'), syncExamPortalStudent);
-router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin'), openExamPortalAsStaff);
+// Staff/employees may call these too; the handlers check that an admin assigned them a portal role.
+router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), openExamPortalAsStaff);
+router.get('/exam-portal/my-access', getMyExamPortalAccess);
 router.post('/examinations/:examinationId/exam-portal', authorize('academic_admin', 'org_admin', 'superadmin'), publishExaminationToExamPortal);
 router.post('/examinations/:examinationId/exam-portal/results', authorize('academic_admin', 'org_admin', 'superadmin'), importExaminationResultsFromExamPortal);
 router.get('/examinations/:examinationId/results', authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationResults);
 router.route('/examination-admins')
-  .get(authorize('academic_admin'), getExaminationAdmins)
-  .post(authorize('academic_admin'), assignExaminationAdmin);
-router.delete('/examination-admins/:id', authorize('academic_admin'), removeExaminationAdmin);
+  .get(authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationAdmins)
+  .post(authorize('academic_admin', 'org_admin', 'superadmin'), assignExaminationAdmin);
+router.delete('/examination-admins/:id', authorize('academic_admin', 'org_admin', 'superadmin'), removeExaminationAdmin);
 router.get('/universities/:universityId/students', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityStudents);
 router.get('/universities/:universityId/metrics', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityMetrics);
 
