@@ -21,6 +21,7 @@ const ModernStudentDashboard = lazy(() => import('./ModernStudentDashboard').the
 const AcademicAdminPanel = lazy(() => import('./AcademicAdminPanel').then(module => ({ default: module.AcademicAdminPanel })));
 const AcademicOverviewPanel = lazy(() => import('@/components/panels/AcademicOverviewPanel').then(module => ({ default: module.AcademicOverviewPanel })));
 const AssignExaminationAdminPanel = lazy(() => import('@/components/panels/AssignExaminationAdminPanel').then(module => ({ default: module.AssignExaminationAdminPanel })));
+const ExamPortalAccessPanel = lazy(() => import('@/components/panels/ExamPortalAccessPanel').then(module => ({ default: module.ExamPortalAccessPanel })));
 const ModernUniversityDashboard = lazy(() => import('./ModernUniversityDashboard').then(module => ({ default: module.ModernUniversityDashboard })));
 
 interface DashboardProps {
@@ -122,8 +123,14 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
     return <AcademicOverviewPanel onNavigate={tab => onNavigateToTable?.(tab)} />;
   }
 
-  if (initialTab === 'academic-settings' && user?.role === 'academic_admin') {
+  if ((initialTab === 'academic-settings' && user?.role === 'academic_admin')
+    || (initialTab === 'exam-portal-users' && ['academic_admin', 'org_admin', 'superadmin'].includes(user?.role || ''))) {
     return <AssignExaminationAdminPanel />;
+  }
+
+  // Any user who may sign in to the Exam Portal (admins, or staff an admin gave a portal role)
+  if (initialTab === 'exam-portal-access') {
+    return <ExamPortalAccessPanel />;
   }
 
   // Admin panels without their own Hiring Requests tab

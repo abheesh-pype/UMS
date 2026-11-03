@@ -569,6 +569,8 @@ model ExaminationAdminAssignment {
   organizationId String
   userId         String       @unique
   assignedById   String?
+  /// Exam Portal role the user signs in with (null = the portal's administrator role)
+  portalRole     String?
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation("ExaminationAdminUser", fields: [userId], references: [id], onDelete: Cascade)

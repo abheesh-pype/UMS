@@ -4,6 +4,7 @@ import { Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { resolveExamPortalAccess } from './examinationAdminController.js';
 import {
   buildStudentPayload, fetchAssessmentResults, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, SyncError, syncStudent,
 } from '../services/examPortalSync.js';
@@ -152,8 +153,14 @@ const syncErrorStatus = (error: SyncError) => (error.statusCode === 504 ? 504 : 
 export const openExamPortalAsStaff = asyncHandler(async (req: AuthRequest, res: Response) => {
   const config = loadSyncConfig();
   if (!config) return notConfigured(res);
+  // Admins sign in with the portal's administrator role; other staff only if an admin assigned them a portal role.
+  const access = await resolveExamPortalAccess(req.user);
+  if (!access.allowed) {
+    res.status(403).json({ success: false, message: 'You have not been given access to the Exam Portal' });
+    return;
+  }
   try {
-    const launchUrl = await requestStaffLaunch(config, { id: req.user.id, name: req.user.name, email: req.user.email });
+    const launchUrl = await requestStaffLaunch(config, { id: req.user.id, name: req.user.name, email: req.user.email, portalRole: access.portalRole });
     console.info('[exam-portal-staff] launch', { by: req.user.id });
     res.json({ success: true, data: { launchUrl } });
   } catch (error) {

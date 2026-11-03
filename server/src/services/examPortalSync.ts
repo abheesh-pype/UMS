@@ -23,6 +23,7 @@ export interface SyncConfig {
   launchTicketUrl: string;
   staffLaunchTicketUrl: string;
   assessmentsUrl: string;
+  rolesUrl: string;
   resultsUrl: string;
 }
 
@@ -66,6 +67,7 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
       || env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/launch-tickets'),
     staffLaunchTicketUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-launch-tickets'),
     assessmentsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessments'),
+    rolesUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/roles'),
     resultsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/results'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
@@ -309,20 +311,45 @@ export const requestLaunchTicket = async (config: SyncConfig, externalStudentId:
 export const portalStaffId = (userId: string) => `ums-user:${userId}`;
 
 /** Single-use sign-in link for a UMS admin. The portal creates/updates an account for them with its "UMS Administrator" role. */
-export const requestStaffLaunch = async (config: SyncConfig, user: { id: string; name: string; email: string }, deps: Deps = {}) => {
+export const requestStaffLaunch = async (config: SyncConfig, user: { id: string; name: string; email: string; portalRole?: string | null }, deps: Deps = {}) => {
   const response = await portalRequest(config, 'POST', config.staffLaunchTicketUrl,
-    { tenant_id: config.tenantId, external_user_id: portalStaffId(user.id), name: user.name, email: user.email }, deps);
+    {
+      tenant_id: config.tenantId, external_user_id: portalStaffId(user.id), name: user.name, email: user.email,
+      // Omitted for admins, who get the portal's administrator role; set for users assigned a specific portal role.
+      ...(user.portalRole ? { role: user.portalRole } : {}),
+    }, deps);
   if (response.status === 401 || response.status === 403) {
     throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
   }
   if (response.status === 409) {
     throw new SyncError(409, 'An Exam Portal account with your email already exists. Ask the portal administrator to resolve it.', 'account_conflict');
   }
-  if (response.status === 400) throw new SyncError(502, 'The Exam Portal rejected the account details', 'rejected');
+  if (response.status === 400) {
+    const detail = await safeJson(response);
+    if (detail?.error === 'unknown_role') throw new SyncError(409, 'That role no longer exists in the Exam Portal. Ask your administrator to reassign it.', 'unknown_role');
+    throw new SyncError(502, 'The Exam Portal rejected the account details', 'rejected');
+  }
   if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
   const body = await safeJson(response);
   if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
   return trustedPortalUrl(config, body.launch_url);
+};
+
+export interface PortalRole { name: string; administratorAccess: boolean }
+
+/** Roles that exist in the Exam Portal, so UMS admins can only assign real ones. */
+export const listPortalRoles = async (config: SyncConfig, deps: Deps = {}): Promise<PortalRole[]> => {
+  const url = `${config.rolesUrl}?tenant_id=${encodeURIComponent(config.tenantId)}`;
+  const response = await portalRequest(config, 'GET', url, undefined, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true || !Array.isArray(body.roles)) throw new SyncError(502, 'The Exam Portal returned an invalid role list', 'unconfirmed');
+  return body.roles
+    .filter((role: any) => typeof role?.name === 'string' && role.name.trim())
+    .map((role: any) => ({ name: role.name.trim(), administratorAccess: role.administrator_access === true }));
 };
 
 // ---- Assessment (examination) publishing ----
