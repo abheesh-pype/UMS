@@ -3,20 +3,17 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import prisma from '../lib/prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getSalesTeamUserIds } from './salesEnrollmentController.js';
 import { loadSyncConfig, listPortalRoles, SyncError } from '../services/examPortalSync.js';
 
 const STAFF_SELECT = { id: true, userId: true, name: true, email: true, designation: true, designationRef: { select: { title: true } } };
 
-// Org-wide admins can pick any active staff member of the organization; an Academic Admin only their own reports.
-const ORG_WIDE_ROLES = ['org_admin', 'superadmin'];
-
-const assignableStaffWhere = async (admin: any, organizationId: string) => {
-  const base = { organizationId, role: { in: ['employee', 'staff'] }, OR: [{ status: 'active' }, { status: null }] };
-  if (ORG_WIDE_ROLES.includes(admin.role)) return { ...base, id: { not: admin.id } };
-  const teamIds = [...await getSalesTeamUserIds(admin.id, organizationId)].filter(id => id !== admin.id);
-  return { ...base, id: { in: teamIds } };
-};
+// Any active staff member or employee of the organization can be given Exam Portal access, whoever they report to.
+const assignableStaffWhere = async (admin: any, organizationId: string) => ({
+  organizationId,
+  id: { not: admin.id },
+  role: { in: ['employee', 'staff'] },
+  OR: [{ status: 'active' }, { status: null }],
+});
 
 // Roles that exist in the Exam Portal right now. An unreachable portal is reported, not hidden.
 const fetchPortalRoles = async () => {
@@ -57,7 +54,7 @@ export const assignExaminationAdmin = asyncHandler(async (req: AuthRequest, res:
     select: { id: true },
   });
   if (!staffMember) {
-    return res.status(400).json({ success: false, message: 'Only active staff you manage can be assigned' });
+    return res.status(400).json({ success: false, message: 'Only active staff or employees of your organization can be assigned' });
   }
   // The role must be one the Exam Portal really has; keep its exact spelling.
   const { roles, error } = await fetchPortalRoles();

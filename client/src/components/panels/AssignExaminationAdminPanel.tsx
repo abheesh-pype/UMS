@@ -129,7 +129,7 @@ export function AssignExaminationAdminPanel() {
           </Select>
           {!loading && staff.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              Only active staff and employees you manage are listed, and there are none yet.
+              No active staff or employees were found in your organization.
             </p>
           )}
         </div>
