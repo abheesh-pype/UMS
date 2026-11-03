@@ -24,6 +24,7 @@ export interface SyncConfig {
   staffLaunchTicketUrl: string;
   assessmentsUrl: string;
   rolesUrl: string;
+  staffRevocationUrl: string;
   resultsUrl: string;
 }
 
@@ -68,6 +69,7 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
     staffLaunchTicketUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-launch-tickets'),
     assessmentsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessments'),
     rolesUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/roles'),
+    staffRevocationUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-revocations'),
     resultsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/results'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
@@ -333,6 +335,19 @@ export const requestStaffLaunch = async (config: SyncConfig, user: { id: string;
   const body = await safeJson(response);
   if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
   return trustedPortalUrl(config, body.launch_url);
+};
+
+/** Ends a staff member's Exam Portal access now: their account is deactivated and open sessions are closed. */
+export const revokeStaffAccess = async (config: SyncConfig, userId: string, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'POST', config.staffRevocationUrl,
+    { tenant_id: config.tenantId, external_user_id: portalStaffId(userId) }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal did not confirm the access change', 'unconfirmed');
+  return body.revoked === true;
 };
 
 export interface PortalRole { name: string; administratorAccess: boolean }

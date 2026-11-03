@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fetchAssessmentResults, publishAssessment, requestStaffLaunch, listPortalRoles, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
+  fetchAssessmentResults, publishAssessment, requestStaffLaunch, listPortalRoles, revokeStaffAccess, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
 } from './examPortalSync.js';
 
 const env = {
@@ -237,6 +237,17 @@ test('staff launch with a portal role: role sent, unknown role surfaced; roles l
   assert.equal(roles.calls[1].init.method, 'GET');
   clearTokenCache();
   assert.equal(await code(listPortalRoles(config, { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
+});
+
+test('revoke staff access: identity sent, confirmation required', async () => {
+  const ok = portal(() => json({ ok: true, revoked: true }));
+  assert.equal(await revokeStaffAccess(config, 'u9', { fetch: ok.fn }), true);
+  assert.equal(ok.calls[1].url, 'https://portal.example.edu/api/integrations/v1/staff-revocations');
+  assert.deepEqual(JSON.parse(String(ok.calls[1].init.body)), { tenant_id: 'institution-001', external_user_id: 'ums-user:u9' });
+  clearTokenCache();
+  assert.equal(await code(revokeStaffAccess(config, 'u9', { fetch: portal(() => json({}, 200)).fn })), 'unconfirmed');
+  clearTokenCache();
+  assert.equal(await code(revokeStaffAccess(config, 'u9', { fetch: portal(() => json({}, 403)).fn })), 'unauthorized');
 });
 
 const assessment = { externalAssessmentId: 'exam-1', name: 'Midterm', examination: 'Semester 1', startDate: new Date('2026-11-01T04:00:00Z'), endDate: new Date('2026-11-01T06:30:00Z'), totalTimeMinutes: 120, active: true };

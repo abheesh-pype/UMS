@@ -65,8 +65,9 @@ export function AssignExaminationAdminPanel() {
     if (!portalRole) { toast.error('Choose a portal role first'); return; }
     setSaving(true);
     try {
-      await api.post('/operations/examination-admins', { userId, portalRole });
+      const response = await api.post('/operations/examination-admins', { userId, portalRole });
       toast.success(`Exam Portal access saved as ${portalRole}`);
+      if (response.data.warning) toast.warning(response.data.warning);
       await fetchData();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to save Exam Portal access');
@@ -78,8 +79,9 @@ export function AssignExaminationAdminPanel() {
   const handleRemove = async (assignmentId: string) => {
     setSaving(true);
     try {
-      await api.delete(`/operations/examination-admins/${assignmentId}`);
+      const response = await api.delete(`/operations/examination-admins/${assignmentId}`);
       toast.success('Exam Portal access removed');
+      if (response.data.warning) toast.warning(response.data.warning);
       await fetchData();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to remove Exam Portal access');
