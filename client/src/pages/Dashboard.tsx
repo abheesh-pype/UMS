@@ -20,6 +20,7 @@ const ModernBranchManagerDashboard = lazy(() => import('./ModernBranchManagerDas
 const ModernStudentDashboard = lazy(() => import('./ModernStudentDashboard').then(module => ({ default: module.ModernStudentDashboard })));
 const AcademicAdminPanel = lazy(() => import('./AcademicAdminPanel').then(module => ({ default: module.AcademicAdminPanel })));
 const AcademicOverviewPanel = lazy(() => import('@/components/panels/AcademicOverviewPanel').then(module => ({ default: module.AcademicOverviewPanel })));
+const AssignExaminationAdminPanel = lazy(() => import('@/components/panels/AssignExaminationAdminPanel').then(module => ({ default: module.AssignExaminationAdminPanel })));
 const ModernUniversityDashboard = lazy(() => import('./ModernUniversityDashboard').then(module => ({ default: module.ModernUniversityDashboard })));
 
 interface DashboardProps {
@@ -119,6 +120,10 @@ export function Dashboard({ useDepartmentDashboard, initialTab, onNavigateToTabl
 
   if (initialTab === 'academic-overview' && user?.role === 'academic_admin') {
     return <AcademicOverviewPanel onNavigate={tab => onNavigateToTable?.(tab)} />;
+  }
+
+  if (initialTab === 'academic-settings' && user?.role === 'academic_admin') {
+    return <AssignExaminationAdminPanel />;
   }
 
   // Admin panels without their own Hiring Requests tab

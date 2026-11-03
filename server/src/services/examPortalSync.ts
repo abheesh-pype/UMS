@@ -304,11 +304,11 @@ export const requestLaunchTicket = async (config: SyncConfig, externalStudentId:
   return trustedPortalUrl(config, body.launch_url);
 };
 
-// ---- Staff single sign-on (Academic Admin -> Exam Portal question/assessment authoring) ----
+// ---- Staff single sign-on (Academic Admin -> Exam Portal with administrator access) ----
 
 export const portalStaffId = (userId: string) => `ums-user:${userId}`;
 
-/** Single-use sign-in link for a UMS staff member. The portal creates/updates a restricted account for them. */
+/** Single-use sign-in link for a UMS admin. The portal creates/updates an account for them with its "UMS Administrator" role. */
 export const requestStaffLaunch = async (config: SyncConfig, user: { id: string; name: string; email: string }, deps: Deps = {}) => {
   const response = await portalRequest(config, 'POST', config.staffLaunchTicketUrl,
     { tenant_id: config.tenantId, external_user_id: portalStaffId(user.id), name: user.name, email: user.email }, deps);

@@ -94,6 +94,11 @@ import {
   updateAcademicCalendarEvent,
   deleteAcademicCalendarEvent,
 } from '../controllers/academicCalendarController.js';
+import {
+  getExaminationAdmins,
+  assignExaminationAdmin,
+  removeExaminationAdmin,
+} from '../controllers/examinationAdminController.js';
 
 const router = express.Router();
 
@@ -107,6 +112,10 @@ router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin'
 router.post('/examinations/:examinationId/exam-portal', authorize('academic_admin', 'org_admin', 'superadmin'), publishExaminationToExamPortal);
 router.post('/examinations/:examinationId/exam-portal/results', authorize('academic_admin', 'org_admin', 'superadmin'), importExaminationResultsFromExamPortal);
 router.get('/examinations/:examinationId/results', authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationResults);
+router.route('/examination-admins')
+  .get(authorize('academic_admin'), getExaminationAdmins)
+  .post(authorize('academic_admin'), assignExaminationAdmin);
+router.delete('/examination-admins/:id', authorize('academic_admin'), removeExaminationAdmin);
 router.get('/universities/:universityId/students', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityStudents);
 router.get('/universities/:universityId/metrics', authorize('university_admin', 'org_admin', 'superadmin', 'ops_admin', 'ops_sub_admin'), getUniversityMetrics);
 

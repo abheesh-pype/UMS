@@ -411,6 +411,7 @@ function App() {
 
         { id: '__academic_portal_section', label: 'My Portal', isSection: true },
         { id: 'manager_hiring', label: 'Hiring Requests' },
+        { id: 'academic-settings', label: 'Settings' },
       ];
     }
 

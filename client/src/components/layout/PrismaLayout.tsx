@@ -212,6 +212,7 @@ export function PrismaLayout({
       case 'polls':
       case 'my_team': return <Users className={iconClass} />;
       case 'salary-config':
+      case 'academic-settings':
       case 'att-settings': return <Settings className={iconClass} />;
       case 'org-chart': return <GitBranch className={iconClass} />;
       case 'invite_links': return <TrendingUp className={iconClass} />;

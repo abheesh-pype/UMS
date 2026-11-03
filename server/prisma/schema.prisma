@@ -67,6 +67,7 @@ model Organization {
   examinations          Examination[]
   examinationRegistrations ExaminationRegistration[]
   examinationResults       ExaminationResult[]
+  examinationAdminAssignments ExaminationAdminAssignment[]
   programMaterials      ProgramMaterial[]
   scheduledClasses     ScheduledClass[]
   academicCalendarEvents AcademicCalendar[]
@@ -180,6 +181,8 @@ model User {
   approvedSessions              AdmissionSession[]     @relation("SessionApprovedBy")
   createdSessions               AdmissionSession[]     @relation("SessionCreatedBy")
   createdScheduledClasses      ScheduledClass[]      @relation("ScheduledClassCreator")
+  examinationAdminAssignment   ExaminationAdminAssignment? @relation("ExaminationAdminUser")
+  assignedExaminationAdmins    ExaminationAdminAssignment[] @relation("ExaminationAdminAssignedBy")
   postedAnnouncements           Announcement[]
   attendances                   Attendance[]
   auditLogs                     AuditLog[]
@@ -559,6 +562,20 @@ model ExaminationResult {
   @@unique([examinationId, studentId])
   @@index([organizationId, studentId])
   @@map("examination_results")
+}
+
+model ExaminationAdminAssignment {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String       @unique
+  assignedById   String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation("ExaminationAdminUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy     User?        @relation("ExaminationAdminAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("examination_admin_assignments")
 }
 
 model ExaminationRegistration {
