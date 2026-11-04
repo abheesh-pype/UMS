@@ -14,8 +14,7 @@ import {
   BookOpen, 
   Download, 
   FileText,
-  LogOut, 
-  MapPin, 
+  LogOut,
   School,
   Video,
   Calendar,
@@ -46,6 +45,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { InvoicePrintModal } from '@/components/dialogs/InvoicePrintModal';
 import { AcademicCalendarPanel } from '@/components/panels/AcademicCalendarPanel';
+import { StudentDashboardOverview } from '@/components/panels/StudentDashboardOverview';
 
 interface StudentAssessmentResult {
   assessment_id: string;
@@ -60,9 +60,10 @@ interface StudentAssessmentResult {
 
 interface ModernStudentDashboardProps {
   initialTab?: string;
+  onNavigate?: (table: string) => void;
 }
 
-export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardProps) {
+export function ModernStudentDashboard({ initialTab, onNavigate }: ModernStudentDashboardProps) {
   const { logout } = useAuth();
   const [student, setStudent] = useState<any>(null);
   const [materials, setMaterials] = useState<any[]>([]);
@@ -97,6 +98,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
   const [studentExaminations, setStudentExaminations] = useState<any[]>([]);
   const [studentExaminationsLoading, setStudentExaminationsLoading] = useState(false);
   const [launchingExaminationId, setLaunchingExaminationId] = useState<string | null>(null);
+  const [examinationsFailed, setExaminationsFailed] = useState(false);
+  const [scheduledClassesFailed, setScheduledClassesFailed] = useState(false);
   const examPortalLoaded = useRef(false);
   const [registrationForm, setRegistrationForm] = useState({
     fullName: '',
@@ -185,23 +188,31 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     fetchStudentPaymentInfo();
   }, [activeSection, fetchStudentPaymentInfo]);
 
-  useEffect(() => {
-    if (activeSection !== 'scheduled-classes') return;
+  const fetchScheduledClasses = useCallback(() => {
     setScheduledClassesLoading(true);
+    setScheduledClassesFailed(false);
     api.get('/students/scheduled-classes')
       .then(response => setScheduledClasses(response.data.data || []))
       .catch((error: any) => {
+        setScheduledClassesFailed(true);
         toast.error(error.response?.data?.message || 'Failed to load scheduled classes');
       })
       .finally(() => setScheduledClassesLoading(false));
-  }, [activeSection]);
+  }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'scheduled-classes') return;
+    fetchScheduledClasses();
+  }, [activeSection, fetchScheduledClasses]);
 
   const fetchStudentExaminations = useCallback(async () => {
     if (!examPortalLoaded.current) setStudentExaminationsLoading(true);
     try {
       const response = await api.get('/students/examinations');
       setStudentExaminations(response.data.data || []);
+      setExaminationsFailed(false);
     } catch (error: any) {
+      setExaminationsFailed(true);
       toast.error(error.response?.data?.message || 'Failed to load examinations');
     } finally {
       setStudentExaminationsLoading(false);
@@ -252,6 +263,17 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       }
     }
   }, [activeSection, fetchAcademicEvents, fetchStudentExaminations, studentExaminations.length]);
+
+  useEffect(() => {
+    if (activeSection !== 'portal') return;
+    fetchStudentPaymentInfo();
+    fetchStudentExaminations();
+    fetchScheduledClasses();
+    fetchStudentResults();
+    fetchAcademicEvents();
+    fetchNotifications();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, fetchStudentPaymentInfo, fetchStudentExaminations, fetchScheduledClasses, fetchStudentResults, fetchAcademicEvents]);
 
   const launchExamination = async (examinationId: string) => {
     const launchWindow = window.open('about:blank', '_blank');
@@ -503,8 +525,8 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
     .filter((payment: any) => payment.status === 'paid' && payment.kind !== 'schedule')
     .reduce((total: number, payment: any) => total + (Number(payment.amount) || 0), 0);
   const outstandingInvoices = (studentPaymentInfo?.invoices || [])
-    .filter((invoice: any) => invoice.status !== 'paid')
-    .reduce((total: number, invoice: any) => total + (Number(invoice.amount) || 0), 0);
+    .filter((invoice: any) => invoice.status !== 'paid' && invoice.status !== 'cancelled')
+    .reduce((total: number, invoice: any) => total + (Number(invoice.balanceAmount) || 0), 0);
 
   if (loading) {
     return (
@@ -782,6 +804,13 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
       && selectedEbookModule
       && material.description === `Module: ${selectedEbookModule.id} - ${selectedEbookModule.moduleName}`
   );
+
+  const passedResults = studentResults.filter(result => result.passed === true).length;
+  const examsToWrite = studentExaminations.filter((examination: any) => examination.readyToLaunch).length;
+  const now = Date.now();
+  const upcomingDashboardEvents = combinedAcademicEvents
+    .filter(event => new Date(event.endDate || event.startDate).getTime() >= now)
+    .slice(0, 6);
 
   return (
     <div className="min-h-screen bg-muted/30 pb-12">
@@ -2552,82 +2581,46 @@ export function ModernStudentDashboard({ initialTab }: ModernStudentDashboardPro
           )}
         </main>
       ) : (
-      <>
-      {/* Hero Welcome Section */}
-      <section className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b py-8">
-        <div className="container mx-auto px-4">
-          <h1 className="text-3xl font-bold tracking-tight">Hello {student.name}, welcome to Student Portal</h1>
-        </div>
-      </section>
-
-      {/* Main Grid Content */}
-      <main className="container mx-auto max-w-7xl px-4 mt-8">
-        {/* Left Column: Academic & Center Details */}
-        <div className="max-w-md space-y-6">
-          <Card className="border-none shadow-xl bg-card/60 backdrop-blur-xl">
-            <CardHeader>
-              <CardTitle className="text-lg">Academic Profile</CardTitle>
-              <CardDescription>Your registered details</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-3">
-                <School className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Enrolled Program</p>
-                  <p className="font-semibold text-sm">{program?.name || 'N/A'}</p>
-                  {program?.code && (
-                    <Badge variant="secondary" className="mt-1">
-                      {program.code}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <BookOpen className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Active Session</p>
-                  <p className="font-semibold text-sm">{enrolledSession?.name || 'Not assigned'}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Study Center</p>
-                  <p className="font-semibold text-sm">{student.center?.name || 'N/A'}</p>
-                  {student.center?.code && (
-                    <span className="text-xs text-muted-foreground mt-0.5 block">Code: {student.center.code}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Enrollment No:</span>
-                  <span className="font-medium">{student.enrollmentNo}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Registered Email:</span>
-                  <span className="font-medium">{student.email}</span>
-                </div>
-                {student.phone && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Phone Number:</span>
-                    <span className="font-medium">{student.phone}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Program Duration:</span>
-                  <span className="font-medium">{program?.duration || 0} Years</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-      </main>
-      </>
+      <StudentDashboardOverview
+        student={student}
+        program={program}
+        session={enrolledSession}
+        semesters={enrolledSemesters}
+        modules={enrolledModules}
+        videoCount={allSessionVideos.length}
+        ebookCount={materials.filter(material => material.category === 'ebook').length}
+        fees={{
+          loading: paymentInfoLoading,
+          failed: Boolean(paymentInfoError),
+          text: formatPaymentAmount(outstandingInvoices),
+          detail: `${formatPaymentAmount(totalReceived)} received so far`,
+        }}
+        examinations={{
+          loading: studentExaminationsLoading,
+          failed: examinationsFailed,
+          text: String(studentExaminations.length),
+          detail: examsToWrite > 0 ? `${examsToWrite} ready to write now` : 'None open to write right now',
+        }}
+        classes={{
+          loading: scheduledClassesLoading,
+          failed: scheduledClassesFailed,
+          text: String(scheduledClasses.length),
+          detail: scheduledClasses[0] ? `Next: ${new Date(scheduledClasses[0].startsAt).toLocaleString()}` : 'None scheduled',
+        }}
+        results={{
+          loading: resultsLoading,
+          failed: Boolean(resultsError),
+          text: String(studentResults.length),
+          detail: studentResults.length > 0 ? `${passedResults} passed` : 'None published yet',
+        }}
+        outstandingAmount={outstandingInvoices}
+        formatAmount={formatPaymentAmount}
+        exams={studentExaminations}
+        scheduledClasses={scheduledClasses}
+        unreadNotifications={unreadNotifications}
+        upcomingEvents={upcomingDashboardEvents}
+        onNavigate={table => onNavigate?.(table)}
+      />
       )}
       <Dialog open={Boolean(selectedExamination)} onOpenChange={open => !open && setSelectedExamination(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">

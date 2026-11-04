@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export interface MyTeamPanelProps {
-  departmentType: 'operations' | 'sales' | 'finance' | 'hr' | 'branch' | 'organization';
+  departmentType: 'operations' | 'sales' | 'finance' | 'hr' | 'branch' | 'organization' | 'academic';
   title?: string;
   description?: string;
 }

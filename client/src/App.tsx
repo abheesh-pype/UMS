@@ -390,6 +390,7 @@ function App() {
         { id: 'academic-semesters', label: 'Semester' },
         { id: 'academic-modules', label: 'Modules' },
         { id: 'dashboard', label: 'Add Study Notes' },
+        { id: 'my_team', label: 'My Team' },
 
         { id: '__academic_content_section', label: 'Study Content', isSection: true },
         { id: 'academic-ebooks', label: 'E-Book' },
@@ -411,6 +412,7 @@ function App() {
         },
         { id: 'academic-examination-registered', label: 'Registered Students' },
         { id: 'academic-examination-portal', label: 'Examination Portal' },
+        { id: 'exam-portal-access', label: 'Exam Portal' },
 
         { id: '__academic_portal_section', label: 'My Portal', isSection: true },
         { id: 'manager_hiring', label: 'Hiring Requests' },
