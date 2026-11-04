@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -131,6 +132,8 @@ interface Props {
 }
 
 export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, readOnly = false, employee, adminAccess = false }: Props) {
+  const { user: currentUser } = useAuth();
+  const isAdmin = adminAccess || ['org_admin', 'university_admin', 'superadmin', 'ceo'].includes(currentUser?.role || '');
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -158,17 +161,17 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
     if (!userId) return;
     setLoading(true);
     try {
-      const endpoint = readOnly
-        ? `/hr/employee-profiles/${userId}/team`
-        : adminAccess
-          ? `/hr/employee-profiles/${userId}/admin`
+      const endpoint = isAdmin
+        ? `/hr/employee-profiles/${userId}/admin`
+        : readOnly
+          ? `/hr/employee-profiles/${userId}/team`
           : `/hr/employee-profiles/${userId}`;
       const res = await api.get(endpoint);
       const d: ProfileData = res.data.data;
       setData(d);
       if (readOnly || adminAccess) {
         try {
-          const reviewEndpoint = adminAccess
+          const reviewEndpoint = isAdmin
             ? `/hr/employee-profiles/${userId}/admin/reviews`
             : `/hr/employee-profiles/${userId}/team/reviews`;
           const reviewsResponse = await api.get(reviewEndpoint);
@@ -348,9 +351,9 @@ export function EmployeeProfilePanel({ userId, open, onClose, onOpenChange, read
   const saveReview = async () => {
     setSaving(true);
     try {
-      if (readOnly || adminAccess) {
+      if (readOnly || isAdmin) {
         const response = await api.post(
-          adminAccess
+          isAdmin
             ? `/hr/employee-profiles/${userId}/admin/reviews`
             : `/hr/employee-profiles/${userId}/team/reviews`,
           {

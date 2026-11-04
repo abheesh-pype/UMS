@@ -518,6 +518,7 @@ export function MyTeamPanel({ departmentType, title, description }: MyTeamPanelP
           open={profileOpen}
           employee={selectedEmployee}
           readOnly
+          adminAccess={['org_admin', 'university_admin', 'superadmin', 'ceo'].includes(currentUser?.role || '') || departmentType === 'organization'}
           onOpenChange={(open) => {
             setProfileOpen(open);
             if (!open) setSelectedUserId(null);

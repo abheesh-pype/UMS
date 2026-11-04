@@ -167,7 +167,7 @@ router.route('/leave-allocations/:userId')
 router.post('/payroll/generate-smart', authorize('hr_admin', 'org_admin', 'ceo', 'superadmin'), generateSmartPayroll);
 
 // Employee Profiles (KPI / KRA / Salary details)
-const employeeProfileAdminRoles = ['org_admin', 'university_admin'];
+const employeeProfileAdminRoles = ['org_admin', 'university_admin', 'superadmin', 'ceo'];
 router.get('/employee-profiles/admin/team', authorize(...employeeProfileAdminRoles), getAdminTeamMembers);
 router.get('/employee-profiles/:userId/admin', authorize(...employeeProfileAdminRoles), getAdminEmployeeProfile);
 router.get('/employee-profiles/:userId/admin/reviews', authorize(...employeeProfileAdminRoles), getAdminEmployeeReviews);

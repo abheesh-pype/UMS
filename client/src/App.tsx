@@ -288,7 +288,6 @@ function App() {
         { id: 'sub_departments', label: 'Sub-Departments' },
         { id: 'users', label: 'Users' },
         { id: '__org_academic_section', label: 'Academic Management', isSection: true },
-        { id: 'universities', label: 'Universities' },
         { id: 'programs', label: 'Programs' },
         { id: 'students', label: 'Students' },
         { id: '__org_study_center_section', label: 'Study Center Management', isSection: true },
@@ -353,20 +352,30 @@ function App() {
 
     if (user.role === 'student') {
       return [
+        { id: '__student_general_section', label: 'General', isSection: true },
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'student-notifications', label: 'Notifications' },
-        { id: 'student-active-session', label: 'Active Session' },
         { id: 'student-academic-calendar', label: 'Academic Calendar' },
-        { id: 'student-examination-portal', label: 'Examination Portal' },
-        { id: 'student-payment-info', label: 'Payment info' },
+
+        { id: '__student_academics_section', label: 'Academics', isSection: true },
+        { id: 'student-active-session', label: 'Active Sessions' },
         { id: 'student-video-classes', label: 'Video Classes' },
-        { id: 'student-scheduled-classes', label: 'Scheduled Class' },
+        { id: 'student-scheduled-classes', label: 'Scheduled Classes' },
         { id: 'student-e-books', label: 'E-Books' },
-        { id: 'student-examinations', label: 'Examinations', disabled: true },
-        { id: 'student-documents', label: 'Documents' },
-        { id: 'student-result', label: 'Result' },
-        { id: 'student-notice', label: 'Notice', disabled: true },
         { id: 'student-schedule', label: 'Schedule', disabled: true },
+
+        { id: '__student_exam_section', label: 'Examination and Results', isSection: true },
+        { id: 'student-examination-portal', label: 'Examination Portal' },
+        { id: 'student-examinations', label: 'Examination', disabled: true },
+        { id: 'student-result', label: 'Result' },
+
+        { id: '__student_finance_section', label: 'Finance', isSection: true },
+        { id: 'student-payment-info', label: 'Payment Information' },
+
+        { id: '__student_services_section', label: 'Student Services', isSection: true },
+        { id: 'student-documents', label: 'Documents' },
+        { id: 'student-notice', label: 'Notices', disabled: true },
+        { id: 'complaints', label: 'Complaints' },
       ];
     }
 
