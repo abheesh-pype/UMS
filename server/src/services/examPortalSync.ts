@@ -24,6 +24,8 @@ export interface SyncConfig {
   staffLaunchTicketUrl: string;
   assessmentsUrl: string;
   rolesUrl: string;
+  staffRevocationUrl: string;
+  staffPasswordUrl: string;
   resultsUrl: string;
 }
 
@@ -68,6 +70,8 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
     staffLaunchTicketUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-launch-tickets'),
     assessmentsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessments'),
     rolesUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/roles'),
+    staffRevocationUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-revocations'),
+    staffPasswordUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-passwords'),
     resultsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/results'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
@@ -333,6 +337,33 @@ export const requestStaffLaunch = async (config: SyncConfig, user: { id: string;
   const body = await safeJson(response);
   if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal returned an invalid launch URL', 'unconfirmed');
   return trustedPortalUrl(config, body.launch_url);
+};
+
+/** Ends a staff member's Exam Portal access now: their account is deactivated and open sessions are closed. */
+export const revokeStaffAccess = async (config: SyncConfig, userId: string, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'POST', config.staffRevocationUrl,
+    { tenant_id: config.tenantId, external_user_id: portalStaffId(userId) }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal did not confirm the access change', 'unconfirmed');
+  return body.revoked === true;
+};
+
+/** Sets the password the person uses on the Exam Portal's own login page (their UMS email is the username). */
+export const setStaffPortalPassword = async (config: SyncConfig, userId: string, password: string, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'POST', config.staffPasswordUrl,
+    { tenant_id: config.tenantId, external_user_id: portalStaffId(userId), password }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope staff:launch)', 'unauthorized');
+  }
+  if (response.status === 400) throw new SyncError(400, 'The password must be 8 to 128 characters', 'invalid_password');
+  if (response.status === 404) throw new SyncError(502, 'The Exam Portal has no account for you yet. Open the Exam Portal once first.', 'not_provisioned');
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true) throw new SyncError(502, 'The Exam Portal did not confirm the password change', 'unconfirmed');
 };
 
 export interface PortalRole { name: string; administratorAccess: boolean }

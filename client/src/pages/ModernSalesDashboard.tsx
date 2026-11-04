@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import { LeadsPanel } from '@/components/panels/LeadsPanel';
 import { TargetsPanel } from '@/components/panels/TargetsPanel';
 import { LeavesPanel } from '@/components/panels/LeavesPanel';

@@ -40,6 +40,8 @@ const HIDDEN_NAV_LINK_IDS = new Set([
   'polls'
 ]);
 
+const HOME_LINK_IDS = new Set(['academic-overview', 'overview', 'dashboard']);
+
 // Maps sidebar table IDs to the dashboard tab they should open
 const TABLE_TO_TAB: Record<string, string> = {
   // Superadmin
@@ -135,23 +137,6 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
 
-  // Set default table based on user role
-  const getDefaultTable = (role?: string) => {
-    switch (role) {
-      case 'superadmin': return 'overview';
-      case 'ceo': return 'dashboard';
-      case 'ops_admin':
-      case 'ops_sub_admin':
-      case 'finance_admin':
-      case 'hr_admin':
-      case 'sales_admin': return 'overview';
-      case 'university_admin': return 'dashboard';
-      case 'academic_admin': return 'dashboard';
-      case 'student': return 'dashboard';
-      default: return 'tasks';
-    }
-  };
-  
   const getInitialDeptType = (u: any) => {
     if (!u) return null;
     const dept = u.department || u.departmentId;
@@ -165,7 +150,7 @@ function App() {
     return null;
   };
 
-  const [activeTable, setActiveTable] = useState(() => getDefaultTable(user?.role));
+  const [activeTable, setActiveTable] = useState('dashboard');
   const [tableData, setTableData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   // For employee / staff: track their department type to show correct nav
@@ -182,11 +167,9 @@ function App() {
     return () => { active = false; };
   }, [user?.id, user?.role]);
 
-  // When user loads/changes, reset activeTable to the correct default
+  // When user loads/changes, go back to the dashboard view (the default link is set further down)
   useEffect(() => {
     if (user?.role) {
-      setActiveTable(getDefaultTable(user.role));
-      setActiveTab(undefined);
       setViewMode('dashboard');
       setDeptType(getInitialDeptType(user));
     }
@@ -474,6 +457,18 @@ function App() {
       return true;
     });
   }, [isRegisterPage, user?.role, (user as any)?.subDepartmentId, (user as any)?.branchId, deptType, examPortalAccess]);
+
+  // Every panel opens on its own Overview / Dashboard link: the first such link in its menu
+  const homeLink = tables
+    .map(item => (typeof item === 'string' ? item : item.id))
+    .find(id => HOME_LINK_IDS.has(id));
+
+  useEffect(() => {
+    if (user?.role && homeLink) {
+      setActiveTable(homeLink);
+      setActiveTab(homeLink === 'dashboard' ? undefined : homeLink);
+    }
+  }, [homeLink, user?.role, user?.department, (user as any)?.departmentId, user?.subDepartment, (user as any)?.subDepartmentId]);
 
   // Fetch data for active table — only when in table view mode
   useEffect(() => {
