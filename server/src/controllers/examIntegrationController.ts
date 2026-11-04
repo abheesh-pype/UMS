@@ -6,7 +6,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { resolveExamPortalAccess } from './examinationAdminController.js';
 import {
-  buildStudentPayload, fetchAssessmentResults, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, SyncError, syncStudent,
+  buildStudentPayload, fetchAssessmentResults, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, setStaffPortalPassword, SyncError, syncStudent,
 } from '../services/examPortalSync.js';
 
 const encryptionKey = () => {
@@ -167,6 +167,36 @@ export const openExamPortalAsStaff = asyncHandler(async (req: AuthRequest, res: 
     if (!(error instanceof SyncError)) throw error;
     console.warn('[exam-portal-staff] failed', { by: req.user.id, code: error.code });
     res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+/**
+ * Lets the signed-in person choose a password for the Exam Portal's own login page, so they can sign in there directly
+ * (email = their UMS email) as well as through UMS. The account is created/refreshed with their role first.
+ */
+export const setExamPortalPassword = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  const access = await resolveExamPortalAccess(req.user);
+  if (!access.allowed) {
+    res.status(403).json({ success: false, message: 'You have not been given access to the Exam Portal' });
+    return;
+  }
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (password.length < 8 || password.length > 128) {
+    res.status(400).json({ success: false, message: 'The password must be 8 to 128 characters' });
+    return;
+  }
+  try {
+    // Makes sure the portal account exists with the right role (the sign-in link itself is not used).
+    await requestStaffLaunch(config, { id: req.user.id, name: req.user.name, email: req.user.email, portalRole: access.portalRole });
+    await setStaffPortalPassword(config, req.user.id, password);
+    console.info('[exam-portal-staff] password set', { by: req.user.id });
+    res.json({ success: true, data: { email: req.user.email } });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-staff] password failed', { by: req.user.id, code: error.code });
+    res.status(error.statusCode === 400 ? 400 : syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
   }
 });
 

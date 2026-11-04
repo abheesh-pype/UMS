@@ -75,6 +75,8 @@ Local `.env` files may point at hosted databases: check `DATABASE_URL` before cr
 
 Gotcha: the exam window is `start → start + duration + 30 min`. The portal dashboard's default **Started** filter hides windows that already ended; use **All** or **Previous**.
 
+Portal roles and logins: Academic/Org admins assign a portal role to UMS staff (Settings / **Exam Portal Users**); removing access or changing the role ends the person's portal session (`staff-revocations`). Everyone with access can sign in through UMS (**Exam Portal** menu) and may also set a password on that page (**Exam Portal login password**) to use the portal's own login page with their UMS email.
+
 ## 5. Automated tests
 
 ```bash

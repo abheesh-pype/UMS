@@ -87,7 +87,7 @@ import {
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadPaymentProof, uploadVideo, uploadMaterial } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
-import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, publishExaminationToExamPortal, importExaminationResultsFromExamPortal, getExaminationResults } from '../controllers/examIntegrationController.js';
+import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, setExamPortalPassword, publishExaminationToExamPortal, importExaminationResultsFromExamPortal, getExaminationResults } from '../controllers/examIntegrationController.js';
 import {
   getAcademicCalendarEvents,
   createAcademicCalendarEvent,
@@ -112,6 +112,7 @@ router.post('/universities/:universityId/exam-portal-sync/students', authorize('
 // Staff/employees may call these too; the handlers check that an admin assigned them a portal role.
 router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), openExamPortalAsStaff);
 router.get('/exam-portal/my-access', getMyExamPortalAccess);
+router.post('/exam-portal/password', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), setExamPortalPassword);
 router.post('/examinations/:examinationId/exam-portal', authorize('academic_admin', 'org_admin', 'superadmin'), publishExaminationToExamPortal);
 router.post('/examinations/:examinationId/exam-portal/results', authorize('academic_admin', 'org_admin', 'superadmin'), importExaminationResultsFromExamPortal);
 router.get('/examinations/:examinationId/results', authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationResults);
