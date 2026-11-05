@@ -19,7 +19,7 @@ interface University {
   category?: string; optionalFields?: unknown;
   allowedBranchIds: Branch[];
 }
-
+ 
 export function UniversitiesPanel() {
   const { user } = useAuth();
   const isOrgAdmin = ['org_admin', 'superadmin'].includes(user?.role || '');
@@ -33,10 +33,7 @@ export function UniversitiesPanel() {
     name: '', code: '', address: '', contact: '', coordinatorName: '', status: 'active', category: 'team_lease', optionalFields: ''
   });
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
-  const [accessMode, setAccessMode] = useState<'all' | 'exclusive' | 'multi'>('all');
-
-  const fetchUniversities = useCallback(async () => {
-    setLoading(true);
+  const [accessMode, setAccessMode] = useS 
     try {
       const res = await api.get('/operations/universities');
       setUniversities(res.data.data || []);

@@ -391,6 +391,7 @@ function App() {
         { id: 'academic-modules', label: 'Modules' },
         { id: 'dashboard', label: 'Add Study Notes' },
         { id: 'my_team', label: 'My Team' },
+        { id: 'academic-students', label: 'Students' },
 
         { id: '__academic_content_section', label: 'Study Content', isSection: true },
         { id: 'academic-ebooks', label: 'E-Book' },
