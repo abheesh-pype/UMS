@@ -87,7 +87,7 @@ import {
 import { protect, authorize } from '../middleware/auth.js';
 import { upload, uploadPaymentProof, uploadVideo, uploadMaterial } from '../middleware/upload.js';
 import { createScheduledClass, getSchedulableStudents, getScheduledClasses } from '../controllers/scheduledClassController.js';
-import { getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, setExamPortalPassword, publishExaminationToExamPortal, importExaminationResultsFromExamPortal, getExaminationResults } from '../controllers/examIntegrationController.js';
+import { getExamAssessmentForm, saveExamAssessment, getExamCandidateForm, exportExamCandidate, getExamPortalIntegration, saveExamPortalIntegration, getExamPortalSyncStatus, syncExamPortalStudent, openExamPortalAsStaff, setExamPortalPassword, publishExaminationToExamPortal, importExaminationResultsFromExamPortal, getExaminationResults } from '../controllers/examIntegrationController.js';
 import {
   getAcademicCalendarEvents,
   createAcademicCalendarEvent,
@@ -110,9 +110,14 @@ router.put('/universities/:universityId/exam-portal-integration', authorize('uni
 router.get('/universities/:universityId/exam-portal-sync', authorize('university_admin', 'org_admin', 'superadmin'), getExamPortalSyncStatus);
 router.post('/universities/:universityId/exam-portal-sync/students', authorize('university_admin', 'org_admin', 'superadmin'), syncExamPortalStudent);
 // Staff/employees may call these too; the handlers check that an admin assigned them a portal role.
+router.route('/students/:studentId/exam-candidate')
+  .get(authorize('academic_admin'), getExamCandidateForm)
+  .post(authorize('academic_admin'), exportExamCandidate);
 router.post('/exam-portal/staff-launch', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), openExamPortalAsStaff);
 router.get('/exam-portal/my-access', getMyExamPortalAccess);
 router.post('/exam-portal/password', authorize('academic_admin', 'org_admin', 'superadmin', 'employee', 'staff'), setExamPortalPassword);
+router.get('/exam-portal/assessment-form', authorize('academic_admin', 'org_admin', 'superadmin'), getExamAssessmentForm);
+router.put('/examinations/:examinationId/exam-portal/assessment', authorize('academic_admin', 'org_admin', 'superadmin'), saveExamAssessment);
 router.post('/examinations/:examinationId/exam-portal', authorize('academic_admin', 'org_admin', 'superadmin'), publishExaminationToExamPortal);
 router.post('/examinations/:examinationId/exam-portal/results', authorize('academic_admin', 'org_admin', 'superadmin'), importExaminationResultsFromExamPortal);
 router.get('/examinations/:examinationId/results', authorize('academic_admin', 'org_admin', 'superadmin'), getExaminationResults);

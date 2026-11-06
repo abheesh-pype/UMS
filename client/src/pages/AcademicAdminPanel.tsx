@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ExamAssessmentStep, type AssessmentDraft } from '@/components/dialogs/ExamAssessmentStep';
 
 const CALENDAR_CATEGORIES = [
   'Classes & Teaching',
@@ -298,6 +299,10 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   const [examinationLoading, setExaminationLoading] = useState(false);
   const [examinationDialogOpen, setExaminationDialogOpen] = useState(false);
   const [examinationStep, setExaminationStep] = useState(1);
+  const [assessmentDraft, setAssessmentDraft] = useState<AssessmentDraft | null>(null);
+  const [assessmentError, setAssessmentError] = useState('');
+  const [assessmentPayload, setAssessmentPayload] = useState<Record<string, unknown> | null>(null);
+  const [savingExamination, setSavingExamination] = useState(false);
   const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
   const [examinationModules, setExaminationModules] = useState<any[]>([]);
   const [examinationSchedule, setExaminationSchedule] = useState<any[]>([]);
@@ -1505,7 +1510,10 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const openExaminationDialog = () => {
     setEditingExaminationId(null);
-    setExaminationStep(1);
+    setAssessmentDraft(null);
+    setAssessmentPayload(null);
+    setAssessmentError('');
+    setExaminationStep(4);
     setSelectedModuleIds([]);
     setExaminationSchedule([]);
     setExaminationForm({ examinationName: '', examinationType: '', academicSessionId: '', programId: '', semesterId: '', startDate: '', endDate: '', description: '' });
@@ -1514,6 +1522,9 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
 
   const handleEditExamination = (examination: any) => {
     setEditingExaminationId(examination.id);
+    setAssessmentDraft(null);
+    setAssessmentPayload(null);
+    setAssessmentError('');
     setExaminationForm({
       examinationName: examination.examinationName || '',
       examinationType: examination.examinationType || '',
@@ -1534,24 +1545,75 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       passingMarks: row.passingMarks ?? '',
       examDuration: row.examDuration ?? '120',
     })) : []);
-    setExaminationStep(1);
+    setExaminationStep(4);
     setExaminationDialogOpen(true);
   };
 
-  const submitExamination = async () => {
+  // The assessment form comes first: what it holds starts the examination details, and the later steps can change it.
+  const continueFromAssessment = (assessment: Record<string, unknown>) => {
+    setAssessmentPayload(assessment);
+    setAssessmentError('');
+    setExaminationForm(current => ({
+      ...current,
+      examinationName: current.examinationName || String(assessment.name || ''),
+      startDate: current.startDate || (assessmentDraft?.startDate || '').slice(0, 10),
+      endDate: current.endDate || (assessmentDraft?.endDate || '').slice(0, 10),
+    }));
+    setExaminationStep(1);
+  };
+
+  const continueWithoutAssessment = () => {
+    setAssessmentPayload(null);
+    setAssessmentError('');
+    setExaminationStep(1);
+  };
+
+  // Start, end and duration from the schedule, as the starting values of the assessment form.
+  const assessmentDefaults = () => {
+    const rows = examinationSchedule.filter(row => row.date);
+    const starts = rows.map(row => `${row.date}T${row.startTime || '09:30'}`).sort();
+    const ends = rows.map(row => `${row.date}T${row.endTime || '12:30'}`).sort();
+    const duration = Math.max(0, ...examinationSchedule.map(row => Number(row.examDuration) || 0));
+    return {
+      name: examinationForm.examinationName.trim(),
+      startDate: starts[0] || '',
+      endDate: ends[ends.length - 1] || '',
+      totalTime: duration ? String(duration) : '',
+    };
+  };
+
+  const submitExamination = async (assessment?: Record<string, unknown>) => {
+    setSavingExamination(true);
+    setAssessmentError('');
     try {
       const payload = { ...examinationForm, moduleIds: selectedModuleIds, schedule: examinationSchedule };
+      let examinationId = editingExaminationId;
       if (editingExaminationId) {
         await api.put(`/operations/examinations/${editingExaminationId}`, payload);
-        toast.success('Examination updated');
       } else {
-        await api.post('/operations/examinations', payload);
-        toast.success('Examination created');
+        const created = await api.post('/operations/examinations', payload);
+        examinationId = created.data.data.id;
       }
+      if (assessment) {
+        // Pressing Save again after a portal failure updates this examination instead of creating a second one.
+        setEditingExaminationId(examinationId);
+        try {
+          await api.put(`/operations/examinations/${examinationId}/exam-portal/assessment`, assessment);
+        } catch (portalError: any) {
+          setAssessmentError(`The examination is saved in UMS, but the assessment was not saved on the Exam Portal: ${portalError.response?.data?.message || 'please try again'}`);
+          fetchExaminations();
+          return;
+        }
+      }
+      toast.success(`${editingExaminationId ? 'Examination updated' : 'Examination created'}${assessment ? ' and its assessment saved on the Exam Portal' : ''}`);
       setExaminationDialogOpen(false);
       setEditingExaminationId(null);
       fetchExaminations();
-    } catch (error: any) { toast.error(error.response?.data?.message || 'Failed to save examination'); }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to save examination');
+    } finally {
+      setSavingExamination(false);
+    }
   };
 
   const handleDeleteExamination = async (examination: any) => {
@@ -1775,7 +1837,12 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
   };
 
   const goToSchedule = () => {
-    setExaminationSchedule(selectedModuleIds.map((moduleId, index) => buildScheduleRow(moduleId, index === 0 ? examinationForm.startDate : '')));
+    // Times and duration from the assessment form, when it has them and this assessment is being saved.
+    const fromAssessment: Record<string, string> = {};
+    if (assessmentPayload && assessmentDraft?.startDate) fromAssessment.startTime = assessmentDraft.startDate.slice(11, 16);
+    if (assessmentPayload && assessmentDraft?.endDate) fromAssessment.endTime = assessmentDraft.endDate.slice(11, 16);
+    if (assessmentPayload && assessmentDraft?.totalTime) fromAssessment.examDuration = assessmentDraft.totalTime;
+    setExaminationSchedule(selectedModuleIds.map((moduleId, index) => buildScheduleRow(moduleId, index === 0 ? examinationForm.startDate : '', fromAssessment)));
     setExaminationStep(3);
   };
 
@@ -5124,8 +5191,8 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
       </Dialog>
 
       <Dialog open={examinationDialogOpen} onOpenChange={setExaminationDialogOpen}>
-        <DialogContent className="max-w-6xl">
-          <DialogHeader><DialogTitle>{examinationStep === 1 ? 'Create Examination' : examinationStep === 2 ? 'Select Examination Modules' : 'Examination Schedule'}</DialogTitle></DialogHeader>
+        <DialogContent className={examinationStep === 4 ? 'max-w-6xl sm:max-w-6xl max-h-[90vh] overflow-y-auto' : 'max-w-6xl'}>
+          <DialogHeader>{examinationStep === 4 && <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Create assessment</p>}<DialogTitle className={examinationStep === 4 ? 'text-2xl font-bold' : undefined}>{examinationStep === 1 ? 'Create Examination' : examinationStep === 2 ? 'Select Examination Modules' : examinationStep === 3 ? 'Examination Schedule' : editingExaminationId ? 'Edit assessment' : 'Add manually'}</DialogTitle></DialogHeader>
           {examinationStep === 1 ? <form onSubmit={event => { event.preventDefault(); setExaminationStep(2); }} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Examination Name *</Label><Input value={examinationForm.examinationName} onChange={event => setExaminationForm({ ...examinationForm, examinationName: event.target.value })} required /></div>
@@ -5137,17 +5204,26 @@ export function AcademicAdminPanel({ initialTab, onNavigate }: AcademicAdminPane
               <div className="space-y-2"><Label>End Date *</Label><Input type="date" min={examinationForm.startDate || undefined} value={examinationForm.endDate} onChange={event => setExaminationForm({ ...examinationForm, endDate: event.target.value })} required /></div>
               <div className="space-y-2 md:col-span-2"><Label>Description</Label><textarea value={examinationForm.description} onChange={event => setExaminationForm({ ...examinationForm, description: event.target.value })} className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
             </div>
-            <div className="flex gap-2"><Button type="submit" className="flex-1">Next -&gt;</Button><Button type="button" variant="outline" onClick={() => setExaminationDialogOpen(false)}>Cancel</Button></div>
+            <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(4)}>&lt;- Back</Button><Button type="submit" className="flex-1">Next -&gt;</Button><Button type="button" variant="outline" onClick={() => setExaminationDialogOpen(false)}>Cancel</Button></div>
           </form> : examinationStep === 2 ? <div className="space-y-4">
             <p className="text-sm text-muted-foreground">{examinationForm.examinationName} | {programs.find(program => program.id === examinationForm.programId)?.name} | {examinationSemesters.find(semester => semester.id === examinationForm.semesterId)?.semesterName}</p>
             <div className="rounded-lg border divide-y">{examinationModules.length === 0 ? <p className="p-6 text-center text-muted-foreground">No modules found for this program and semester.</p> : examinationModules.map(module => <label key={module.id} className="flex items-center gap-3 p-4 cursor-pointer"><input type="checkbox" checked={selectedModuleIds.includes(module.id)} onChange={event => setSelectedModuleIds(current => event.target.checked ? [...current, module.id] : current.filter(id => id !== module.id))} /><span className="font-medium">{module.moduleCode}</span><span>{module.moduleName}</span></label>)}</div>
             <p className="text-sm text-muted-foreground">Selected: {selectedModuleIds.length}/{examinationModules.length}</p>
             <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(1)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={goToSchedule}>Next -&gt;</Button></div>
-          </div> : <div className="space-y-4">
+          </div> : examinationStep === 3 ? <div className="space-y-4">
             <div className="overflow-x-auto rounded-lg border"><div className="min-w-[950px]"><div className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_0.9fr_0.9fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold"><span>Date</span><span>Module</span><span>Start</span><span>End</span><span>Maximum marks</span><span>Passing marks</span><span>Exam duration</span></div>{examinationSchedule.map((row, index) => <div key={`${row.moduleId}-${index}`} className="grid grid-cols-[1.1fr_1.6fr_1fr_1fr_0.9fr_0.9fr_1fr] gap-3 items-center border-b px-4 py-3 last:border-b-0"><Input type="date" value={row.date} min={examinationForm.startDate} max={examinationForm.endDate} onChange={event => updateScheduleRow(index, 'date', event.target.value)} /><Select value={row.moduleId} onValueChange={moduleId => updateScheduleRow(index, 'moduleId', moduleId)}><SelectTrigger><SelectValue placeholder="Select module" /></SelectTrigger><SelectContent>{examinationModules.map(module => <SelectItem key={module.id} value={module.id}>{module.moduleName}</SelectItem>)}</SelectContent></Select><Input type="time" value={row.startTime} onChange={event => updateScheduleRow(index, 'startTime', event.target.value)} /><Input type="time" value={row.endTime} onChange={event => updateScheduleRow(index, 'endTime', event.target.value)} /><Input type="number" min="0" value={row.maxMarks || ''} placeholder="100" onChange={event => updateScheduleRow(index, 'maxMarks', event.target.value)} /><Input type="number" min="0" value={row.passingMarks || ''} placeholder="40" onChange={event => updateScheduleRow(index, 'passingMarks', event.target.value)} /><Input type="number" min="1" value={row.examDuration || ''} placeholder="120" onChange={event => updateScheduleRow(index, 'examDuration', event.target.value)} /></div>)}</div></div>
             <Button type="button" variant="outline" onClick={addScheduleRow}>+ Add Schedule</Button>
-            <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(2)}>&lt;- Back</Button><Button type="button" className="flex-1" onClick={submitExamination}>Save Examination</Button></div>
-          </div>}
+            {assessmentError && <p className="text-sm text-destructive" role="alert">{assessmentError}</p>}
+            <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setExaminationStep(2)}>&lt;- Back</Button><Button type="button" className="flex-1" disabled={savingExamination} onClick={() => submitExamination(assessmentPayload || undefined)}>{savingExamination ? 'Saving...' : 'Save Examination'}</Button></div>
+          </div> : <ExamAssessmentStep
+            examinationId={editingExaminationId}
+            defaults={assessmentDefaults()}
+            draft={assessmentDraft}
+            onDraftChange={setAssessmentDraft}
+            onClose={() => setExaminationDialogOpen(false)}
+            onNext={continueFromAssessment}
+            onSkip={continueWithoutAssessment}
+          />}
         </DialogContent>
       </Dialog>
 

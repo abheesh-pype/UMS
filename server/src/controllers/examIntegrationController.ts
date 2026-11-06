@@ -6,7 +6,7 @@ import { AuthRequest } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { resolveExamPortalAccess } from './examinationAdminController.js';
 import {
-  buildStudentPayload, fetchAssessmentResults, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, setStaffPortalPassword, SyncError, syncStudent,
+  buildStudentPayload, fetchAssessmentForm, saveAssessmentForm, fetchAssessmentResults, fetchCandidateForm, getSyncConfigIssues, loadStudentForSync, loadSyncConfig, publishAssessment, requestLaunchTicket, requestStaffLaunch, setStaffPortalPassword, SyncError, syncStudent,
 } from '../services/examPortalSync.js';
 
 const encryptionKey = () => {
@@ -200,6 +200,128 @@ export const setExamPortalPassword = asyncHandler(async (req: AuthRequest, res: 
   }
 });
 
+const findStudentForExport = (req: AuthRequest) => prisma.student.findFirst({
+  where: { id: req.params.studentId, organizationId: req.user.organizationId },
+  select: { id: true, enrollmentNo: true, status: true, program: { select: { universityId: true } } },
+});
+
+/** The Exam Portal's Add Candidate form for one student: its fields and choices, plus what the portal already holds. */
+export const getExamCandidateForm = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  const student = await findStudentForExport(req);
+  if (!student) {
+    res.status(404).json({ success: false, message: 'Student not found' });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await fetchCandidateForm(config, student.enrollmentNo) });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-export] form failed', { by: req.user.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+/** Creates or updates this student's candidate record in the Exam Portal. Name, email and status always come from UMS. */
+export const exportExamCandidate = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  const student = await findStudentForExport(req);
+  if (!student) {
+    res.status(404).json({ success: false, message: 'Student not found' });
+    return;
+  }
+  if (student.status !== 'active') {
+    res.status(400).json({ success: false, message: 'Only active students can be exported' });
+    return;
+  }
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+  const rawFields = req.body?.fields && typeof req.body.fields === 'object' && !Array.isArray(req.body.fields) ? req.body.fields : {};
+  const fields = Object.fromEntries(Object.entries(rawFields).filter(([, value]) => typeof value === 'string')) as Record<string, string>;
+  try {
+    const { student: subject, assessments } = await loadStudentForSync(prisma, req.user, student.program.universityId, student.enrollmentNo);
+    const result = await syncStudent(config, buildStudentPayload(config.tenantId, subject, assessments, {
+      category: text(req.body?.category),
+      subCategory: text(req.body?.subCategory),
+      fields,
+    }));
+    console.info('[exam-portal-export] ok', { by: req.user.id, student: student.enrollmentNo, outcome: result.outcome });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-export] failed', { by: req.user.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+/** The Exam Portal's assessment form: its choices, plus what the portal already holds for this examination. */
+export const getExamAssessmentForm = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  const examinationId = typeof req.query.examinationId === 'string' && req.query.examinationId ? req.query.examinationId : null;
+  if (examinationId && !await prisma.examination.findFirst({ where: { id: examinationId, organizationId: req.user.organizationId }, select: { id: true } })) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await fetchAssessmentForm(config, examinationId) });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-assessment] form failed', { by: req.user.id, code: error.code });
+    res.status(syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
+/** Creates or updates this examination's assessment in the Exam Portal from the form filled in UMS. */
+export const saveExamAssessment = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = loadSyncConfig();
+  if (!config) return notConfigured(res);
+  const examination = await prisma.examination.findFirst({ where: { id: req.params.examinationId, organizationId: req.user.organizationId } });
+  if (!examination) {
+    res.status(404).json({ success: false, message: 'Examination not found' });
+    return;
+  }
+  const body = req.body ?? {};
+  const totalTime = body.totalTime === '' || body.totalTime == null ? null : Number(body.totalTime);
+  if (typeof body.name !== 'string' || !body.name.trim() || typeof body.examination !== 'string' || !body.examination.trim()) {
+    res.status(400).json({ success: false, message: 'Examination and Name are required' });
+    return;
+  }
+  if (totalTime !== null && (!Number.isInteger(totalTime) || totalTime < 1 || totalTime > 1440)) {
+    res.status(400).json({ success: false, message: 'Total Time must be a whole number of minutes between 1 and 1440' });
+    return;
+  }
+  try {
+    const result = await saveAssessmentForm(config, {
+      externalAssessmentId: examination.id,
+      name: body.name.trim(),
+      examination: body.examination.trim(),
+      startDate: body.startDate || null,
+      endDate: body.endDate || null,
+      totalTime,
+      // Saving the form must not reopen an assessment that was closed from the Examination Portal list.
+      active: (examination.portal as any)?.isOpen !== false,
+      details: {
+        last_login: body.lastLogin ?? '',
+        question_category: body.questionCategory ?? '',
+        sub_category: body.subCategory ?? '',
+        topic: body.topic ?? '',
+        question_language: body.questionLanguage ?? '',
+        pass_mark: body.passMark ?? '',
+        sections: body.sections,
+      },
+    });
+    console.info('[exam-portal-assessment] ok', { by: req.user.id, examination: examination.id, outcome: result.outcome });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (!(error instanceof SyncError)) throw error;
+    console.warn('[exam-portal-assessment] failed', { by: req.user.id, code: error.code });
+    // The portal's rules were not met: the person can correct this in the form.
+    res.status(error.code === 'rejected' ? 400 : syncErrorStatus(error)).json({ success: false, message: error.message, code: error.code });
+  }
+});
+
 const GRACE_MINUTES = 30;
 
 /**
@@ -240,6 +362,7 @@ export const publishExaminationToExamPortal = asyncHandler(async (req: AuthReque
       endDate: new Date(startsAt.getTime() + (durationMinutes + GRACE_MINUTES) * 60_000),
       totalTimeMinutes: durationMinutes,
       active: req.body?.active !== false,
+      keepFormDetails: true,
     });
     // Keep the publication on the server so every browser/environment sees the same Examination Portal list.
     const text = (value: unknown, pattern: RegExp) => (typeof value === 'string' && pattern.test(value) ? value : null);
@@ -459,7 +582,7 @@ export const launchStudentExam = asyncHandler(async (req: AuthRequest, res: Resp
         examination.program.universityId,
         student.enrollmentNo,
       );
-      await syncStudent(syncConfig, buildStudentPayload(syncConfig.tenantId, subject, assessments));
+      await syncStudent(syncConfig, buildStudentPayload(syncConfig.tenantId, subject, assessments, { preserveCategory: true }));
       const launchUrl = await requestLaunchTicket(syncConfig, subject.enrollmentNo);
       res.json({ success: true, data: { launchUrl } });
     } catch (error) {

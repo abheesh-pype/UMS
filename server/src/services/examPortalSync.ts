@@ -27,6 +27,8 @@ export interface SyncConfig {
   staffRevocationUrl: string;
   staffPasswordUrl: string;
   resultsUrl: string;
+  candidateFormUrl: string;
+  assessmentFormUrl: string;
 }
 
 const REQUIRED = [
@@ -73,6 +75,8 @@ export const loadSyncConfig = (env: Env = process.env): SyncConfig | null => {
     staffRevocationUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-revocations'),
     staffPasswordUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/staff-passwords'),
     resultsUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/results'),
+    candidateFormUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/candidate-form'),
+    assessmentFormUrl: env.EXAM_PORTAL_STUDENT_UPSERT_URL!.trim().replace(/\/students\/?$/, '/assessment-form'),
     scope: env.EXAM_PORTAL_SCOPE?.trim() || undefined,
     audience: env.EXAM_PORTAL_AUDIENCE?.trim() || undefined,
   };
@@ -95,8 +99,17 @@ export interface SyncAssessment {
   semesterName?: string | null;
 }
 
-/** Minimum fields only. Never DOB, passwords, phone, address or exam answers. */
-export const buildStudentPayload = (tenantId: string, student: SyncStudent, assessments: SyncAssessment[]) => {
+export interface StudentPayloadOptions {
+  category?: string;
+  subCategory?: string;
+  /** Values an admin confirmed in the Export Candidate form; the only way a DOB reaches the portal. */
+  fields?: Record<string, string>;
+  /** Automatic re-syncs keep the category an admin already chose. */
+  preserveCategory?: boolean;
+}
+
+/** Minimum fields only. Never passwords, phone, address or exam answers, and no DOB unless an admin sends it in `fields`. */
+export const buildStudentPayload = (tenantId: string, student: SyncStudent, assessments: SyncAssessment[], options: StudentPayloadOptions = {}) => {
   const active = student.status === 'active';
   return {
     tenant_id: tenantId,
@@ -104,13 +117,15 @@ export const buildStudentPayload = (tenantId: string, student: SyncStudent, asse
     candidate_id: student.enrollmentNo,
     name: student.name,
     email: student.email,
-    category: student.programName,
-    sub_category: student.specialisation || '',
+    category: options.category || student.programName,
+    sub_category: options.category ? options.subCategory || '' : student.specialisation || '',
     status: active ? 'active' : 'inactive',
     // Inactive students are sent with no assignments so the portal revokes access.
     assigned_assessments: active
       ? assessments.map(a => ({ ums_assessment_id: a.id, name: a.name, examination: a.semesterName || '' }))
       : [],
+    ...(options.fields ? { fields: options.fields } : {}),
+    ...(options.preserveCategory ? { preserve_category: true } : {}),
   };
 };
 
@@ -186,6 +201,8 @@ export interface SyncResult {
   /** UMS assessment ids the portal could not match to one of its assessments. */
   unmappedAssessmentIds: string[];
   syncedAt: string;
+  /** The portal's six-digit Candidate ID, when it reports one. */
+  candidateId?: string;
 }
 
 const inFlight = new Map<string, Promise<SyncResult>>();
@@ -252,6 +269,7 @@ export const syncStudent = (
       assignedCount: Number.isInteger(body.assigned_assessments) ? body.assigned_assessments : undefined,
       unmappedAssessmentIds: Array.isArray(body.unmapped_assessments) ? body.unmapped_assessments.map(String) : [],
       syncedAt: new Date((deps.now ?? Date.now)()).toISOString(),
+      ...(typeof body.candidate_id === 'string' && body.candidate_id ? { candidateId: body.candidate_id } : {}),
     } as SyncResult;
   })().finally(() => inFlight.delete(lock));
 
@@ -383,6 +401,28 @@ export const listPortalRoles = async (config: SyncConfig, deps: Deps = {}): Prom
     .map((role: any) => ({ name: role.name.trim(), administratorAccess: role.administrator_access === true }));
 };
 
+// ---- Candidate form (the portal's Add Candidate fields and choices) ----
+
+/** The form as the portal defines it, and the values already stored for this student, if any. */
+export const fetchCandidateForm = async (config: SyncConfig, externalStudentId: string, deps: Deps = {}) => {
+  const url = new URL(config.candidateFormUrl);
+  url.searchParams.set('tenant_id', config.tenantId);
+  url.searchParams.set('external_student_id', externalStudentId);
+  const response = await portalRequest(config, 'GET', url.toString(), undefined, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope students:write)', 'unauthorized');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true || !Array.isArray(body.fields)) throw new SyncError(502, 'The Exam Portal returned an invalid candidate form', 'unconfirmed');
+  return {
+    fields: body.fields,
+    categories: Array.isArray(body.categories) ? body.categories : [],
+    subCategories: Array.isArray(body.sub_categories) ? body.sub_categories : [],
+    candidate: body.candidate ?? null,
+  };
+};
+
 // ---- Assessment (examination) publishing ----
 
 export interface PortalAssessment {
@@ -393,7 +433,74 @@ export interface PortalAssessment {
   endDate: Date;
   totalTimeMinutes: number;
   active: boolean;
+  /** Publishing keeps the examination, name and total time chosen in the assessment form. */
+  keepFormDetails?: boolean;
 }
+
+export interface PortalAssessmentForm {
+  externalAssessmentId: string;
+  name: string;
+  examination: string;
+  startDate: string | null;
+  endDate: string | null;
+  totalTime: number | null;
+  active: boolean;
+  details: Record<string, unknown>;
+}
+
+/** The choices of the portal's assessment form, and what the portal already holds for this examination, if anything. */
+export const fetchAssessmentForm = async (config: SyncConfig, externalAssessmentId: string | null, deps: Deps = {}) => {
+  const url = new URL(config.assessmentFormUrl);
+  url.searchParams.set('tenant_id', config.tenantId);
+  if (externalAssessmentId) url.searchParams.set('external_assessment_id', externalAssessmentId);
+  const response = await portalRequest(config, 'GET', url.toString(), undefined, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope assessments:write)', 'unauthorized');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if (body?.ok !== true || !Array.isArray(body.examinations)) throw new SyncError(502, 'The Exam Portal returned an invalid assessment form', 'unconfirmed');
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    examinations: body.examinations,
+    questionCategories: list(body.question_categories),
+    subCategories: list(body.sub_categories),
+    topics: list(body.topics),
+    languages: list(body.languages),
+    difficultyLevels: list(body.difficulty_levels),
+    questionTypes: list(body.question_types),
+    assessment: body.assessment ?? null,
+  };
+};
+
+/** Stores the whole assessment form in the portal. The portal's own rules apply, and their message is passed on. */
+export const saveAssessmentForm = async (config: SyncConfig, a: PortalAssessmentForm, deps: Deps = {}) => {
+  const response = await portalRequest(config, 'PUT', config.assessmentsUrl, {
+    tenant_id: config.tenantId,
+    external_assessment_id: a.externalAssessmentId,
+    name: a.name,
+    examination: a.examination,
+    start_date: a.startDate,
+    end_date: a.endDate,
+    total_time: a.totalTime,
+    status: a.active ? 'active' : 'inactive',
+    details: a.details,
+  }, deps);
+  if (response.status === 401 || response.status === 403) {
+    throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope assessments:write)', 'unauthorized');
+  }
+  if (response.status === 400 || response.status === 422) {
+    const detail = await safeJson(response);
+    throw new SyncError(400, String(detail?.error_description || 'The Exam Portal rejected the assessment details'), 'rejected');
+  }
+  if (!response.ok) throw new SyncError(502, `The Exam Portal returned an error (HTTP ${response.status})`, 'remote_error');
+  const body = await safeJson(response);
+  if ((response.status !== 200 && response.status !== 201) || body?.ok !== true || !Number.isInteger(body.assessment_id)
+    || String(body.external_assessment_id) !== a.externalAssessmentId) {
+    throw new SyncError(502, 'The Exam Portal response did not confirm the assessment', 'unconfirmed');
+  }
+  return { assessmentId: body.assessment_id as number, outcome: response.status === 201 ? 'created' as const : 'updated' as const };
+};
 
 /** Creates/updates the assessment shell in the Exam Portal. Success requires the portal to confirm with its assessment id. */
 export const publishAssessment = async (config: SyncConfig, a: PortalAssessment, deps: Deps = {}) => {
@@ -406,6 +513,7 @@ export const publishAssessment = async (config: SyncConfig, a: PortalAssessment,
     end_date: a.endDate.toISOString(),
     total_time: a.totalTimeMinutes,
     status: a.active ? 'active' : 'inactive',
+    ...(a.keepFormDetails ? { keep_form_details: true } : {}),
   }, deps);
   if (response.status === 401 || response.status === 403) {
     throw new SyncError(502, 'The Exam Portal rejected UMS credentials (check scope assessments:write)', 'unauthorized');

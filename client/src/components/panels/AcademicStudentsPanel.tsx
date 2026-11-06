@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { ExportCandidateDialog } from '@/components/dialogs/ExportCandidateDialog';
 
 const ALL = 'all';
 
@@ -51,6 +52,8 @@ export function AcademicStudentsPanel() {
   const [programId, setProgramId] = useState(ALL);
   const [semesterId, setSemesterId] = useState(ALL);
   const [moduleId, setModuleId] = useState(ALL);
+  const [exportingStudent, setExportingStudent] = useState<any | null>(null);
+  const [candidateIds, setCandidateIds] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     setLoading(true);
@@ -215,6 +218,7 @@ export function AcademicStudentsPanel() {
                   <th className="px-4 py-3 font-medium">Study Center</th>
                   <th className="px-4 py-3 font-medium">Contact</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">Exam Portal</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -230,11 +234,22 @@ export function AcademicStudentsPanel() {
                       {student.phone && <p className="text-xs text-muted-foreground">{student.phone}</p>}
                     </td>
                     <td className="px-4 py-3"><Badge>Active</Badge></td>
+                    <td className="px-4 py-3">
+                      <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => setExportingStudent(student)}>Export Candidate</Button>
+                      {candidateIds[student.id] && <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">Candidate ID: {candidateIds[student.id]}</p>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+        {exportingStudent && (
+          <ExportCandidateDialog
+            student={exportingStudent}
+            onClose={() => setExportingStudent(null)}
+            onExported={candidateId => setCandidateIds(current => ({ ...current, [exportingStudent.id]: candidateId }))}
+          />
         )}
       </CardContent>
     </Card>

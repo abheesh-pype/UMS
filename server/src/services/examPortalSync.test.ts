@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fetchAssessmentResults, publishAssessment, requestStaffLaunch, listPortalRoles, revokeStaffAccess, setStaffPortalPassword, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
+  fetchAssessmentForm, saveAssessmentForm, fetchAssessmentResults, publishAssessment, requestStaffLaunch, listPortalRoles, revokeStaffAccess, setStaffPortalPassword, requestLaunchTicket, buildStudentPayload, clearTokenCache, getSyncConfigIssues, idempotencyKey, loadStudentForSync, loadSyncConfig, syncStudent, SyncError,
 } from './examPortalSync.js';
 
 const env = {
@@ -17,6 +17,18 @@ const config = loadSyncConfig(env)!;
 const student = { enrollmentNo: '123456', name: 'Ex Student', email: 'a@b.edu', status: 'active', specialisation: 'Maths', programName: 'BSc' };
 const assessments = [{ id: 'exam-uuid', name: 'Midterm', semesterName: 'Semester 1' }];
 const payload = () => buildStudentPayload('institution-001', student, assessments);
+
+test('export options set the chosen category and fields; defaults stay the program with no fields', () => {
+  const plain = payload();
+  assert.equal(plain.category, student.programName);
+  assert.equal('fields' in plain, false);
+  assert.equal('preserve_category' in plain, false);
+  const chosen = buildStudentPayload('t', student, assessments, { category: 'Chosen', subCategory: 'Sub', fields: { 'Date of Birth': '2001-02-03' } });
+  assert.equal(chosen.category, 'Chosen');
+  assert.equal(chosen.sub_category, 'Sub');
+  assert.deepEqual((chosen as any).fields, { 'Date of Birth': '2001-02-03' });
+  assert.equal((buildStudentPayload('t', student, assessments, { preserveCategory: true }) as any).preserve_category, true);
+});
 const code = async (p: Promise<unknown>) => { try { await p; return 'ok'; } catch (e) { return (e as SyncError).code; } };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -274,6 +286,45 @@ test('publish assessment: payload mapping and confirmed result', async () => {
     tenant_id: 'institution-001', external_assessment_id: 'exam-1', name: 'Midterm', examination: 'Semester 1',
     start_date: '2026-11-01T04:00:00.000Z', end_date: '2026-11-01T06:30:00.000Z', total_time: 120, status: 'active',
   });
+});
+
+test('publish assessment: can ask the portal to keep what the assessment form chose', async () => {
+  const { fn, calls } = portal(() => json({ ok: true, external_assessment_id: 'exam-1', assessment_id: 7 }));
+  await publishAssessment(config, { ...assessment, keepFormDetails: true }, { fetch: fn });
+  assert.equal(JSON.parse(String(calls[1].init.body)).keep_form_details, true);
+});
+
+test('assessment form: choices are mapped and the examination id is sent', async () => {
+  const { fn, calls } = portal(() => json({
+    ok: true, examinations: ['examination 1'], question_categories: ['c'], sub_categories: ['s'], topics: ['t'], languages: ['l'],
+    difficulty_levels: ['1'], question_types: ['Objective'], assessment: { name: 'Stored' },
+  }));
+  const form = await fetchAssessmentForm(config, 'exam-1', { fetch: fn });
+  assert.deepEqual(form, {
+    examinations: ['examination 1'], questionCategories: ['c'], subCategories: ['s'], topics: ['t'], languages: ['l'],
+    difficultyLevels: ['1'], questionTypes: ['Objective'], assessment: { name: 'Stored' },
+  });
+  const url = new URL(calls[1].url);
+  assert.equal(url.pathname, '/api/integrations/v1/assessment-form');
+  assert.equal(url.searchParams.get('external_assessment_id'), 'exam-1');
+  clearTokenCache();
+  assert.equal(await code(fetchAssessmentForm(config, null, { fetch: portal(() => json({ ok: true })).fn })), 'unconfirmed');
+});
+
+const assessmentForm = { externalAssessmentId: 'exam-1', name: 'Midterm', examination: 'examination 1', startDate: null, endDate: null, totalTime: 60, active: true, details: { question_category: 'c', sub_category: 's', sections: [{}] } };
+
+test('assessment form save: sends the details and passes on the reason for a rejection', async () => {
+  const { fn, calls } = portal(() => json({ ok: true, external_assessment_id: 'exam-1', assessment_id: 7 }, 201));
+  assert.deepEqual(await saveAssessmentForm(config, assessmentForm, { fetch: fn }), { assessmentId: 7, outcome: 'created' });
+  assert.equal(calls[1].init.method, 'PUT');
+  assert.deepEqual(JSON.parse(String(calls[1].init.body)).details, assessmentForm.details);
+  clearTokenCache();
+  await assert.rejects(
+    saveAssessmentForm(config, assessmentForm, { fetch: portal(() => json({ error_description: 'Pass Mark cannot be greater than Total Mark.' }, 422)).fn }),
+    (error: any) => error.code === 'rejected' && error.message === 'Pass Mark cannot be greater than Total Mark.',
+  );
+  clearTokenCache();
+  assert.equal(await code(saveAssessmentForm(config, assessmentForm, { fetch: portal(() => json({ ok: true, external_assessment_id: 'other', assessment_id: 7 })).fn })), 'unconfirmed');
 });
 
 test('publish assessment: unconfirmed, mismatched id, rejection and timeout are errors', async () => {
